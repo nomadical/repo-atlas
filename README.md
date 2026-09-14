@@ -114,8 +114,14 @@ fresh as your checkouts — which is what the nightly workflow is for.
 ## Hosting
 
 - **GitHub Pages** (`pages.yml`) — builds and deploys on every change to `main`. Self-contained;
-  no external services. Pages is public, so the data is protected by an AES passphrase
-  (`scripts/encrypt-data.mjs`) unless you wire up login.
+  no external services. **Pages is public, so the committed model goes out with the site**, and the
+  deploy makes you choose which you meant:
+  - set the **`ARCHMAP_PASSPHRASE` repo secret** (12+ chars) to encrypt it — readers type the
+    passphrase once and the data is decrypted in their browser (`scripts/encrypt-data.mjs`); or
+  - set the **`PAGES_PUBLIC_DATA` repo variable** to `1` to publish it openly — right for a demo or
+    a map you intend to be world-readable, wrong for a real internal estate.
+
+  With neither set the deploy fails and says so, rather than guessing.
 - **Your own container** (`Dockerfile` + `server/server.mjs`) — serves the viz plus a
   **token-validated `/data`** route, which is real data protection rather than a passphrase. See
   [`infra/hosting.md`](infra/hosting.md).

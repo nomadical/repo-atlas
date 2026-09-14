@@ -57,9 +57,14 @@ jobs:
           npm --prefix viz run build
       - name: Bundle (bake data into published/)
         run: node scripts/bundle.mjs
-      - name: Encrypt data (passphrase wall — Pages is public)
+      # Pages is public, so the committed model goes out with the site. Set EITHER the
+      # ARCHMAP_PASSPHRASE secret (readers decrypt in-browser) OR the PAGES_PUBLIC_DATA variable to
+      # '1' (the data is meant to be world-readable — a demo, or a deliberately public map). With
+      # neither, this step fails and explains the choice rather than guessing.
+      - name: Encrypt data (or publish it openly, if that's the configured choice)
         env:
           ARCHMAP_PASSPHRASE: ${{ secrets.ARCHMAP_PASSPHRASE }}
+          PAGES_PUBLIC_DATA: ${{ vars.PAGES_PUBLIC_DATA }}
         run: node scripts/encrypt-data.mjs
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

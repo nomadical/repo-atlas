@@ -7,6 +7,11 @@
 //
 // Run after bundle.mjs with ARCHMAP_PASSPHRASE set; deletes the plaintext data.json so a
 // misconfigured deploy fails loudly rather than publishing the data unprotected.
+//
+// Publishing the data openly is a legitimate choice — a demo estate, a public-by-design map — but
+// it has to be a DECISION, not the consequence of a forgotten secret. So it needs PAGES_PUBLIC_DATA=1
+// said out loud. With neither that nor a passphrase, this refuses to publish rather than guessing
+// which case it's in: the cost of a wrong guess is one-way.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -14,9 +19,26 @@ import crypto from 'node:crypto'
 import { AUDIT } from './_paths.mjs'
 
 const pass = process.env.ARCHMAP_PASSPHRASE
+const publicData = process.env.PAGES_PUBLIC_DATA === '1'
+
 if (!pass || pass.length < 12) {
-  console.error('encrypt-data: ARCHMAP_PASSPHRASE missing or shorter than 12 chars — refusing to publish')
-  process.exit(1)
+  if (!publicData) {
+    console.error(
+      'encrypt-data: refusing to publish.\n' +
+      '  GitHub Pages is public, so the data needs either a passphrase or your explicit consent to go out in the clear.\n' +
+      '  Pick one:\n' +
+      '    • Protect it — set the ARCHMAP_PASSPHRASE repo SECRET (12+ chars). Readers type it once; the data is\n' +
+      '      decrypted in their browser and never served in plaintext.\n' +
+      '    • Publish it openly — set the PAGES_PUBLIC_DATA repo VARIABLE to 1. Right for a demo or a map you\n' +
+      '      intend to be world-readable; wrong for a real internal estate.\n' +
+      '  For real protection (no shared passphrase at all), serve the data from server/server.mjs instead — see infra/hosting.md.',
+    )
+    process.exit(1)
+  }
+  console.log(
+    'encrypt-data: PAGES_PUBLIC_DATA=1 — publishing data.json UNENCRYPTED and world-readable, by explicit configuration.',
+  )
+  process.exit(0)
 }
 
 const dir = path.join(AUDIT, 'published')
