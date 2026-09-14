@@ -1,0 +1,152 @@
+name: Regenerate data (nightly, best-effort)
+
+# Clones the frontend repos, re-runs the data pipeline, and — only if the result passes the
+# data guard — commits refreshed fe-architecture*.json. GITHUB_TOKEN pushes never fire
+# push-triggered workflows, so the final step dispatches pages.yml explicitly (workflow_dispatch
+# is exempt from that suppression).
+#
+# Requirements (Settings → Secrets and variables → Actions):
+#   var     GITHUB_ORG        the GitHub org to scan. Required — there is no default org.
+#   secret  REPOS_TOKEN       fine-grained PAT (or GitHub App token) with Contents:read + Metadata:read
+#                             on the repos you want mapped. Required — the built-in Actions token only
+#                             reads this repo, not the other org repos the pipeline clones. Without it
+#                             every clone fails and the guard blocks the commit (so stale data is
+#                             never published).
+#   var     EXTRA_CLONE_URLS  optional, space-separated git URLs for repos NOT on that org.
+#   var     BACKEND_REPOS     optional, space-separated EXTRA backend repos to clone on top of the
+#                             auto-discovered set (org repos that carry an inventory topic but whose
+#                             GitHub primaryLanguage isn't JS/TS). Normally leave unset — a backend
+#                             joins the map the moment its owner adds type-/owner-/status-/app- topics.
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC nightly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write   # dispatch pages.yml after the data commit (see the last step)
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install ripgrep (endpoint extraction)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Clone frontend repos
+        env:
+          GH_TOKEN: ${{ secrets.REPOS_TOKEN }}
+          EXTRA_CLONE_URLS: ${{ vars.EXTRA_CLONE_URLS }}
+          # Backends are auto-discovered from the org — no hardcoded list.
+          GITHUB_ORG: ${{ vars.GITHUB_ORG }}
+          EXTRA_BACKEND_REPOS: ${{ vars.BACKEND_REPOS }}
+        run: |
+          set -e
+          if [ -z "$GITHUB_ORG" ]; then
+            echo "::error::GITHUB_ORG repo variable is not set — nothing to scan. Settings → Secrets and variables → Actions → Variables."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/checkouts" && cd "$RUNNER_TEMP/checkouts"
+          # One org listing drives both sweeps: name + primaryLanguage + topics.
+          gh repo list "$GITHUB_ORG" --limit 400 --json name,primaryLanguage,repositoryTopics > /tmp/orgrepos.json
+          # FE repos: everything on JavaScript/TypeScript (shallow).
+          for r in $(jq -r '.[] | select(.primaryLanguage.name=="JavaScript" or .primaryLanguage.name=="TypeScript") | .name' /tmp/orgrepos.json); do
+            echo "cloning fe $r"; gh repo clone "$GITHUB_ORG/$r" -- --depth 1 || echo "  skip $r"
+          done
+          # Backend repos: services (topic type-service) that aren't JS/TS, so a backend is picked
+          # up automatically once its owner curates it — no central list. backend-scan.mjs reads
+          # their build files (build.gradle/pom.xml); a non-Java service just isn't scanned. Other
+          # non-JS/TS components (firmware/hardware/infra) need no clone — they're on the map from
+          # their GitHub topics alone (github-inventory.mjs), so they're intentionally not swept here.
+          DISCOVERED=$(jq -r '.[] | select((.primaryLanguage.name // "") as $l | ($l!="JavaScript" and $l!="TypeScript")) | select((.repositoryTopics // []) | map(.name) | any(. == "type-service")) | .name' /tmp/orgrepos.json)
+          for r in $DISCOVERED $EXTRA_BACKEND_REPOS; do
+            echo "cloning backend $r"; gh repo clone "$GITHUB_ORG/$r" -- --depth 1 || echo "  skip $r"
+          done
+          # repos that live outside the org
+          for url in $EXTRA_CLONE_URLS; do
+            echo "cloning $url"; git clone --depth 1 "$url" || echo "  skip $url"
+          done
+          ls -1
+
+      - name: Run pipeline
+        env:
+          ATLAS_REPOS_DIR: ${{ runner.temp }}/checkouts
+          ATLAS_DISCOVER: '1'
+          GITHUB_ORG: ${{ vars.GITHUB_ORG }}   # org the scripts scan (repos.mjs, github-inventory, sync-names, assemble)
+          GH_TOKEN: ${{ secrets.REPOS_TOKEN }}   # sync-names + github-inventory: canonical names, topics, descriptions
+          ATLAS_SYNC: force                    # checkout mtime always looks fresh in CI
+          ATLAS_GH: force
+          # backend-scan.mjs reads BACKEND_REPOS (same repo variable the clone step consumes as
+          # EXTRA_BACKEND_REPOS) to report an env-listed backend that's missing on disk.
+          BACKEND_REPOS: ${{ vars.BACKEND_REPOS }}
+          # azure-gather needs an `az login` the runner doesn't have, so it skips itself here;
+          # refresh cloud resources from a local regenerate instead. Set ATLAS_AZURE=0 to disable
+          # the step outright if you don't model cloud resources at all.
+        run: |
+          # backend-scan runs BEFORE assemble (same order as `npm run regenerate`): assemble derives
+          # the Kafka/REST service links from backend-tooling.json, so scanning after it would pair
+          # tonight's model with last night's links.
+          for s in gather-arch parse-workflows module-graph azure-gather github-inventory sync-names backend-scan assemble extras-gather depcruise-accurate screens-gather extras-assemble; do
+            echo "::group::$s"; node "scripts/$s.mjs" || echo "step $s degraded"; echo "::endgroup::"
+          done
+
+      - name: Guard against regressions
+        env:
+          # The steps above tolerate individual failures ("degraded"), so require the main model to
+          # actually be tonight's — otherwise a failed gather/assemble leaves the checkout's stale
+          # fe-architecture.json paired with refreshed sibling files, and the commit ships a
+          # mixed-generation dataset.
+          GUARD_MAX_AGE_HOURS: '12'
+        run: node scripts/guard-data.mjs
+
+      # continue-on-error: a broken Golden Path night must not discard the rest of the night's map
+      # data — the commit step drops history.json when either step failed, and the job still ends red.
+      - name: Append tonight to Golden Path history
+        id: gp_append
+        continue-on-error: true
+        run: node golden-path/append-history.mjs
+
+      - name: Guard Golden Path history
+        id: gp_guard
+        continue-on-error: true
+        run: node golden-path/guard-history.mjs
+
+      - name: Commit refreshed data if changed
+        id: commit
+        run: |
+          FILES="fe-architecture.json fe-architecture-extras.json github-meta.json inventory-extra.json name-drift.json backend-tooling.json"
+          if [ "${{ steps.gp_append.outcome }}" = "success" ] && [ "${{ steps.gp_guard.outcome }}" = "success" ]; then
+            FILES="$FILES golden-path/history.json"
+          else
+            echo "golden-path history failed its append or guard — not committing it"
+            git checkout -- golden-path/history.json
+          fi
+          if git diff --quiet -- $FILES; then
+            echo "no data changes"; exit 0
+          fi
+          git config user.name  "repo-atlas-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add $FILES
+          git commit -m "chore: nightly data refresh"
+          # Anything landing on main during the multi-minute clone+pipeline run would otherwise
+          # reject this push and discard the whole night's refresh.
+          git pull --rebase
+          git push
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+
+      # A GITHUB_TOKEN push never fires push-triggered workflows (deliberate GitHub behavior), so
+      # without this the refreshed data would sit in git while the live Pages site serves the old
+      # bundle. workflow_dispatch is exempt from that suppression, so dispatch the deploy directly.
+      - name: Deploy the refreshed data to Pages
+        if: steps.commit.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
+
+      - name: Fail the job if the Golden Path night failed
+        if: steps.gp_append.outcome == 'failure' || steps.gp_guard.outcome == 'failure'
+        run: exit 1

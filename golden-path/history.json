@@ -1,0 +1,240 @@
+{
+  "generatedAt": "2026-09-14T03:10:00.000Z",
+  "source": "replayed from git log over github-meta.json, fe-architecture.json, backend-tooling.json \u2014 one entry per night the pipeline ran",
+  "format": "history[].changed maps a repository name to its state that night, or to null if it was gone. Apply the entries in order to rebuild any night; the first one carries every repository.",
+  "fields": {
+    "repository": "GitHub repository name, and the key of the row",
+    "type": "from the type-* topic on the repository; Unclassified when there is none",
+    "owner": "team, from the Component Inventory or the owner-* topic",
+    "applications": "products the component serves",
+    "status": "lifecycle status from the inventory: Current, Planned, Sunsetting",
+    "archived": "present and true when the repository is archived on GitHub",
+    "contact": "technical contact from the inventory",
+    "inventoryName": "inventory display name, present only when it differs from the repository name",
+    "archMapIgnore": "present and true when the repository carries the arch-map-ignore topic. That topic keeps a repository off the architecture map; it says nothing about the Golden Path, so this page does not read it. Carried as a fact, deliberately unused.",
+    "language": "scanned language and version \u2014 Java for backends, TypeScript/JavaScript for front ends",
+    "framework": "scanned framework and version \u2014 Quarkus or React",
+    "buildTool": "scanned build tool \u2014 Maven or Gradle; null where nothing was scanned"
+  },
+  "org": "meridian-labs",
+  "history": [
+    {
+      "date": "2026-09-07",
+      "changed": {
+        "design-system": {
+          "repository": "design-system",
+          "type": "Library",
+          "owner": "Platform",
+          "applications": [
+            "Shop",
+            "Ops Console",
+            "Partner API"
+          ],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": "React 19.2.0",
+          "buildTool": null,
+          "contact": "Priya Raman",
+          "inventoryName": "Design System"
+        },
+        "shared-models": {
+          "repository": "shared-models",
+          "type": "Library",
+          "owner": "Platform",
+          "applications": [],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": null,
+          "buildTool": null,
+          "contact": "Priya Raman"
+        },
+        "storefront-web": {
+          "repository": "storefront-web",
+          "type": "Client",
+          "owner": "Storefront",
+          "applications": [
+            "Shop"
+          ],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": "React 19.2.0",
+          "buildTool": null,
+          "contact": "Dana Okafor"
+        },
+        "checkout-web": {
+          "repository": "checkout-web",
+          "type": "Client",
+          "owner": "Storefront",
+          "applications": [
+            "Shop"
+          ],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": "React 19.2.0",
+          "buildTool": null,
+          "contact": "Dana Okafor"
+        },
+        "ops-console": {
+          "repository": "ops-console",
+          "type": "Client",
+          "owner": "Fulfilment",
+          "applications": [
+            "Ops Console"
+          ],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": "React 18.2.0",
+          "buildTool": null,
+          "contact": "Tomas Lindqvist"
+        },
+        "partner-portal": {
+          "repository": "partner-portal",
+          "type": "Client",
+          "owner": "Platform",
+          "applications": [
+            "Partner API"
+          ],
+          "status": "Sunsetting",
+          "language": "TypeScript 4.9.5",
+          "framework": "React 18.2.0",
+          "buildTool": null,
+          "contact": "Sam Whitfield"
+        },
+        "edge-gateway": {
+          "repository": "edge-gateway",
+          "type": "Service",
+          "owner": "Platform",
+          "applications": [
+            "Partner API",
+            "Shop"
+          ],
+          "status": "Current",
+          "language": null,
+          "framework": null,
+          "buildTool": null,
+          "contact": "Sam Whitfield"
+        },
+        "e2e-suite": {
+          "repository": "e2e-suite",
+          "type": "Tests",
+          "owner": "Fulfilment",
+          "applications": [],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": null,
+          "buildTool": null,
+          "contact": "Tomas Lindqvist"
+        },
+        "orders-service": {
+          "repository": "orders-service",
+          "type": "Service",
+          "owner": "Fulfilment",
+          "applications": [
+            "Shop",
+            "Ops Console"
+          ],
+          "status": "Current",
+          "language": null,
+          "framework": null,
+          "buildTool": "Gradle",
+          "database": "Postgres",
+          "logging": "JSON console",
+          "tracing": "OpenTelemetry",
+          "contact": "Yuki Tanaka"
+        },
+        "inventory-service": {
+          "repository": "inventory-service",
+          "type": "Service",
+          "owner": "Fulfilment",
+          "applications": [
+            "Ops Console"
+          ],
+          "status": "Current",
+          "language": null,
+          "framework": null,
+          "buildTool": "Gradle",
+          "database": "Postgres",
+          "logging": "JSON console",
+          "tracing": "OpenTelemetry",
+          "contact": "Yuki Tanaka"
+        },
+        "notifications-service": {
+          "repository": "notifications-service",
+          "type": "Service",
+          "owner": "Platform",
+          "applications": [],
+          "status": "Current",
+          "language": "Java 21",
+          "framework": "Quarkus 3.20.4",
+          "buildTool": "Maven",
+          "database": null,
+          "logging": "JSON console",
+          "tracing": null,
+          "contact": "Sam Whitfield"
+        },
+        "catalog-service": {
+          "repository": "catalog-service",
+          "type": "Service",
+          "owner": "Storefront",
+          "applications": [
+            "Shop"
+          ],
+          "status": "Current",
+          "language": null,
+          "framework": null,
+          "buildTool": "Gradle",
+          "database": "Postgres",
+          "logging": "JSON console",
+          "tracing": "OpenTelemetry",
+          "contact": "Dana Okafor"
+        },
+        "recommendations-service": {
+          "repository": "recommendations-service",
+          "type": "Service",
+          "owner": "Storefront",
+          "applications": [
+            "Shop"
+          ],
+          "status": "Planned",
+          "language": null,
+          "framework": null,
+          "buildTool": null,
+          "contact": "Dana Okafor"
+        },
+        "legacy-importer": {
+          "repository": "legacy-importer",
+          "type": "Service",
+          "owner": "Platform",
+          "applications": [],
+          "status": "Sunsetting",
+          "contact": "Sam Whitfield",
+          "language": "Java 17",
+          "framework": "Spring Boot 2.7.18",
+          "buildTool": "Maven",
+          "database": "MySQL",
+          "logging": "Logback",
+          "tracing": null
+        }
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "changed": {
+        "ops-console": {
+          "repository": "ops-console",
+          "type": "Client",
+          "owner": "Fulfilment",
+          "applications": [
+            "Ops Console"
+          ],
+          "status": "Current",
+          "language": "TypeScript 5.7.3",
+          "framework": "React 19.2.0",
+          "buildTool": null,
+          "contact": "Tomas Lindqvist"
+        },
+        "legacy-importer": null
+      }
+    }
+  ]
+}

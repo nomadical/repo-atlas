@@ -1,0 +1,1793 @@
+{
+  "org": "meridian-labs",
+  "generatedAt": "2026-09-14T13:38:01.057Z",
+  "scanRoot": "demo-org",
+  "azure": null,
+  "validation": {
+    "newlyDiscovered": [],
+    "unclonedOrgRepos": [],
+    "staleClones": [],
+    "duplicateClones": [],
+    "repoRenames": [],
+    "repoMissingOnGitHub": [],
+    "uncuratedRepos": [],
+    "incompleteCuration": [],
+    "statusMismatch": []
+  },
+  "inventory": [
+    {
+      "name": "Design System",
+      "abbr": "DS",
+      "type": "Library",
+      "subtype": "UI",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "Shared",
+      "applications": [
+        "Shop",
+        "Ops Console",
+        "Partner API"
+      ],
+      "description": "Shared React component library and design tokens",
+      "contact": "Priya Raman",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "Design System Handbook",
+      "docUrl": "https://wiki.meridian.example/design-system",
+      "repo": "https://github.com/meridian-labs/design-system",
+      "repoName": "design-system",
+      "pushedAt": "2026-09-08T08:00:00Z",
+      "createdAt": "2023-03-14T09:12:00Z",
+      "serviceId": "Design System",
+      "serviceRepo": null,
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "name": "shared-models",
+      "abbr": "MOD",
+      "type": "Library",
+      "subtype": "Model",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "Shared",
+      "applications": [],
+      "description": "TypeScript types shared between the clients and the gateway",
+      "contact": "Priya Raman",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/shared-models",
+      "repoName": "shared-models",
+      "pushedAt": "2026-08-21T08:00:00Z",
+      "createdAt": "2023-06-02T11:00:00Z",
+      "serviceId": "shared-models",
+      "serviceRepo": null,
+      "language": "TypeScript"
+    },
+    {
+      "name": "storefront-web",
+      "abbr": "SF",
+      "type": "Client",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Customer-facing storefront — browse, search and add to cart",
+      "contact": "Dana Okafor",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "Storefront Architecture",
+      "docUrl": "https://wiki.meridian.example/storefront",
+      "repo": "https://github.com/meridian-labs/storefront-web",
+      "repoName": "storefront-web",
+      "pushedAt": "2026-09-11T08:00:00Z",
+      "createdAt": "2022-11-08T10:00:00Z",
+      "serviceId": "storefront-web",
+      "serviceRepo": null,
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "name": "checkout-web",
+      "abbr": "CO",
+      "type": "Client",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Checkout and payment flow",
+      "contact": "Dana Okafor",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/checkout-web",
+      "repoName": "checkout-web",
+      "pushedAt": "2026-09-05T08:00:00Z",
+      "createdAt": "2023-01-19T10:00:00Z",
+      "serviceId": "checkout-web",
+      "serviceRepo": null,
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "name": "ops-console",
+      "abbr": "OPS",
+      "type": "Client",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Fulfilment",
+      "cluster": "",
+      "applications": [
+        "Ops Console"
+      ],
+      "description": "Internal console for order, inventory and shipment operations",
+      "contact": "Tomas Lindqvist",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "Ops Console Runbook",
+      "docUrl": "https://wiki.meridian.example/ops-console",
+      "repo": "https://github.com/meridian-labs/ops-console",
+      "repoName": "ops-console",
+      "pushedAt": "2026-09-12T08:00:00Z",
+      "createdAt": "2022-08-30T10:00:00Z",
+      "serviceId": "ops-console",
+      "serviceRepo": null,
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "name": "partner-portal",
+      "abbr": "PP",
+      "type": "Client",
+      "subtype": "",
+      "status": "Sunsetting",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [
+        "Partner API"
+      ],
+      "description": "Self-service portal for integration partners — being replaced by the Partner API",
+      "contact": "Sam Whitfield",
+      "introDate": "",
+      "sunsetDate": "2027-03-31",
+      "comment": "Superseded by the Partner API on the edge gateway. Kept live for existing integrations until they migrate.",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/partner-portal",
+      "repoName": "partner-portal",
+      "pushedAt": "2026-02-14T08:00:00Z",
+      "createdAt": "2021-05-11T10:00:00Z",
+      "serviceId": "partner-portal",
+      "serviceRepo": null,
+      "language": "TypeScript",
+      "framework": "React 18.2.0"
+    },
+    {
+      "name": "edge-gateway",
+      "abbr": "GW",
+      "type": "Service",
+      "subtype": "Gateway",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [
+        "Partner API",
+        "Shop"
+      ],
+      "description": "Public API edge — routing, auth and rate limiting in front of the services",
+      "contact": "Sam Whitfield",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/edge-gateway",
+      "repoName": "edge-gateway",
+      "pushedAt": "2026-08-30T08:00:00Z",
+      "createdAt": "2023-09-01T10:00:00Z",
+      "serviceId": "edge-gateway",
+      "serviceRepo": null,
+      "language": "JavaScript"
+    },
+    {
+      "name": "e2e-suite",
+      "abbr": "E2E",
+      "type": "Tests",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Fulfilment",
+      "cluster": "Shared",
+      "applications": [],
+      "description": "Playwright end-to-end suite covering the shop and ops journeys",
+      "contact": "Tomas Lindqvist",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/e2e-suite",
+      "repoName": "e2e-suite",
+      "pushedAt": "2026-09-02T08:00:00Z",
+      "createdAt": "2024-02-20T10:00:00Z",
+      "serviceId": "e2e-suite",
+      "serviceRepo": null,
+      "language": "TypeScript"
+    },
+    {
+      "name": "orders-service",
+      "abbr": "ORD",
+      "type": "Service",
+      "subtype": "API",
+      "status": "Current",
+      "owner": "Fulfilment",
+      "cluster": "",
+      "applications": [
+        "Shop",
+        "Ops Console"
+      ],
+      "description": "Order lifecycle — placement, state machine and payment orchestration",
+      "contact": "Yuki Tanaka",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "Orders Domain Model",
+      "docUrl": "https://wiki.meridian.example/orders",
+      "repo": "https://github.com/meridian-labs/orders-service",
+      "repoName": "orders-service",
+      "pushedAt": "2026-09-10T08:00:00Z",
+      "createdAt": "2021-09-15T10:00:00Z",
+      "serviceId": "orders-service",
+      "serviceRepo": null,
+      "language": "Java"
+    },
+    {
+      "name": "inventory-service",
+      "abbr": "INV",
+      "type": "Service",
+      "subtype": "API",
+      "status": "Current",
+      "owner": "Fulfilment",
+      "cluster": "",
+      "applications": [
+        "Ops Console"
+      ],
+      "description": "Stock levels, reservations and shipment records",
+      "contact": "Yuki Tanaka",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/inventory-service",
+      "repoName": "inventory-service",
+      "pushedAt": "2026-09-09T08:00:00Z",
+      "createdAt": "2021-10-04T10:00:00Z",
+      "serviceId": "inventory-service",
+      "serviceRepo": null,
+      "language": "Java"
+    },
+    {
+      "name": "notifications-service",
+      "abbr": "NOT",
+      "type": "Service",
+      "subtype": "Worker",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [],
+      "description": "Fans order and inventory events out as email and webhooks",
+      "contact": "Sam Whitfield",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/notifications-service",
+      "repoName": "notifications-service",
+      "pushedAt": "2026-07-18T08:00:00Z",
+      "createdAt": "2022-04-12T10:00:00Z",
+      "serviceId": "notifications-service",
+      "serviceRepo": null,
+      "language": "Java 21",
+      "framework": "Quarkus 3.20.4"
+    },
+    {
+      "name": "catalog-service",
+      "abbr": "CAT",
+      "type": "Service",
+      "subtype": "API",
+      "status": "Current",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Product catalog, pricing and reviews",
+      "contact": "Dana Okafor",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/catalog-service",
+      "repoName": "catalog-service",
+      "pushedAt": "2026-09-03T08:00:00Z",
+      "createdAt": "2021-08-02T10:00:00Z",
+      "serviceId": "catalog-service",
+      "serviceRepo": null,
+      "language": "Java"
+    },
+    {
+      "name": "recommendations-service",
+      "abbr": "REC",
+      "type": "Service",
+      "subtype": "API",
+      "status": "Planned",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Planned: per-customer product recommendations",
+      "contact": "Dana Okafor",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "Repo created, implementation not started. Scheduled for Q2.",
+      "doc": "",
+      "docUrl": "",
+      "repo": "https://github.com/meridian-labs/recommendations-service",
+      "repoName": "recommendations-service",
+      "pushedAt": "2026-08-28T10:00:00Z",
+      "createdAt": "2026-08-28T10:00:00Z",
+      "serviceId": "recommendations-service",
+      "serviceRepo": null
+    },
+    {
+      "abbr": "STR",
+      "type": "Third-Party Service",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Payment processing for the storefront and checkout flows.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "Payments Integration",
+      "docUrl": "https://wiki.meridian.example/payments",
+      "repo": null,
+      "repoName": null,
+      "name": "Stripe",
+      "serviceId": "Stripe",
+      "serviceRepo": null,
+      "meta": {
+        "vendor": "Stripe Inc.",
+        "url": "https://stripe.com/",
+        "auth": "API key",
+        "dataClassification": "Payment data",
+        "criticality": "Critical",
+        "contractOwner": "Storefront",
+        "environments": "prod, staging",
+        "notes": "PCI scope is limited to the hosted checkout element.",
+        "hosts": [
+          "api.stripe.com"
+        ]
+      }
+    },
+    {
+      "abbr": "AUTH",
+      "type": "Third-Party Service",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [
+        "Shop",
+        "Ops Console",
+        "Partner API"
+      ],
+      "description": "Identity provider. Every client signs in here and every service validates its tokens.",
+      "contact": "Sam Whitfield",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "Auth0",
+      "serviceId": "Auth0",
+      "serviceRepo": null,
+      "meta": {
+        "vendor": "Okta",
+        "url": "https://auth0.com/",
+        "auth": "OIDC",
+        "dataClassification": "Personal data",
+        "criticality": "Critical",
+        "contractOwner": "Platform",
+        "environments": "prod, staging, dev",
+        "notes": "Brokers to the corporate IdP for staff logins.",
+        "hosts": [
+          "meridian.eu.auth0.com"
+        ]
+      }
+    },
+    {
+      "abbr": "SG",
+      "type": "Third-Party Service",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Transactional email delivery for order confirmations and shipping updates.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "SendGrid",
+      "serviceId": "SendGrid",
+      "serviceRepo": null,
+      "meta": {
+        "vendor": "Twilio",
+        "url": "https://sendgrid.com/",
+        "auth": "API key",
+        "dataClassification": "Personal data",
+        "criticality": "High",
+        "contractOwner": "Platform",
+        "environments": "prod, staging",
+        "notes": "Transactional email only — no marketing sends.",
+        "hosts": [
+          "api.sendgrid.com"
+        ]
+      }
+    },
+    {
+      "abbr": "ALG",
+      "type": "Third-Party Service",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Storefront",
+      "cluster": "",
+      "applications": [
+        "Shop"
+      ],
+      "description": "Hosted product search behind the storefront's search bar.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "Algolia",
+      "serviceId": "Algolia",
+      "serviceRepo": null,
+      "meta": {
+        "vendor": "Algolia",
+        "url": "https://www.algolia.com/",
+        "auth": "API key",
+        "dataClassification": "Public data",
+        "criticality": "Medium",
+        "contractOwner": "Storefront",
+        "environments": "prod, staging",
+        "notes": "Product index rebuilt nightly from the catalog service.",
+        "hosts": [
+          "algolia.net"
+        ]
+      }
+    },
+    {
+      "abbr": "MAP",
+      "type": "Third-Party Service",
+      "subtype": "",
+      "status": "Sunsetting",
+      "owner": "Fulfilment",
+      "cluster": "",
+      "applications": [
+        "Ops Console"
+      ],
+      "description": "Shipment tracking maps in the ops console.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "2026-12-31",
+      "comment": "Being replaced by a self-hosted tile server to cut per-view costs.",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "Mapbox",
+      "serviceId": "Mapbox",
+      "serviceRepo": null,
+      "meta": {
+        "vendor": "Mapbox",
+        "url": "https://www.mapbox.com/",
+        "auth": "API key",
+        "dataClassification": "Public data",
+        "criticality": "Low",
+        "contractOwner": "Fulfilment",
+        "environments": "prod",
+        "notes": "Being replaced by a self-hosted tile server.",
+        "hosts": [
+          "api.mapbox.com"
+        ]
+      }
+    },
+    {
+      "abbr": "PG",
+      "type": "Infrastructure",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [],
+      "description": "Managed Postgres cluster backing the order, inventory and catalog services.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "PostgreSQL",
+      "serviceId": "PostgreSQL",
+      "serviceRepo": null
+    },
+    {
+      "abbr": "KFK",
+      "type": "Infrastructure",
+      "subtype": "",
+      "status": "Current",
+      "owner": "Platform",
+      "cluster": "",
+      "applications": [],
+      "description": "Event backbone. Order and inventory events fan out to the notification worker through it.",
+      "contact": "",
+      "introDate": "",
+      "sunsetDate": "",
+      "comment": "",
+      "doc": "",
+      "docUrl": "",
+      "repo": null,
+      "repoName": null,
+      "name": "Kafka",
+      "serviceId": "Kafka",
+      "serviceRepo": null
+    }
+  ],
+  "integrations": [
+    {
+      "source": "orders-service",
+      "target": "Kafka",
+      "protocol": "Kafka",
+      "channel": "orders.placed",
+      "note": "Publishes an event for every accepted order",
+      "verified": true
+    },
+    {
+      "source": "inventory-service",
+      "target": "Kafka",
+      "protocol": "Kafka",
+      "channel": "inventory.reserved",
+      "note": "Publishes a reservation event once stock is held",
+      "verified": true
+    },
+    {
+      "source": "Kafka",
+      "target": "inventory-service",
+      "protocol": "Kafka",
+      "channel": "orders.placed",
+      "note": "Reserves stock against a newly placed order",
+      "verified": true
+    },
+    {
+      "source": "Kafka",
+      "target": "notifications-service",
+      "protocol": "Kafka",
+      "channel": "orders.placed",
+      "note": "Sends the order confirmation email",
+      "verified": true
+    },
+    {
+      "source": "orders-service",
+      "target": "inventory-service",
+      "protocol": "REST",
+      "channel": "/inventory",
+      "note": "Synchronous stock check during order placement",
+      "verified": true
+    },
+    {
+      "source": "orders-service",
+      "target": "Stripe",
+      "protocol": "REST",
+      "channel": "/v1/payment_intents",
+      "note": "Creates and captures payment intents",
+      "verified": true
+    },
+    {
+      "source": "notifications-service",
+      "target": "SendGrid",
+      "protocol": "REST",
+      "channel": "/v3/mail/send",
+      "note": "Sends transactional email",
+      "verified": true,
+      "via": "code",
+      "curated": true
+    },
+    {
+      "source": "edge-gateway",
+      "target": "orders-service",
+      "protocol": "REST",
+      "channel": "/orders",
+      "note": "Public API routes proxied to the order service",
+      "verified": true
+    },
+    {
+      "source": "edge-gateway",
+      "target": "inventory-service",
+      "protocol": "REST",
+      "channel": "/inventory",
+      "note": "Public API routes proxied to the inventory service",
+      "verified": true
+    },
+    {
+      "source": "edge-gateway",
+      "target": "catalog-service",
+      "protocol": "REST",
+      "channel": "/catalog",
+      "note": "Public API routes proxied to the catalog service",
+      "verified": true
+    },
+    {
+      "source": "catalog-service",
+      "target": "Algolia",
+      "protocol": "REST",
+      "channel": "/1/indexes",
+      "note": "Seeded from the repo description: pushes the product index nightly — VERIFY",
+      "verified": false
+    },
+    {
+      "source": "inventory-service",
+      "target": "notifications-service",
+      "protocol": "Kafka",
+      "channel": "inventory.reserved",
+      "note": "Derived from mp.messaging topics (backend-scan)",
+      "verified": true,
+      "via": "code"
+    },
+    {
+      "source": "orders-service",
+      "target": "inventory-service",
+      "protocol": "Kafka",
+      "channel": "orders.placed",
+      "note": "Derived from mp.messaging topics (backend-scan)",
+      "verified": true,
+      "via": "code"
+    },
+    {
+      "source": "orders-service",
+      "target": "notifications-service",
+      "protocol": "Kafka",
+      "channel": "orders.placed",
+      "note": "Derived from mp.messaging topics (backend-scan)",
+      "verified": true,
+      "via": "code"
+    },
+    {
+      "source": "Kafka",
+      "target": "orders-service",
+      "protocol": "Kafka",
+      "channel": "payments.settled",
+      "note": "Derived from mp.messaging topics (backend-scan)",
+      "verified": true,
+      "via": "code"
+    }
+  ],
+  "backendTopology": {
+    "backends": [
+      {
+        "id": "be-orders",
+        "label": "orders-service",
+        "kind": "backend",
+        "repo": "orders-service",
+        "host": "api.meridian.example",
+        "deployTarget": "inf-registry",
+        "desc": "Order lifecycle — placement, state machine and payment orchestration",
+        "tooling": [
+          "Quarkus",
+          "Java 21",
+          "Gradle"
+        ],
+        "invName": "orders-service"
+      },
+      {
+        "id": "be-inventory",
+        "label": "inventory-service",
+        "kind": "backend",
+        "repo": "inventory-service",
+        "host": "api.meridian.example",
+        "deployTarget": "inf-registry",
+        "desc": "Stock levels, reservations and shipment records",
+        "tooling": [
+          "Quarkus",
+          "Java 21",
+          "Gradle"
+        ],
+        "invName": "inventory-service"
+      },
+      {
+        "id": "be-catalog",
+        "label": "catalog-service",
+        "kind": "backend",
+        "repo": "catalog-service",
+        "host": "api.meridian.example",
+        "deployTarget": "inf-registry",
+        "desc": "Product catalog, pricing and reviews",
+        "tooling": [
+          "Quarkus",
+          "Java 21",
+          "Gradle"
+        ],
+        "invName": "catalog-service"
+      },
+      {
+        "id": "be-notifications",
+        "label": "notifications-service",
+        "kind": "backend",
+        "repo": "notifications-service",
+        "host": "api.meridian.example",
+        "deployTarget": "inf-registry",
+        "desc": "Fans order and inventory events out as email and webhooks",
+        "tooling": [
+          "Quarkus",
+          "Java 21",
+          "Gradle"
+        ],
+        "invName": "notifications-service"
+      },
+      {
+        "id": "be-auth",
+        "label": "Auth0",
+        "kind": "extsvc",
+        "host": "meridian.eu.auth0.com",
+        "desc": "Identity provider — every client and service validates its tokens",
+        "invName": "Auth0"
+      },
+      {
+        "id": "be-postgres",
+        "label": "PostgreSQL",
+        "kind": "storage",
+        "desc": "Primary datastore for the order, inventory and catalog services",
+        "invName": "PostgreSQL"
+      }
+    ],
+    "feBe": {
+      "storefront-web": [
+        "be-catalog",
+        "be-orders",
+        "be-auth"
+      ],
+      "checkout-web": [
+        "be-orders",
+        "be-auth"
+      ],
+      "ops-console": [
+        "be-orders",
+        "be-inventory",
+        "be-auth"
+      ],
+      "partner-portal": [
+        "be-auth"
+      ],
+      "edge-gateway": [
+        "be-orders",
+        "be-inventory",
+        "be-catalog",
+        "be-auth"
+      ]
+    },
+    "backendExternals": {
+      "be-orders": [
+        "Stripe"
+      ],
+      "be-notifications": [
+        "SendGrid"
+      ],
+      "be-catalog": [
+        "Algolia"
+      ]
+    },
+    "assetConsumers": [],
+    "serviceEdges": [
+      {
+        "source": "edge-gateway",
+        "target": "be-orders"
+      },
+      {
+        "source": "edge-gateway",
+        "target": "be-inventory"
+      },
+      {
+        "source": "edge-gateway",
+        "target": "be-catalog"
+      }
+    ],
+    "contentRepos": [],
+    "restHostAliases": {
+      "_comment": "Internal-only aliases for the code-derived REST matcher (assemble.mjs): maps an outbound URL token (a host head, or a gateway path segment like gateway/<service>) to the canonical component when it isn't the component's own name. Third-party hosts live in third-party-meta.csv (Hosts column) instead.",
+      "inventory-api": "inventory-service",
+      "notifications-api": "notifications-service"
+    }
+  },
+  "missingRepos": [],
+  "repoCounts": {
+    "withPackageJson": 8,
+    "missing": 0,
+    "inOrg": 8,
+    "outsideOrg": 0
+  },
+  "repos": [
+    {
+      "folder": "checkout-web",
+      "displayName": "checkout-web",
+      "kind": "client",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/checkout-web.git",
+      "name": "checkout-web",
+      "version": "2.6.3",
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-05T10:00:00+02:00",
+      "externals": [
+        {
+          "name": "Stripe",
+          "via": "curated"
+        }
+      ],
+      "endpoints": [
+        "orders",
+        "payments/intent"
+      ],
+      "endpointLinks": {},
+      "liveUrl": "checkout.meridian.example",
+      "apiUrl": "api.meridian.example",
+      "swagger": "https://api.meridian.example/q/swagger-ui/",
+      "internalDeps": [
+        {
+          "name": "@meridian/ui",
+          "version": "3.3.0",
+          "dev": false
+        },
+        {
+          "name": "@meridian/models",
+          "version": "1.8.0",
+          "dev": false
+        }
+      ],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": "19.2.0",
+        "vite": "7.1.2",
+        "typescript": "5.7.3",
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "vite"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 2,
+        "srcFiles": 5,
+        "topFolders": [
+          "api",
+          "pages"
+        ],
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "deployment": [
+        {
+          "workflow": "deploy.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": []
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "checkout-web",
+        "abbr": "CO",
+        "type": "Client",
+        "subtype": "",
+        "status": "Current",
+        "owner": "Storefront",
+        "cluster": "",
+        "applications": [
+          "Shop"
+        ],
+        "description": "Checkout and payment flow",
+        "contact": "Dana Okafor",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "",
+        "docUrl": "",
+        "repo": "https://github.com/meridian-labs/checkout-web",
+        "repoName": "checkout-web",
+        "pushedAt": "2026-09-05T08:00:00Z",
+        "createdAt": "2023-01-19T10:00:00Z",
+        "serviceId": "checkout-web",
+        "serviceRepo": null,
+        "language": "TypeScript",
+        "framework": "React 19.2.0"
+      },
+      "serviceId": "checkout-web",
+      "serviceRepo": "checkout-web",
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "folder": "design-system",
+      "displayName": "design-system",
+      "kind": "library",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/design-system.git",
+      "name": "@meridian/ui",
+      "version": "3.4.2",
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-08T10:00:00+02:00",
+      "externals": [],
+      "endpoints": [],
+      "endpointLinks": {},
+      "liveUrl": null,
+      "apiUrl": null,
+      "swagger": null,
+      "internalDeps": [],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": "19.2.0",
+        "vite": "7.1.2",
+        "typescript": "5.7.3",
+        "mui": "9.0.1",
+        "storybook": "@storybook/react-vite@10.3.5",
+        "node": null,
+        "buildTool": "vite"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 2,
+        "srcFiles": 15,
+        "topFolders": [
+          "api",
+          "components",
+          "themes"
+        ],
+        "edges": [
+          [
+            "src",
+            "src/components"
+          ],
+          [
+            "src",
+            "src/themes"
+          ]
+        ]
+      },
+      "deployment": [
+        {
+          "workflow": "deploy.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": [
+            "npm package publish"
+          ]
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "Design System",
+        "abbr": "DS",
+        "type": "Library",
+        "subtype": "UI",
+        "status": "Current",
+        "owner": "Platform",
+        "cluster": "Shared",
+        "applications": [
+          "Shop",
+          "Ops Console",
+          "Partner API"
+        ],
+        "description": "Shared React component library and design tokens",
+        "contact": "Priya Raman",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "Design System Handbook",
+        "docUrl": "https://wiki.meridian.example/design-system",
+        "repo": "https://github.com/meridian-labs/design-system",
+        "repoName": "design-system",
+        "pushedAt": "2026-09-08T08:00:00Z",
+        "createdAt": "2023-03-14T09:12:00Z",
+        "serviceId": "Design System",
+        "serviceRepo": null,
+        "language": "TypeScript",
+        "framework": "React 19.2.0"
+      },
+      "serviceId": "Design System",
+      "serviceRepo": "design-system",
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "folder": "e2e-suite",
+      "displayName": "e2e-suite",
+      "kind": "tests",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/e2e-suite.git",
+      "name": "e2e-suite",
+      "version": "0.9.0",
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-02T10:00:00+02:00",
+      "externals": [],
+      "endpoints": [],
+      "endpointLinks": {},
+      "liveUrl": null,
+      "apiUrl": null,
+      "swagger": null,
+      "internalDeps": [],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": null,
+        "vite": null,
+        "typescript": "5.7.3",
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "other"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 0,
+        "srcFiles": 4,
+        "topFolders": [],
+        "edges": []
+      },
+      "deployment": [
+        {
+          "note": "no deploying workflow detected"
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "e2e-suite",
+        "abbr": "E2E",
+        "type": "Tests",
+        "subtype": "",
+        "status": "Current",
+        "owner": "Fulfilment",
+        "cluster": "Shared",
+        "applications": [],
+        "description": "Playwright end-to-end suite covering the shop and ops journeys",
+        "contact": "Tomas Lindqvist",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "",
+        "docUrl": "",
+        "repo": "https://github.com/meridian-labs/e2e-suite",
+        "repoName": "e2e-suite",
+        "pushedAt": "2026-09-02T08:00:00Z",
+        "createdAt": "2024-02-20T10:00:00Z",
+        "serviceId": "e2e-suite",
+        "serviceRepo": null,
+        "language": "TypeScript"
+      },
+      "serviceId": "e2e-suite",
+      "serviceRepo": "e2e-suite",
+      "language": "TypeScript"
+    },
+    {
+      "folder": "edge-gateway",
+      "displayName": "edge-gateway",
+      "kind": "service",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/edge-gateway.git",
+      "name": "edge-gateway",
+      "version": "2.2.0",
+      "defaultBranch": "main",
+      "lastCommit": "2026-08-30T10:00:00+02:00",
+      "externals": [],
+      "endpoints": [
+        "https://api.meridian.example/inventory",
+        "https://api.meridian.example/orders"
+      ],
+      "endpointLinks": {},
+      "liveUrl": null,
+      "apiUrl": "api.meridian.example",
+      "swagger": "https://api.meridian.example/q/swagger-ui/",
+      "internalDeps": [],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": null,
+        "vite": null,
+        "typescript": null,
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "other"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 0,
+        "srcFiles": 1,
+        "topFolders": [],
+        "edges": []
+      },
+      "deployment": [
+        {
+          "workflow": "build.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": [
+            "Container image"
+          ]
+        }
+      ],
+      "feToBe": {
+        "method": "curated",
+        "note": "Node service, not a browser client — it proxies to the Java services rather than calling them as a frontend",
+        "backends": [
+          "api.meridian.example/orders",
+          "api.meridian.example/inventory"
+        ]
+      },
+      "inventory": {
+        "name": "edge-gateway",
+        "abbr": "GW",
+        "type": "Service",
+        "subtype": "Gateway",
+        "status": "Current",
+        "owner": "Platform",
+        "cluster": "",
+        "applications": [
+          "Partner API",
+          "Shop"
+        ],
+        "description": "Public API edge — routing, auth and rate limiting in front of the services",
+        "contact": "Sam Whitfield",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "",
+        "docUrl": "",
+        "repo": "https://github.com/meridian-labs/edge-gateway",
+        "repoName": "edge-gateway",
+        "pushedAt": "2026-08-30T08:00:00Z",
+        "createdAt": "2023-09-01T10:00:00Z",
+        "serviceId": "edge-gateway",
+        "serviceRepo": null,
+        "language": "JavaScript"
+      },
+      "serviceId": "edge-gateway",
+      "serviceRepo": "edge-gateway",
+      "language": "JavaScript"
+    },
+    {
+      "folder": "ops-console",
+      "displayName": "ops-console",
+      "kind": "client",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/ops-console.git",
+      "name": "ops-console",
+      "version": "5.0.1",
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-12T10:00:00+02:00",
+      "externals": [
+        {
+          "name": "Mapbox",
+          "via": "curated"
+        }
+      ],
+      "endpoints": [
+        "inventory/stock",
+        "orders",
+        "orders/exceptions",
+        "shipments"
+      ],
+      "endpointLinks": {},
+      "liveUrl": "ops.meridian.example",
+      "apiUrl": "api.meridian.example",
+      "swagger": "https://api.meridian.example/q/swagger-ui/",
+      "internalDeps": [
+        {
+          "name": "@meridian/ui",
+          "version": "3.4.2",
+          "dev": false
+        },
+        {
+          "name": "@meridian/models",
+          "version": "1.8.0",
+          "dev": false
+        }
+      ],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": "19.2.0",
+        "vite": "7.1.2",
+        "typescript": "5.7.3",
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "vite"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 2,
+        "srcFiles": 7,
+        "topFolders": [
+          "api",
+          "pages"
+        ],
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "deployment": [
+        {
+          "workflow": "deploy.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": []
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "ops-console",
+        "abbr": "OPS",
+        "type": "Client",
+        "subtype": "",
+        "status": "Current",
+        "owner": "Fulfilment",
+        "cluster": "",
+        "applications": [
+          "Ops Console"
+        ],
+        "description": "Internal console for order, inventory and shipment operations",
+        "contact": "Tomas Lindqvist",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "Ops Console Runbook",
+        "docUrl": "https://wiki.meridian.example/ops-console",
+        "repo": "https://github.com/meridian-labs/ops-console",
+        "repoName": "ops-console",
+        "pushedAt": "2026-09-12T08:00:00Z",
+        "createdAt": "2022-08-30T10:00:00Z",
+        "serviceId": "ops-console",
+        "serviceRepo": null,
+        "language": "TypeScript",
+        "framework": "React 19.2.0"
+      },
+      "serviceId": "ops-console",
+      "serviceRepo": "ops-console",
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    },
+    {
+      "folder": "partner-portal",
+      "displayName": "partner-portal",
+      "kind": "client",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/partner-portal.git",
+      "name": "partner-portal",
+      "version": "1.2.9",
+      "defaultBranch": "main",
+      "lastCommit": "2026-02-14T10:00:00+01:00",
+      "externals": [],
+      "endpoints": [
+        "partners",
+        "partners/keys"
+      ],
+      "endpointLinks": {},
+      "liveUrl": "partners.meridian.example",
+      "apiUrl": "api.meridian.example",
+      "swagger": "https://api.meridian.example/q/swagger-ui/",
+      "internalDeps": [
+        {
+          "name": "@meridian/ui",
+          "version": "2.9.4",
+          "dev": false
+        }
+      ],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": "18.2.0",
+        "vite": null,
+        "typescript": "4.9.5",
+        "mui": "5.15.10",
+        "storybook": null,
+        "node": null,
+        "buildTool": "CRA/craco (react-scripts)"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 2,
+        "srcFiles": 4,
+        "topFolders": [
+          "api",
+          "pages"
+        ],
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "deployment": [
+        {
+          "workflow": "deploy.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": []
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "partner-portal",
+        "abbr": "PP",
+        "type": "Client",
+        "subtype": "",
+        "status": "Sunsetting",
+        "owner": "Platform",
+        "cluster": "",
+        "applications": [
+          "Partner API"
+        ],
+        "description": "Self-service portal for integration partners — being replaced by the Partner API",
+        "contact": "Sam Whitfield",
+        "introDate": "",
+        "sunsetDate": "2027-03-31",
+        "comment": "Superseded by the Partner API on the edge gateway. Kept live for existing integrations until they migrate.",
+        "doc": "",
+        "docUrl": "",
+        "repo": "https://github.com/meridian-labs/partner-portal",
+        "repoName": "partner-portal",
+        "pushedAt": "2026-02-14T08:00:00Z",
+        "createdAt": "2021-05-11T10:00:00Z",
+        "serviceId": "partner-portal",
+        "serviceRepo": null,
+        "language": "TypeScript",
+        "framework": "React 18.2.0"
+      },
+      "serviceId": "partner-portal",
+      "serviceRepo": "partner-portal",
+      "language": "TypeScript",
+      "framework": "React 18.2.0"
+    },
+    {
+      "folder": "shared-models",
+      "displayName": "shared-models",
+      "kind": "library",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/shared-models.git",
+      "name": "@meridian/models",
+      "version": "1.8.0",
+      "defaultBranch": "main",
+      "lastCommit": "2026-08-21T10:00:00+02:00",
+      "externals": [],
+      "endpoints": [],
+      "endpointLinks": {},
+      "liveUrl": null,
+      "apiUrl": null,
+      "swagger": null,
+      "internalDeps": [],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": null,
+        "vite": null,
+        "typescript": "5.7.3",
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "other"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 0,
+        "srcFiles": 1,
+        "topFolders": [],
+        "edges": []
+      },
+      "deployment": [
+        {
+          "note": "no deploying workflow detected"
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "shared-models",
+        "abbr": "MOD",
+        "type": "Library",
+        "subtype": "Model",
+        "status": "Current",
+        "owner": "Platform",
+        "cluster": "Shared",
+        "applications": [],
+        "description": "TypeScript types shared between the clients and the gateway",
+        "contact": "Priya Raman",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "",
+        "docUrl": "",
+        "repo": "https://github.com/meridian-labs/shared-models",
+        "repoName": "shared-models",
+        "pushedAt": "2026-08-21T08:00:00Z",
+        "createdAt": "2023-06-02T11:00:00Z",
+        "serviceId": "shared-models",
+        "serviceRepo": null,
+        "language": "TypeScript"
+      },
+      "serviceId": "shared-models",
+      "serviceRepo": "shared-models",
+      "language": "TypeScript"
+    },
+    {
+      "folder": "storefront-web",
+      "displayName": "storefront-web",
+      "kind": "client",
+      "inOrg": true,
+      "remote": "https://github.com/meridian-labs/storefront-web.git",
+      "name": "storefront-web",
+      "version": "4.1.0",
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-11T10:00:00+02:00",
+      "externals": [
+        {
+          "name": "Stripe",
+          "via": "curated"
+        },
+        {
+          "name": "Algolia (search)",
+          "via": "curated"
+        }
+      ],
+      "endpoints": [
+        "catalog/products",
+        "orders/cart",
+        "reviews"
+      ],
+      "endpointLinks": {},
+      "liveUrl": "shop.meridian.example",
+      "apiUrl": "api.meridian.example",
+      "swagger": "https://api.meridian.example/q/swagger-ui/",
+      "internalDeps": [
+        {
+          "name": "@meridian/ui",
+          "version": "3.4.2",
+          "dev": false
+        },
+        {
+          "name": "@meridian/models",
+          "version": "1.8.0",
+          "dev": false
+        }
+      ],
+      "legacyPackages": false,
+      "toolingVersions": {
+        "react": "19.2.0",
+        "vite": "7.1.2",
+        "typescript": "5.7.3",
+        "mui": null,
+        "storybook": null,
+        "node": null,
+        "buildTool": "vite"
+      },
+      "moduleGraph": {
+        "method": "grep",
+        "crossFolderEdges": 2,
+        "srcFiles": 6,
+        "topFolders": [
+          "api",
+          "pages"
+        ],
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "deployment": [
+        {
+          "workflow": "deploy.yml",
+          "triggers": [
+            "push"
+          ],
+          "branches": [
+            "main",
+            "dev"
+          ],
+          "environments": [
+            "dev"
+          ],
+          "target": []
+        }
+      ],
+      "feToBe": {
+        "method": "grep",
+        "backends": []
+      },
+      "inventory": {
+        "name": "storefront-web",
+        "abbr": "SF",
+        "type": "Client",
+        "subtype": "",
+        "status": "Current",
+        "owner": "Storefront",
+        "cluster": "",
+        "applications": [
+          "Shop"
+        ],
+        "description": "Customer-facing storefront — browse, search and add to cart",
+        "contact": "Dana Okafor",
+        "introDate": "",
+        "sunsetDate": "",
+        "comment": "",
+        "doc": "Storefront Architecture",
+        "docUrl": "https://wiki.meridian.example/storefront",
+        "repo": "https://github.com/meridian-labs/storefront-web",
+        "repoName": "storefront-web",
+        "pushedAt": "2026-09-11T08:00:00Z",
+        "createdAt": "2022-11-08T10:00:00Z",
+        "serviceId": "storefront-web",
+        "serviceRepo": null,
+        "language": "TypeScript",
+        "framework": "React 19.2.0"
+      },
+      "serviceId": "storefront-web",
+      "serviceRepo": "storefront-web",
+      "language": "TypeScript",
+      "framework": "React 19.2.0"
+    }
+  ],
+  "uiConsumers": [
+    {
+      "repo": "checkout-web",
+      "version": "3.3.0"
+    },
+    {
+      "repo": "ops-console",
+      "version": "3.4.2"
+    },
+    {
+      "repo": "partner-portal",
+      "version": "2.9.4"
+    },
+    {
+      "repo": "storefront-web",
+      "version": "3.4.2"
+    }
+  ],
+  "frameworkConsumers": {
+    "platform-core": [
+      {
+        "name": "catalog-service",
+        "version": "2.4.1",
+        "artifacts": [
+          "platform-core"
+        ]
+      },
+      {
+        "name": "inventory-service",
+        "version": "2.4.1",
+        "artifacts": [
+          "platform-core"
+        ]
+      },
+      {
+        "name": "notifications-service",
+        "version": "2.4.1",
+        "artifacts": [
+          "platform-core"
+        ]
+      },
+      {
+        "name": "orders-service",
+        "version": "2.4.1",
+        "artifacts": [
+          "platform-core"
+        ]
+      }
+    ]
+  },
+  "legacyPackages": [],
+  "versionDrift": {
+    "@meridian/ui": [
+      {
+        "repo": "checkout-web",
+        "version": "3.3.0"
+      },
+      {
+        "repo": "ops-console",
+        "version": "3.4.2"
+      },
+      {
+        "repo": "partner-portal",
+        "version": "2.9.4"
+      },
+      {
+        "repo": "storefront-web",
+        "version": "3.4.2"
+      },
+      {
+        "repo": "ui (library source HEAD)",
+        "version": "3.4.2"
+      }
+    ],
+    "mui": [
+      {
+        "version": "9.0.1",
+        "repos": [
+          "design-system"
+        ]
+      },
+      {
+        "version": "5.15.10",
+        "repos": [
+          "partner-portal"
+        ]
+      }
+    ],
+    "storybook": [],
+    "node": [],
+    "react": [
+      {
+        "version": "19.2.0",
+        "repos": [
+          "checkout-web",
+          "design-system",
+          "ops-console",
+          "storefront-web"
+        ]
+      },
+      {
+        "version": "18.2.0",
+        "repos": [
+          "partner-portal"
+        ]
+      }
+    ],
+    "typescript": [
+      {
+        "version": "5.7.3",
+        "repos": [
+          "checkout-web",
+          "design-system",
+          "e2e-suite",
+          "ops-console",
+          "shared-models",
+          "storefront-web"
+        ]
+      },
+      {
+        "version": "4.9.5",
+        "repos": [
+          "partner-portal"
+        ]
+      }
+    ],
+    "vite": []
+  },
+  "notes": {
+    "asOf": null,
+    "items": []
+  }
+}

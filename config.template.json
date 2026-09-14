@@ -1,0 +1,111 @@
+{
+  "_README": "Copy to config.json and edit. Every field is optional — each falls back to a sensible default, and an unset field means 'this doesn't apply to my estate' rather than 'broken'. Merged into the served data as data.config and read by the viz. Most are also editable in-app via the admin ⚙ Settings panel. Keys starting with _ are comments and are ignored.",
+
+  "title": "Acme · Architecture Map",
+  "subtitle": "The frontend estate and the services it touches",
+  "logoUrl": "",
+
+  "_view": "Initial view/mode/theme when the URL doesn't pin them.",
+  "defaultView": "graph",
+  "defaultMode": "overview",
+  "defaultTheme": "light",
+
+  "_staleDays": "A repo with no commit in more than this many days is flagged 'stale' on its card. Default 120.",
+  "staleDays": 120,
+
+  "_dataStaleDays": "The toolbar's 'data N days ago' badge turns amber when the generated data is older than this many days. Default 7.",
+  "dataStaleDays": 7,
+
+  "_internalScopes": "npm scopes your org publishes under. A dependency in one of these scopes is drawn as an internal-dependency edge instead of an external package. List scopes you've migrated AWAY from too — repos that still pin the old name are exactly the drift worth seeing. Unset: no internal edges are drawn.",
+  "internalScopes": ["@acme"],
+
+  "_legacyPackages": "Unscoped, pre-migration aliases of a first-party package. A repo still depending on the bare name is flagged as not yet migrated.",
+  "legacyPackages": ["acme-lib"],
+
+  "_uiPackages": "Package names that all resolve to the single design-system hub card. List every name consumers might pin, including one you're mid-rename away from, so both collapse onto one card. Unset: no hub card is drawn.",
+  "uiPackages": ["@acme/design-system"],
+
+  "_uiHubFolders": "Repo folder name(s) the design-system repo is checked out under, so its own source version can be compared against what consumers pin. Default ['ui'].",
+  "uiHubFolders": ["design-system"],
+
+  "_apiDomains": "Your own API domains. Used to scope the URL scan that recovers endpoints from clients that don't call them through a typed hook, so a CDN or docs link isn't mistaken for an endpoint. Unset: only structured hook/template endpoints are reported.",
+  "apiDomains": ["api.acme.example"],
+
+  "_containerRegistries": "First-party container registries. Images found in any other registry are recorded but never scaffolded into the inventory as components. Unset: every discovered registry is trusted.",
+  "containerRegistries": ["acmeregistry"],
+
+  "_owners": "Your team vocabulary: display name → owner-* topic slug. OPEN — leave it empty and any owner-* topic is accepted, with the slug title-cased for display ('owner-fleet-ops' → 'Fleet Ops'). Name an entry only when the automatic title is wrong (acronyms, punctuation, irregular casing).",
+  "owners": {
+    "WEB": "owner-web",
+    "PLAT": "owner-plat"
+  },
+
+  "_applications": "Your application vocabulary: display name → app-* topic slug. Open, like `owners`. The display name must match exactly what `applicationLabels`, `productTags`, `platforms` and inventory-extra.json's repo-less entries use, or one application splits into two Matrix columns.",
+  "applications": {
+    "Acme Web": "app-web",
+    "Acme Mobile": "app-mobile"
+  },
+
+  "_layoutOrder": "Hand-tuned vertical order of the app cards within their cluster lanes, keyed by repo folder; unlisted repos append below in data order. Worth setting when the automatic order puts the cards you compare most at opposite ends of a lane.",
+  "layoutOrder": ["acme-portal", "acme-admin"],
+
+  "_deployTargets": "Deploy-target nodes for the Deployments layer. `match` is a case-insensitive regex over each repo's workflow deployment-target strings; `testsFallback: true` marks the node that test-harness repos with no deploy target link to.",
+  "deployTargets": [
+    { "id": "inf-cdn", "label": "CDN / static hosting", "match": "cdn|static|s3" },
+    { "id": "inf-k8s", "label": "Kubernetes", "match": "helm|k8s|kubernetes" },
+    { "id": "inf-ci", "label": "CI", "testsFallback": true }
+  ],
+
+  "_clusters": "Full cluster taxonomy — the lanes the graph draws and the values of the Group filter. Per cluster: label (display + filter name); match (owner-* topic prefixes routed here — an explicit cluster-<x> topic also resolves through these); color; defaultOn (shown before any toggle); fallback:true marks the centre bucket for unmatched repos (exactly one); layout hints anchor (absolute x, or 'after:<label>') + dir (-1 left / +1 right wrap). Omit the hints and lanes auto-distribute left→right in list order — a fine starting point. Omit the whole key and everything lands in one centre lane.",
+  "clusters": [
+    { "label": "Frontend", "match": ["WEB", "MOB"], "color": "#1565c0", "defaultOn": true, "anchor": -400, "dir": -1 },
+    { "label": "Platform", "match": ["PLAT", "INFRA"], "color": "#2e7d32", "defaultOn": true, "anchor": 400, "dir": 1 },
+    { "label": "Shared", "match": [], "color": "#6a1b9a", "fallback": true, "center": true, "defaultOn": true }
+  ],
+
+  "_clusterColors": "Lighter alternative to `clusters`: recolor cluster labels without redefining the taxonomy. Ignored for labels you define in `clusters` (set the color there instead).",
+  "clusterColors": {
+    "Frontend": "#1565c0"
+  },
+
+  "_regionNotes": "Optional descriptive note shown when a cluster outline is selected, keyed by cluster label.",
+  "regionNotes": {
+    "Shared": "Cross-team libraries and assets used across the whole suite."
+  },
+
+  "_platforms": "Application → platform rollup for the graph's 'Group by: Platform' lanes (platform name → application names as they appear in the inventory). Order here is the lane order; applications listed nowhere fall into an 'Other' lane.",
+  "platforms": {
+    "Acme Platform": ["Acme Web", "Acme Mobile"]
+  },
+
+  "_productTags": "Cross-cutting product tags shown as chips on cards: application name (from the app-* topic) → short tag, so one chip can span several applications. Color them via tagColors; unknown tags render grey.",
+  "productTags": {
+    "Acme Web": "WEB",
+    "Acme Mobile": "MOB"
+  },
+
+  "_tagColors": "Chip color per product tag.",
+  "tagColors": {
+    "WEB": "#0091ea",
+    "MOB": "#c51162"
+  },
+
+  "_applicationLabels": "Matrix view column headers: an ORDERED map from full application name to a short column label, left→right. Applications present in the data but unlisted still render (the full name doubles as the header), so this is display curation only.",
+  "applicationLabels": {
+    "Acme Web": "Web",
+    "Acme Mobile": "Mobile"
+  },
+
+  "_docSearchUrl": "Base URL for documentation links. An inventory `doc` value that's a full URL links straight through; a bare title is url-encoded and appended to this base (e.g. your wiki's search). Unset: a bare title just isn't a link.",
+  "docSearchUrl": "https://wiki.acme.example/search?q=",
+
+  "_guard": "Coverage tripwires for the nightly regenerate: it refuses to commit data that regressed, so a half-failed clone step can't silently drop nodes. Set these once your map looks right — take the real counts and back off ~20%. Unset, they're inert: a fresh fork isn't blocked by numbers it hasn't earned, but it isn't protected either. coreRepos are folders that must always be present (cloned, not topic-derived, so they survive a token losing topic scope).",
+  "guard": {
+    "coreRepos": ["acme-portal", "acme-admin"],
+    "minRepos": 10,
+    "minInventory": 25,
+    "minGoldenPathRows": 20
+  },
+
+  "_layout": "Admin-curated card positions, keyed per view-mode (dev/overview). Set by dragging cards in admin mode and clicking Save; not hand-edited."
+}

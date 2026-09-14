@@ -1,0 +1,34 @@
+name: CI
+
+# Tests + data guard + build on every PR and push to main. Keeps the model and the viz honest
+# before anything is merged or deployed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install viz deps
+        run: npm --prefix viz ci
+      - name: Lint + format check (oxlint + oxfmt)
+        run: npm --prefix viz run lint && npm --prefix viz run format:check
+      - name: Unit tests (guard + buildGraph + schema)
+        run: node --test scripts/*.test.mjs golden-path/test/*.test.mjs && npm --prefix viz test
+      - name: Server smoke (install + syntax)
+        # server/ only ever runs inside the container image, which is the FIRST place a broken
+        # server.mjs would otherwise surface — catch it here instead.
+        run: npm --prefix server ci --omit=dev && node --check server/server.mjs && node --check server/blob-store.mjs
+      - name: Data guard
+        run: node scripts/guard-data.mjs
+      - name: Build viz (typecheck-by-build)
+        run: npm --prefix viz run build

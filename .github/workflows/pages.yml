@@ -1,0 +1,69 @@
+name: Deploy diagram to Pages
+
+# Builds the viz from source, bakes in the committed data, and publishes 'published/' to
+# GitHub Pages. Runs whenever the app or data changes on main (and on demand). This part is
+# fully self-contained — it needs no external repos — so the hosted diagram is always current
+# with what's committed.
+on:
+  push:
+    branches: [main]
+    paths:
+      # Everything bundle.mjs bakes into published/data.json must be listed here, or editing it
+      # on main never redeploys the site.
+      - 'viz/**'
+      - 'scripts/bundle.mjs'
+      - 'fe-architecture.json'
+      - 'fe-architecture-extras.json'
+      - 'config.json'
+      - 'inventory-extra.json'
+      - 'service-map.json'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Build viz
+        # The Keycloak login gate activates only when these repo variables are set. Until you
+        # register a Keycloak client (see infra/keycloak.md) they're empty -> the gate stays off and
+        # the site is public. Set them to flip the gate on with the next deploy.
+        env:
+          VITE_AUTH_SERVER_URL: ${{ vars.VITE_AUTH_SERVER_URL }}
+          VITE_REALM: ${{ vars.VITE_REALM }}
+          VITE_RESOURCE: ${{ vars.VITE_RESOURCE }}
+          # When set, the viz fetches data from this token-gated endpoint (server/server.mjs /data)
+          # instead of the encrypted bundle — dropping the passphrase gate. Falls back to data.enc
+          # if the endpoint is unreachable. Leave empty to keep the passphrase model.
+          VITE_DATA_URL: ${{ vars.VITE_DATA_URL }}
+        run: |
+          npm --prefix viz ci
+          npm --prefix viz run build
+      - name: Bundle (bake data into published/)
+        run: node scripts/bundle.mjs
+      - name: Encrypt data (passphrase wall — Pages is public)
+        env:
+          ARCHMAP_PASSPHRASE: ${{ secrets.ARCHMAP_PASSPHRASE }}
+        run: node scripts/encrypt-data.mjs
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: published
+      - id: deploy
+        uses: actions/deploy-pages@v5

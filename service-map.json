@@ -1,0 +1,4 @@
+{
+  "$comment": "Service <-> repo identity map. Default is IDENTITY: a component's serviceId is its Component-Inventory name, and its owning repo is the repo it is scanned from (null for repo-less services). Only OVERRIDES live here — chiefly repo-less services shipped from a monorepo, linked to their owning repo so they can draw as first-class service nodes sharing that repo. Keys are the inventory name verbatim. Empty is the normal state; add an entry only when one repo ships several inventory components.",
+  "services": {}
+}

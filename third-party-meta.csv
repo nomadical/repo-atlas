@@ -1,0 +1,6 @@
+Name,Vendor,URL,Auth,DataClassification,Criticality,ContractOwner,Environments,Notes,Hosts
+Stripe,Stripe Inc.,https://stripe.com/,API key,Payment data,Critical,Storefront,"prod, staging",PCI scope is limited to the hosted checkout element.,api.stripe.com
+Auth0,Okta,https://auth0.com/,OIDC,Personal data,Critical,Platform,"prod, staging, dev",Brokers to the corporate IdP for staff logins.,meridian.eu.auth0.com
+SendGrid,Twilio,https://sendgrid.com/,API key,Personal data,High,Platform,"prod, staging",Transactional email only — no marketing sends.,api.sendgrid.com
+Algolia,Algolia,https://www.algolia.com/,API key,Public data,Medium,Storefront,"prod, staging",Product index rebuilt nightly from the catalog service.,algolia.net
+Mapbox,Mapbox,https://www.mapbox.com/,API key,Public data,Low,Fulfilment,prod,Being replaced by a self-hosted tile server.,api.mapbox.com

@@ -1,0 +1,636 @@
+{
+  "org": "meridian-labs",
+  "generatedAt": "2026-09-14T13:38:01.125Z",
+  "basedOn": "fe-architecture.json",
+  "designSystem": {
+    "asOf": null,
+    "componentCatalog": null,
+    "releaseCadence": null
+  },
+  "screens": {
+    "method": "router parse (*Router.tsx / <Route>) + import-graph endpoint tracing; folder fallback; screens-extra.json overrides",
+    "perRepo": {
+      "checkout-web": {
+        "method": "router",
+        "routerFiles": 1,
+        "endpointLinks": {},
+        "screens": [
+          {
+            "name": "Checkout",
+            "component": "Checkout",
+            "path": "/confirm/:id",
+            "paths": [
+              "/confirm/:id"
+            ],
+            "roles": [],
+            "file": "src/pages/Checkout.tsx",
+            "endpoints": [
+              "orders",
+              "payments/intent"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "Confirmation",
+            "component": "Confirmation",
+            "path": "/confirm/:id",
+            "paths": [
+              "/confirm/:id"
+            ],
+            "roles": [],
+            "file": "src/pages/Confirmation.tsx",
+            "endpoints": [
+              "orders"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          }
+        ]
+      },
+      "ops-console": {
+        "method": "router",
+        "routerFiles": 1,
+        "endpointLinks": {},
+        "screens": [
+          {
+            "name": "InventoryView",
+            "component": "InventoryView",
+            "path": "/shipments",
+            "paths": [
+              "/shipments"
+            ],
+            "roles": [],
+            "file": "src/pages/InventoryView.tsx",
+            "endpoints": [
+              "inventory/stock"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "OrdersBoard",
+            "component": "OrdersBoard",
+            "path": "/inventory",
+            "paths": [
+              "/inventory"
+            ],
+            "roles": [],
+            "file": "src/pages/OrdersBoard.tsx",
+            "endpoints": [
+              "orders",
+              "orders/exceptions"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "Settings",
+            "component": "Settings",
+            "path": "/settings",
+            "paths": [
+              "/settings"
+            ],
+            "roles": [],
+            "file": "src/pages/Settings.tsx",
+            "endpoints": [],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "Shipments",
+            "component": "Shipments",
+            "path": "/settings",
+            "paths": [
+              "/settings"
+            ],
+            "roles": [],
+            "file": "src/pages/Shipments.tsx",
+            "endpoints": [
+              "shipments"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          }
+        ]
+      },
+      "partner-portal": {
+        "method": "router",
+        "routerFiles": 1,
+        "endpointLinks": {},
+        "screens": [
+          {
+            "name": "ApiKeys",
+            "component": "ApiKeys",
+            "path": "/api-keys",
+            "paths": [
+              "/api-keys"
+            ],
+            "roles": [],
+            "file": "src/pages/ApiKeys.tsx",
+            "endpoints": [
+              "partners/keys"
+            ],
+            "components": [
+              "Card"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "Dashboard",
+            "component": "Dashboard",
+            "path": "/api-keys",
+            "paths": [
+              "/api-keys"
+            ],
+            "roles": [],
+            "file": "src/pages/Dashboard.tsx",
+            "endpoints": [
+              "partners"
+            ],
+            "components": [
+              "Card"
+            ],
+            "filesScanned": 2
+          }
+        ]
+      },
+      "storefront-web": {
+        "method": "router",
+        "routerFiles": 1,
+        "endpointLinks": {},
+        "screens": [
+          {
+            "name": "Cart",
+            "component": "Cart",
+            "path": "/cart",
+            "paths": [
+              "/cart"
+            ],
+            "roles": [],
+            "file": "src/pages/Cart.tsx",
+            "endpoints": [
+              "orders/cart"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "Home",
+            "component": "Home",
+            "path": "/product/:id",
+            "paths": [
+              "/product/:id"
+            ],
+            "roles": [],
+            "file": "src/pages/Home.tsx",
+            "endpoints": [
+              "catalog/products"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          },
+          {
+            "name": "ProductDetail",
+            "component": "ProductDetail",
+            "path": "/cart",
+            "paths": [
+              "/cart"
+            ],
+            "roles": [],
+            "file": "src/pages/ProductDetail.tsx",
+            "endpoints": [
+              "catalog/products",
+              "reviews"
+            ],
+            "components": [
+              "Card",
+              "DataTable",
+              "PageHeader"
+            ],
+            "filesScanned": 2
+          }
+        ]
+      }
+    }
+  },
+  "ownership": {
+    "perRepo": {
+      "checkout-web": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      },
+      "design-system": {
+        "present": true,
+        "file": "CODEOWNERS",
+        "rules": [
+          {
+            "pattern": "*",
+            "owners": [
+              "@meridian-labs/platform-team"
+            ]
+          }
+        ],
+        "owners": [
+          "@meridian-labs/platform-team"
+        ]
+      },
+      "e2e-suite": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      },
+      "edge-gateway": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      },
+      "ops-console": {
+        "present": true,
+        "file": "CODEOWNERS",
+        "rules": [
+          {
+            "pattern": "*",
+            "owners": [
+              "@meridian-labs/fulfilment-team"
+            ]
+          }
+        ],
+        "owners": [
+          "@meridian-labs/fulfilment-team"
+        ]
+      },
+      "partner-portal": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      },
+      "shared-models": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      },
+      "storefront-web": {
+        "present": false,
+        "file": null,
+        "rules": [],
+        "owners": []
+      }
+    },
+    "reposWithoutCodeowners": [
+      "checkout-web",
+      "e2e-suite",
+      "edge-gateway",
+      "partner-portal",
+      "shared-models",
+      "storefront-web"
+    ]
+  },
+  "testFootprint": {
+    "checkout-web": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "design-system": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 5,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "e2e-suite": {
+      "unitTestFiles": 4,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 4
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "edge-gateway": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "ops-console": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "partner-portal": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "shared-models": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    },
+    "storefront-web": {
+      "unitTestFiles": 0,
+      "breakdown": {
+        "dotTest": 0,
+        "dotSpec": 0
+      },
+      "snapshots": 0,
+      "stories": 0,
+      "playwrightSpecs": null,
+      "coverage": null
+    }
+  },
+  "purposes": {
+    "checkout-web": {
+      "source": "github description",
+      "text": "Checkout and payment flow",
+      "reliable": true
+    },
+    "design-system": {
+      "source": "github description",
+      "text": "Shared React component library and design tokens",
+      "reliable": true
+    },
+    "e2e-suite": {
+      "source": "github description",
+      "text": "Playwright end-to-end suite covering the shop and ops journeys",
+      "reliable": true
+    },
+    "edge-gateway": {
+      "source": "github description",
+      "text": "Public API edge — routing, auth and rate limiting in front of the services",
+      "reliable": true
+    },
+    "ops-console": {
+      "source": "github description",
+      "text": "Internal console for order, inventory and shipment operations",
+      "reliable": true
+    },
+    "partner-portal": {
+      "source": "github description",
+      "text": "Self-service portal for integration partners — being replaced by the Partner API",
+      "reliable": true
+    },
+    "shared-models": {
+      "source": "github description",
+      "text": "TypeScript types shared between the clients and the gateway",
+      "reliable": true
+    },
+    "storefront-web": {
+      "source": "github description",
+      "text": "Customer-facing storefront — browse, search and add to cart",
+      "reliable": true
+    }
+  },
+  "backends": {
+    "scanned": [
+      {
+        "folder": "catalog-service",
+        "repoName": "catalog-service",
+        "canonicalName": "catalog-service",
+        "defaultBranch": "main",
+        "lastCommit": "2026-09-03T10:00:00+02:00",
+        "stack": {
+          "language": null,
+          "framework": null,
+          "build": "Gradle"
+        },
+        "tooling": [
+          "Gradle"
+        ],
+        "modules": [],
+        "method": "static (build.gradle/pom.xml + settings.gradle includes / pom <module>)"
+      },
+      {
+        "folder": "inventory-service",
+        "repoName": "inventory-service",
+        "canonicalName": "inventory-service",
+        "defaultBranch": "main",
+        "lastCommit": "2026-09-09T10:00:00+02:00",
+        "stack": {
+          "language": null,
+          "framework": null,
+          "build": "Gradle"
+        },
+        "tooling": [
+          "Gradle"
+        ],
+        "modules": [],
+        "method": "static (build.gradle/pom.xml + settings.gradle includes / pom <module>)"
+      },
+      {
+        "folder": "notifications-service",
+        "repoName": "notifications-service",
+        "canonicalName": "notifications-service",
+        "defaultBranch": "main",
+        "lastCommit": "2026-07-18T10:00:00+02:00",
+        "stack": {
+          "language": "Java 21",
+          "framework": "Quarkus 3.20.4",
+          "build": "Maven"
+        },
+        "tooling": [
+          "Quarkus 3.20.4",
+          "Java 21",
+          "Maven"
+        ],
+        "modules": [],
+        "method": "static (build.gradle/pom.xml + settings.gradle includes / pom <module>)"
+      },
+      {
+        "folder": "orders-service",
+        "repoName": "orders-service",
+        "canonicalName": "orders-service",
+        "defaultBranch": "main",
+        "lastCommit": "2026-09-10T10:00:00+02:00",
+        "stack": {
+          "language": null,
+          "framework": null,
+          "build": "Gradle"
+        },
+        "tooling": [
+          "Gradle"
+        ],
+        "modules": [],
+        "method": "static (build.gradle/pom.xml + settings.gradle includes / pom <module>)"
+      }
+    ],
+    "missing": []
+  },
+  "accurateModuleGraphs": {
+    "method": "depcruise where node_modules+typescript available; grep fallback otherwise",
+    "perRepo": {
+      "checkout-web": {
+        "method": "grep",
+        "tsResolved": false,
+        "reason": "no node_modules installed -> depcruise cannot resolve TS",
+        "crossFolderEdges": 2,
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "design-system": {
+        "method": "grep",
+        "tsResolved": false,
+        "reason": "no node_modules installed -> depcruise cannot resolve TS",
+        "crossFolderEdges": 2,
+        "edges": [
+          [
+            "src",
+            "src/components"
+          ],
+          [
+            "src",
+            "src/themes"
+          ]
+        ]
+      },
+      "e2e-suite": {
+        "method": "n/a",
+        "reason": "no src/ graph (assets/test-only repo)"
+      },
+      "edge-gateway": {
+        "method": "n/a",
+        "reason": "no src/ graph (assets/test-only repo)"
+      },
+      "ops-console": {
+        "method": "grep",
+        "tsResolved": false,
+        "reason": "no node_modules installed -> depcruise cannot resolve TS",
+        "crossFolderEdges": 2,
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "partner-portal": {
+        "method": "grep",
+        "tsResolved": false,
+        "reason": "no node_modules installed -> depcruise cannot resolve TS",
+        "crossFolderEdges": 2,
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      },
+      "shared-models": {
+        "method": "n/a",
+        "reason": "no src/ graph (assets/test-only repo)"
+      },
+      "storefront-web": {
+        "method": "grep",
+        "tsResolved": false,
+        "reason": "no node_modules installed -> depcruise cannot resolve TS",
+        "crossFolderEdges": 2,
+        "edges": [
+          [
+            "src",
+            "src/pages"
+          ],
+          [
+            "src/pages",
+            "src/api"
+          ]
+        ]
+      }
+    },
+    "validation": null
+  },
+  "notes": {
+    "asOf": null,
+    "items": []
+  }
+}

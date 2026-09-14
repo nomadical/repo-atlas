@@ -1,0 +1,38 @@
+{
+  "_comment": "Your engineering standards, as data. The document itself usually lives in a wiki and belongs to whoever owns architecture; this file is its machine-readable copy, so changing a standard is an edit here rather than a code change plus a deploy. The page reads `rules` to decide what applies to a repository of each type, and shows `source` under the heading so a reader can see which revision the figures were judged against. Bumping the rules here without bumping `source.version` is what the staleness warning on the page is meant to catch.",
+
+  "source": {
+    "name": "Golden Path",
+    "url": "https://wiki.meridian.example/golden-path",
+    "version": 4,
+    "lastModified": "2026-08-30",
+    "checkedAt": "2026-09-14"
+  },
+
+  "_rulesComment": "One entry per Component-Inventory type (the `type-*` topic on the repository). A type with an empty object is deliberately OUT OF SCOPE rather than failing — say nothing about what your standards don't cover, or every library fails for having no database. Values are matched against the scanned value on WORD boundaries — 'Java' matches 'Java 21' but not 'JavaScript' — and ' / ' is a list of alternatives, so 'JavaScript / TypeScript' passes on either.",
+
+  "rules": {
+    "Service": {
+      "lang": "Java",
+      "fw": "Quarkus",
+      "db": "Postgres",
+      "build": "Gradle",
+      "log": "JSON console",
+      "trace": "OpenTelemetry"
+    },
+    "Client": {
+      "lang": "TypeScript",
+      "fw": "React"
+    },
+    "_LibraryComment": "The Golden Path describes web applications and backend services. It says nothing about shared libraries, and says explicitly that what it does not describe is at the team's discretion — so a library carries no rules. Give Library its own rules the day the document grows a section about libraries.",
+    "Library": {},
+    "Firmware": {},
+    "Data": {},
+    "Hardware": {},
+    "Tests": {},
+    "Infrastructure": {},
+    "Assets": {},
+    "Config": {},
+    "Unclassified": {}
+  }
+}

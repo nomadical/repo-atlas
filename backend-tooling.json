@@ -1,0 +1,210 @@
+{
+  "generatedAt": "2026-09-14T09:29:53.300Z",
+  "scanned": {
+    "catalog-service": {
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-03T10:00:00+02:00",
+      "repoName": "catalog-service",
+      "buildTool": "Gradle",
+      "java": null,
+      "framework": null,
+      "modules": [],
+      "tooling": [
+        "Gradle"
+      ],
+      "db": "Postgres",
+      "dbEvidence": "postgresql",
+      "log": "JSON console",
+      "logEvidence": "quarkus-logging-json",
+      "trace": "OpenTelemetry",
+      "traceEvidence": "quarkus-opentelemetry",
+      "frameworks": {
+        "platform-core": {
+          "version": "2.4.1",
+          "artifacts": [
+            "platform-core"
+          ]
+        }
+      },
+      "messaging": [],
+      "restProvides": [
+        {
+          "module": null,
+          "roots": [
+            "/catalog",
+            "/reviews"
+          ]
+        }
+      ],
+      "restConsumes": []
+    },
+    "inventory-service": {
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-09T10:00:00+02:00",
+      "repoName": "inventory-service",
+      "buildTool": "Gradle",
+      "java": null,
+      "framework": null,
+      "modules": [],
+      "tooling": [
+        "Gradle"
+      ],
+      "db": "Postgres",
+      "dbEvidence": "postgresql",
+      "log": "JSON console",
+      "logEvidence": "quarkus-logging-json",
+      "trace": "OpenTelemetry",
+      "traceEvidence": "quarkus-opentelemetry",
+      "frameworks": {
+        "platform-core": {
+          "version": "2.4.1",
+          "artifacts": [
+            "platform-core"
+          ]
+        }
+      },
+      "messaging": [
+        {
+          "module": null,
+          "direction": "outgoing",
+          "channel": "inventory-reserved",
+          "topic": "inventory.reserved"
+        },
+        {
+          "module": null,
+          "direction": "incoming",
+          "channel": "orders-placed-in",
+          "topic": "orders.placed"
+        }
+      ],
+      "restProvides": [
+        {
+          "module": null,
+          "roots": [
+            "/inventory",
+            "/shipments"
+          ]
+        }
+      ],
+      "restConsumes": []
+    },
+    "notifications-service": {
+      "defaultBranch": "main",
+      "lastCommit": "2026-07-18T10:00:00+02:00",
+      "repoName": "notifications-service",
+      "buildTool": "Maven",
+      "java": "Java 21",
+      "framework": "Quarkus 3.20.4",
+      "modules": [],
+      "tooling": [
+        "Quarkus 3.20.4",
+        "Java 21",
+        "Maven"
+      ],
+      "db": null,
+      "log": "JSON console",
+      "logEvidence": "quarkus-logging-json",
+      "trace": null,
+      "frameworks": {
+        "platform-core": {
+          "version": "2.4.1",
+          "artifacts": [
+            "platform-core"
+          ]
+        }
+      },
+      "messaging": [
+        {
+          "module": null,
+          "direction": "incoming",
+          "channel": "orders-placed-in",
+          "topic": "orders.placed"
+        },
+        {
+          "module": null,
+          "direction": "incoming",
+          "channel": "inventory-reserved-in",
+          "topic": "inventory.reserved"
+        }
+      ],
+      "restProvides": [
+        {
+          "module": null,
+          "roots": [
+            "/notifications"
+          ]
+        }
+      ],
+      "restConsumes": [
+        {
+          "module": null,
+          "propKey": "sendgrid-api.url",
+          "host": "api.sendgrid.com",
+          "hostHead": "api",
+          "path": "/v3",
+          "rawUrl": "https://api.sendgrid.com/v3"
+        }
+      ]
+    },
+    "orders-service": {
+      "defaultBranch": "main",
+      "lastCommit": "2026-09-10T10:00:00+02:00",
+      "repoName": "orders-service",
+      "buildTool": "Gradle",
+      "java": null,
+      "framework": null,
+      "modules": [],
+      "tooling": [
+        "Gradle"
+      ],
+      "db": "Postgres",
+      "dbEvidence": "postgresql",
+      "log": "JSON console",
+      "logEvidence": "quarkus-logging-json",
+      "trace": "OpenTelemetry",
+      "traceEvidence": "quarkus-opentelemetry",
+      "frameworks": {
+        "platform-core": {
+          "version": "2.4.1",
+          "artifacts": [
+            "platform-core"
+          ]
+        }
+      },
+      "messaging": [
+        {
+          "module": null,
+          "direction": "outgoing",
+          "channel": "orders-placed",
+          "topic": "orders.placed"
+        },
+        {
+          "module": null,
+          "direction": "incoming",
+          "channel": "payments-settled-in",
+          "topic": "payments.settled"
+        }
+      ],
+      "restProvides": [
+        {
+          "module": null,
+          "roots": [
+            "/orders",
+            "/payments"
+          ]
+        }
+      ],
+      "restConsumes": [
+        {
+          "module": null,
+          "propKey": "inventory-api.url",
+          "host": "api.meridian.example",
+          "hostHead": "api",
+          "path": "/inventory",
+          "rawUrl": "https://api.meridian.example/inventory"
+        }
+      ]
+    }
+  },
+  "missing": []
+}

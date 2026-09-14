@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Service-to-repo identity map (service-map.json)",
+  "description": "Overrides for component service identity. Default is identity (serviceId = inventory name; owning repo = the repo scanned from, or null). Only overrides are listed.",
+  "type": "object",
+  "properties": {
+    "$comment": { "type": "string" },
+    "services": {
+      "type": "object",
+      "description": "Keyed by the inventory service name. Each value overrides that service's owning repo.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": ["string", "null"],
+            "description": "Owning repo folder (e.g. a monorepo that ships this service), or null for a genuinely repo-less service."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["services"],
+  "additionalProperties": false
+}

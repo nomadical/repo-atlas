@@ -1,0 +1,46 @@
+name: Curation backlog report (weekly)
+
+# Turns the inventory-coverage gap into an actionable, per-owner checklist and keeps it in a single
+# pinned tracking issue (updated in place, never duplicated). Reads the committed github-meta.json,
+# which the nightly Regenerate workflow refreshes from the org — so no org token is needed here;
+# the built-in GITHUB_TOKEN is enough to open/edit an issue on this repo.
+#
+# See scripts/curation-report.mjs and docs/repo-maintenance.md.
+on:
+  schedule:
+    - cron: '0 7 * * 1'   # 07:00 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Generate report
+        run: node scripts/curation-report.mjs > "$RUNNER_TEMP/report.md"
+
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TITLE="Curation backlog"
+          BODY_FILE="$RUNNER_TEMP/report.md"
+          # find an existing open issue with this exact title (created by a previous run)
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" \
+                  --json number,title --jq ".[] | select(.title==\"$TITLE\") | .number" | head -1)
+          if [ -n "$NUM" ]; then
+            echo "updating issue #$NUM"
+            gh issue edit "$NUM" --body-file "$BODY_FILE"
+          else
+            echo "creating tracking issue"
+            gh issue create --title "$TITLE" --body-file "$BODY_FILE"
+          fi

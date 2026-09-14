@@ -1,0 +1,273 @@
+{
+  "generatedAt": "2026-09-14T02:00:00.000Z",
+  "org": "meridian-labs",
+  "repos": {
+    "design-system": {
+      "description": "Shared React component library and design tokens",
+      "url": "https://github.com/meridian-labs/design-system",
+      "archived": false,
+      "topics": [
+        "type-library",
+        "subtype-ui",
+        "status-current",
+        "owner-platform",
+        "cluster-shared",
+        "app-shop",
+        "app-ops-console",
+        "app-partner-api"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-08T08:00:00Z",
+      "createdAt": "2023-03-14T09:12:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "DS",
+        "technical-contact": "Priya Raman",
+        "doc-label": "Design System Handbook",
+        "doc-url": "https://wiki.meridian.example/design-system"
+      }
+    },
+    "shared-models": {
+      "description": "TypeScript types shared between the clients and the gateway",
+      "url": "https://github.com/meridian-labs/shared-models",
+      "archived": false,
+      "topics": [
+        "type-library",
+        "subtype-model",
+        "status-current",
+        "owner-platform",
+        "cluster-shared"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-08-21T08:00:00Z",
+      "createdAt": "2023-06-02T11:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "MOD",
+        "technical-contact": "Priya Raman"
+      }
+    },
+    "storefront-web": {
+      "description": "Customer-facing storefront — browse, search and add to cart",
+      "url": "https://github.com/meridian-labs/storefront-web",
+      "archived": false,
+      "topics": [
+        "type-client",
+        "status-current",
+        "owner-storefront",
+        "app-shop"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-11T08:00:00Z",
+      "createdAt": "2022-11-08T10:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "SF",
+        "technical-contact": "Dana Okafor",
+        "doc-label": "Storefront Architecture",
+        "doc-url": "https://wiki.meridian.example/storefront"
+      }
+    },
+    "checkout-web": {
+      "description": "Checkout and payment flow",
+      "url": "https://github.com/meridian-labs/checkout-web",
+      "archived": false,
+      "topics": [
+        "type-client",
+        "status-current",
+        "owner-storefront",
+        "app-shop"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-05T08:00:00Z",
+      "createdAt": "2023-01-19T10:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "CO",
+        "technical-contact": "Dana Okafor"
+      }
+    },
+    "ops-console": {
+      "description": "Internal console for order, inventory and shipment operations",
+      "url": "https://github.com/meridian-labs/ops-console",
+      "archived": false,
+      "topics": [
+        "type-client",
+        "status-current",
+        "owner-fulfilment",
+        "app-ops-console"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-12T08:00:00Z",
+      "createdAt": "2022-08-30T10:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "OPS",
+        "technical-contact": "Tomas Lindqvist",
+        "doc-label": "Ops Console Runbook",
+        "doc-url": "https://wiki.meridian.example/ops-console"
+      }
+    },
+    "partner-portal": {
+      "description": "Self-service portal for integration partners — being replaced by the Partner API",
+      "url": "https://github.com/meridian-labs/partner-portal",
+      "archived": false,
+      "topics": [
+        "type-client",
+        "status-sunsetting",
+        "owner-platform",
+        "app-partner-api"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-02-14T08:00:00Z",
+      "createdAt": "2021-05-11T10:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "PP",
+        "technical-contact": "Sam Whitfield"
+      }
+    },
+    "edge-gateway": {
+      "description": "Public API edge — routing, auth and rate limiting in front of the services",
+      "url": "https://github.com/meridian-labs/edge-gateway",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-gateway",
+        "status-current",
+        "owner-platform",
+        "app-partner-api",
+        "app-shop"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-08-30T08:00:00Z",
+      "createdAt": "2023-09-01T10:00:00Z",
+      "language": "JavaScript",
+      "props": {
+        "abbreviation": "GW",
+        "technical-contact": "Sam Whitfield"
+      }
+    },
+    "e2e-suite": {
+      "description": "Playwright end-to-end suite covering the shop and ops journeys",
+      "url": "https://github.com/meridian-labs/e2e-suite",
+      "archived": false,
+      "topics": [
+        "type-tests",
+        "status-current",
+        "owner-fulfilment",
+        "cluster-shared"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-02T08:00:00Z",
+      "createdAt": "2024-02-20T10:00:00Z",
+      "language": "TypeScript",
+      "props": {
+        "abbreviation": "E2E",
+        "technical-contact": "Tomas Lindqvist"
+      }
+    },
+    "orders-service": {
+      "description": "Order lifecycle — placement, state machine and payment orchestration",
+      "url": "https://github.com/meridian-labs/orders-service",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-api",
+        "status-current",
+        "owner-fulfilment",
+        "app-shop",
+        "app-ops-console"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-10T08:00:00Z",
+      "createdAt": "2021-09-15T10:00:00Z",
+      "language": "Java",
+      "props": {
+        "abbreviation": "ORD",
+        "technical-contact": "Yuki Tanaka",
+        "doc-label": "Orders Domain Model",
+        "doc-url": "https://wiki.meridian.example/orders"
+      }
+    },
+    "inventory-service": {
+      "description": "Stock levels, reservations and shipment records",
+      "url": "https://github.com/meridian-labs/inventory-service",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-api",
+        "status-current",
+        "owner-fulfilment",
+        "app-ops-console"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-09T08:00:00Z",
+      "createdAt": "2021-10-04T10:00:00Z",
+      "language": "Java",
+      "props": {
+        "abbreviation": "INV",
+        "technical-contact": "Yuki Tanaka"
+      }
+    },
+    "notifications-service": {
+      "description": "Fans order and inventory events out as email and webhooks",
+      "url": "https://github.com/meridian-labs/notifications-service",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-worker",
+        "status-current",
+        "owner-platform"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-07-18T08:00:00Z",
+      "createdAt": "2022-04-12T10:00:00Z",
+      "language": "Java",
+      "props": {
+        "abbreviation": "NOT",
+        "technical-contact": "Sam Whitfield"
+      }
+    },
+    "catalog-service": {
+      "description": "Product catalog, pricing and reviews",
+      "url": "https://github.com/meridian-labs/catalog-service",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-api",
+        "status-current",
+        "owner-storefront",
+        "app-shop"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-03T08:00:00Z",
+      "createdAt": "2021-08-02T10:00:00Z",
+      "language": "Java",
+      "props": {
+        "abbreviation": "CAT",
+        "technical-contact": "Dana Okafor"
+      }
+    },
+    "recommendations-service": {
+      "description": "Planned: per-customer product recommendations",
+      "url": "https://github.com/meridian-labs/recommendations-service",
+      "archived": false,
+      "topics": [
+        "type-service",
+        "subtype-api",
+        "status-planned",
+        "owner-storefront",
+        "app-shop"
+      ],
+      "defaultBranch": "main",
+      "pushedAt": "2026-08-28T10:00:00Z",
+      "createdAt": "2026-08-28T10:00:00Z",
+      "language": null,
+      "props": {
+        "abbreviation": "REC",
+        "technical-contact": "Dana Okafor"
+      }
+    }
+  }
+}

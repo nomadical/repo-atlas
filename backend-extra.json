@@ -1,0 +1,145 @@
+{
+  "_comment": "Curated backend topology that can't be auto-derived from the clone/scan/inventory pipeline. Edited via the in-app Admin panel (dev: writes here; read-only deploys: copy/paste the JSON). assemble.mjs reads this into data.backendTopology; graph.js merges it with the live backend scan (data.extras.backends.scanned) so newly-cloned backends still appear. desc/tooling are FALLBACKS only \u2014 the live GitHub description and build-file scan win when present. host is the API origin; invName/invAlias bridge a node to its Component Inventory entry (and to integrations.csv rows, which are keyed by inventory name). deployTarget links a backend to a deploy-target node (config.json `deployTargets`) on the Deployments layer. serviceEdges are curated node-to-node service relationships (drawn when both endpoints are on the map; endpoints are node ids \u2014 repo folders or backend ids). contentRepos are repo-less content sources drawn next to their parent card.",
+  "_frameworkDeps": "Curated internal frameworks the backends build on: backend-scan.mjs looks for these Maven group ids in every scanned repo's build files and records the artifacts + version (from `versionProp` in gradle.properties, else the coordinate literal). assemble.mjs turns the hits into frameworkConsumers \u2014 the backend counterpart of uiConsumers.",
+  "frameworkDeps": {
+    "platform-core": {
+      "group": "com.meridian.platform",
+      "versionProp": "platformVersion"
+    }
+  },
+  "backends": [
+    {
+      "id": "be-orders",
+      "label": "orders-service",
+      "kind": "backend",
+      "repo": "orders-service",
+      "host": "api.meridian.example",
+      "deployTarget": "inf-registry",
+      "desc": "Order lifecycle \u2014 placement, state machine and payment orchestration",
+      "tooling": [
+        "Quarkus",
+        "Java 21",
+        "Gradle"
+      ],
+      "invName": "orders-service"
+    },
+    {
+      "id": "be-inventory",
+      "label": "inventory-service",
+      "kind": "backend",
+      "repo": "inventory-service",
+      "host": "api.meridian.example",
+      "deployTarget": "inf-registry",
+      "desc": "Stock levels, reservations and shipment records",
+      "tooling": [
+        "Quarkus",
+        "Java 21",
+        "Gradle"
+      ],
+      "invName": "inventory-service"
+    },
+    {
+      "id": "be-catalog",
+      "label": "catalog-service",
+      "kind": "backend",
+      "repo": "catalog-service",
+      "host": "api.meridian.example",
+      "deployTarget": "inf-registry",
+      "desc": "Product catalog, pricing and reviews",
+      "tooling": [
+        "Quarkus",
+        "Java 21",
+        "Gradle"
+      ],
+      "invName": "catalog-service"
+    },
+    {
+      "id": "be-notifications",
+      "label": "notifications-service",
+      "kind": "backend",
+      "repo": "notifications-service",
+      "host": "api.meridian.example",
+      "deployTarget": "inf-registry",
+      "desc": "Fans order and inventory events out as email and webhooks",
+      "tooling": [
+        "Quarkus",
+        "Java 21",
+        "Gradle"
+      ],
+      "invName": "notifications-service"
+    },
+    {
+      "id": "be-auth",
+      "label": "Auth0",
+      "kind": "extsvc",
+      "host": "meridian.eu.auth0.com",
+      "desc": "Identity provider \u2014 every client and service validates its tokens",
+      "invName": "Auth0"
+    },
+    {
+      "id": "be-postgres",
+      "label": "PostgreSQL",
+      "kind": "storage",
+      "desc": "Primary datastore for the order, inventory and catalog services",
+      "invName": "PostgreSQL"
+    }
+  ],
+  "feBe": {
+    "storefront-web": [
+      "be-catalog",
+      "be-orders",
+      "be-auth"
+    ],
+    "checkout-web": [
+      "be-orders",
+      "be-auth"
+    ],
+    "ops-console": [
+      "be-orders",
+      "be-inventory",
+      "be-auth"
+    ],
+    "partner-portal": [
+      "be-auth"
+    ],
+    "edge-gateway": [
+      "be-orders",
+      "be-inventory",
+      "be-catalog",
+      "be-auth"
+    ]
+  },
+  "backendExternals": {
+    "be-orders": [
+      "Stripe"
+    ],
+    "be-notifications": [
+      "SendGrid"
+    ],
+    "be-catalog": [
+      "Algolia"
+    ]
+  },
+  "restHostAliases": {
+    "_comment": "Internal-only aliases for the code-derived REST matcher (assemble.mjs): maps an outbound URL token (a host head, or a gateway path segment like gateway/<service>) to the canonical component when it isn't the component's own name. Third-party hosts live in third-party-meta.csv (Hosts column) instead.",
+    "inventory-api": "inventory-service",
+    "notifications-api": "notifications-service"
+  },
+  "assetsSource": "",
+  "assetConsumers": [],
+  "serviceEdges": [
+    {
+      "source": "edge-gateway",
+      "target": "be-orders"
+    },
+    {
+      "source": "edge-gateway",
+      "target": "be-inventory"
+    },
+    {
+      "source": "edge-gateway",
+      "target": "be-catalog"
+    }
+  ],
+  "contentRepos": []
+}

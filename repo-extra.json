@@ -1,0 +1,40 @@
+{
+  "_comment": "Curated per-repo knowledge the scan can't derive: public hosts, extra external SaaS a repo talks to, FE→BE notes, and cloud name maps. Data, not code — edit freely. Everything here is optional; an empty file is valid.",
+
+  "_hosts": "Where a repo is actually reachable. `live` is its public URL, `api` the origin it calls. {env} is substituted per environment in the details panel.",
+  "hosts": {
+    "storefront-web": { "live": "shop.meridian.example", "api": "api.meridian.example" },
+    "checkout-web": { "live": "checkout.meridian.example", "api": "api.meridian.example" },
+    "ops-console": { "live": "ops.meridian.example", "api": "api.meridian.example" },
+    "partner-portal": { "live": "partners.meridian.example", "api": "api.meridian.example" },
+    "edge-gateway": { "api": "api.meridian.example" }
+  },
+
+  "_externals": "Third-party services a repo uses that aren't visible as an npm dependency (a SaaS called over HTTP, an embedded widget). `curated` adds them; `exclude` removes a false positive the dependency scan produced.",
+  "externals": {
+    "curated": {
+      "storefront-web": ["Stripe", "Algolia (search)"],
+      "checkout-web": ["Stripe"],
+      "ops-console": ["Mapbox"]
+    },
+    "exclude": {}
+  },
+
+  "_saasPatterns": "Extra regexes that map a dependency or config string to a named SaaS, when the automatic name isn't recognisable.",
+  "saasPatterns": [],
+
+  "_feToBe": "Notes on how a frontend reaches its backends, for repos where the automatic grep is misleading. `method` records how the wiring was established.",
+  "feToBe": {
+    "edge-gateway": {
+      "method": "curated",
+      "note": "Node service, not a browser client — it proxies to the Java services rather than calling them as a frontend",
+      "backends": ["api.meridian.example/orders", "api.meridian.example/inventory"]
+    }
+  },
+
+  "_azureAppMap": "Cloud resource name → repo, when a deployed resource isn't named after its repo. Also settable per-repo with the `azure-app-key` custom property.",
+  "azureAppMap": {},
+
+  "_acrAlias": "Container image name → the inventory component it belongs to, when the image isn't named after the component. Also settable per-repo with the `acr-image` custom property.",
+  "acrAlias": {}
+}

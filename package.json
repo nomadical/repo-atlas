@@ -1,0 +1,14 @@
+{
+  "name": "repo-atlas",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "regenerate": "node scripts/gather-arch.mjs && node scripts/parse-workflows.mjs && node scripts/module-graph.mjs && node scripts/azure-gather.mjs && node scripts/github-inventory.mjs && node scripts/sync-names.mjs && node scripts/backend-scan.mjs && node scripts/assemble.mjs && node scripts/extras-gather.mjs && node scripts/depcruise-accurate.mjs && node scripts/screens-gather.mjs && node scripts/extras-assemble.mjs",
+    "guard": "node scripts/guard-data.mjs",
+    "history:append": "node golden-path/append-history.mjs",
+    "history:guard": "node golden-path/guard-history.mjs",
+    "test": "node --test scripts/*.test.mjs golden-path/test/*.test.mjs && npm --prefix viz test",
+    "build": "npm --prefix viz ci && npm --prefix viz run build && node scripts/bundle.mjs",
+    "dev": "npm --prefix viz run dev"
+  }
+}

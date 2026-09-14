@@ -1,0 +1,82 @@
+{
+  "_README": "Demo configuration for the fictional Meridian Labs estate that ships with this repo. Replace it with your own — see config.template.json for every available field.",
+
+  "title": "Meridian Labs · Architecture Map",
+  "subtitle": "The frontend estate and the services it touches",
+
+  "defaultView": "graph",
+  "defaultMode": "overview",
+  "defaultTheme": "light",
+  "staleDays": 120,
+  "dataStaleDays": 7,
+
+  "internalScopes": ["@meridian"],
+  "uiPackages": ["@meridian/ui"],
+  "uiHubFolders": ["design-system"],
+  "apiDomains": ["meridian.example"],
+
+  "owners": {
+    "Storefront": "owner-storefront",
+    "Fulfilment": "owner-fulfilment",
+    "Platform": "owner-platform"
+  },
+
+  "applications": {
+    "Shop": "app-shop",
+    "Ops Console": "app-ops-console",
+    "Partner API": "app-partner-api"
+  },
+
+  "clusters": [
+    { "label": "Storefront", "match": ["Storefront"], "color": "#1565c0", "defaultOn": true, "anchor": -560, "dir": -1 },
+    { "label": "Fulfilment", "match": ["Fulfilment"], "color": "#00838f", "defaultOn": true, "anchor": 560, "dir": 1 },
+    { "label": "Platform", "match": ["Platform"], "color": "#558b2f", "defaultOn": true, "anchor": "after:Fulfilment", "dir": 1 },
+    { "label": "Shared", "match": [], "color": "#6a1b9a", "defaultOn": true, "fallback": true, "center": true }
+  ],
+
+  "regionNotes": {
+    "Shared": "Cross-team libraries and the end-to-end suite, used by the whole estate."
+  },
+
+  "platforms": {
+    "Commerce": ["Shop"],
+    "Operations": ["Ops Console"],
+    "Integrations": ["Partner API"]
+  },
+
+  "productTags": {
+    "Shop": "SHOP",
+    "Ops Console": "OPS",
+    "Partner API": "API"
+  },
+
+  "tagColors": {
+    "SHOP": "#0091ea",
+    "OPS": "#00897b",
+    "API": "#c51162"
+  },
+
+  "applicationLabels": {
+    "Shop": "Shop",
+    "Ops Console": "Ops",
+    "Partner API": "Partner"
+  },
+
+  "deployTargets": [
+    { "id": "inf-cdn", "label": "Static hosting (S3 + CDN)", "match": "s3|cdn|static" },
+    { "id": "inf-registry", "label": "Container registry", "match": "docker|ghcr|registry|image" },
+    { "id": "inf-ci", "label": "GitHub Actions", "testsFallback": true }
+  ],
+
+  "layoutOrder": ["storefront-web", "checkout-web", "ops-console", "partner-portal", "edge-gateway"],
+
+  "docSearchUrl": "https://wiki.meridian.example/search?q=",
+
+  "_guard": "Coverage tripwires for the nightly regenerate: a run producing less than this refuses to commit, so a failed clone can't silently drop half the map.",
+  "guard": {
+    "coreRepos": ["design-system", "storefront-web", "ops-console", "edge-gateway"],
+    "minRepos": 6,
+    "minInventory": 15,
+    "minGoldenPathRows": 10
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "_comment": "Component Inventory fields that can't live on a GitHub repo. Everything here is optional. `repoExtras` adds or overrides fields for a repo-backed component (dates, comments, a display name that differs from the repo name); topics still win for the fields they cover, so curate on GitHub where you can. `nonRepo` holds components with no repo of their own — third-party services, vendor platforms, hardware.",
+
+  "repoExtras": {
+    "partner-portal": {
+      "sunsetDate": "2027-03-31",
+      "comment": "Superseded by the Partner API on the edge gateway. Kept live for existing integrations until they migrate."
+    },
+    "design-system": {
+      "name": "Design System"
+    },
+    "recommendations-service": {
+      "comment": "Repo created, implementation not started. Scheduled for Q2."
+    }
+  },
+
+  "nonRepo": [
+    {
+      "name": "Stripe",
+      "abbr": "STR",
+      "type": "Third-Party Service",
+      "status": "Current",
+      "owner": "Storefront",
+      "applications": ["Shop"],
+      "description": "Payment processing for the storefront and checkout flows.",
+      "doc": "Payments Integration",
+      "docUrl": "https://wiki.meridian.example/payments"
+    },
+    {
+      "name": "Auth0",
+      "abbr": "AUTH",
+      "type": "Third-Party Service",
+      "status": "Current",
+      "owner": "Platform",
+      "applications": ["Shop", "Ops Console", "Partner API"],
+      "description": "Identity provider. Every client signs in here and every service validates its tokens.",
+      "contact": "Sam Whitfield"
+    },
+    {
+      "name": "SendGrid",
+      "abbr": "SG",
+      "type": "Third-Party Service",
+      "status": "Current",
+      "owner": "Platform",
+      "applications": ["Shop"],
+      "description": "Transactional email delivery for order confirmations and shipping updates."
+    },
+    {
+      "name": "Algolia",
+      "abbr": "ALG",
+      "type": "Third-Party Service",
+      "status": "Current",
+      "owner": "Storefront",
+      "applications": ["Shop"],
+      "description": "Hosted product search behind the storefront's search bar."
+    },
+    {
+      "name": "Mapbox",
+      "abbr": "MAP",
+      "type": "Third-Party Service",
+      "status": "Sunsetting",
+      "owner": "Fulfilment",
+      "applications": ["Ops Console"],
+      "description": "Shipment tracking maps in the ops console.",
+      "sunsetDate": "2026-12-31",
+      "comment": "Being replaced by a self-hosted tile server to cut per-view costs."
+    },
+    {
+      "name": "PostgreSQL",
+      "abbr": "PG",
+      "type": "Infrastructure",
+      "status": "Current",
+      "owner": "Platform",
+      "description": "Managed Postgres cluster backing the order, inventory and catalog services."
+    },
+    {
+      "name": "Kafka",
+      "abbr": "KFK",
+      "type": "Infrastructure",
+      "status": "Current",
+      "owner": "Platform",
+      "description": "Event backbone. Order and inventory events fan out to the notification worker through it."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "_README": "Curated corrections to the heuristic per-screen data (scripts/screens-gather.mjs), merged by extras-assemble.mjs. Keyed by repo folder. Keys starting with _ are ignored. Per folder: 'drop' removes mis-detected screens by component/name; 'patch' edits a screen by component/name (name, path, roles, endpoints to replace, or addEndpoints to union); 'add' appends screens the parser missed. Use sparingly — prefer fixing the heuristic when a pattern is general.",
+
+  "_example": {
+    "ops-console": {
+      "drop": ["RedirectPage"],
+      "patch": {
+        "OrdersBoard": { "addEndpoints": ["orders/exceptions"] }
+      },
+      "add": [{ "name": "Settings", "path": "/settings", "endpoints": ["users/preferences"] }]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+**/node_modules
+viz/dist
+published
+.git
+.github
+.idea
+scripts
+*.md
+infra
+docs

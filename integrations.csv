@@ -1,0 +1,13 @@
+Source,Target,Protocol,Channel,Note
+orders-service,Kafka,Kafka,orders.placed,Publishes an event for every accepted order
+inventory-service,Kafka,Kafka,inventory.reserved,Publishes a reservation event once stock is held
+Kafka,inventory-service,Kafka,orders.placed,Reserves stock against a newly placed order
+Kafka,notifications-service,Kafka,orders.placed,Sends the order confirmation email
+Kafka,notifications-service,Kafka,inventory.reserved,Notifies the customer once stock is held
+orders-service,inventory-service,REST,/inventory,Synchronous stock check during order placement
+orders-service,Stripe,REST,/v1/payment_intents,Creates and captures payment intents
+notifications-service,SendGrid,REST,/v3/mail/send,Sends transactional email
+edge-gateway,orders-service,REST,/orders,Public API routes proxied to the order service
+edge-gateway,inventory-service,REST,/inventory,Public API routes proxied to the inventory service
+edge-gateway,catalog-service,REST,/catalog,Public API routes proxied to the catalog service
+catalog-service,Algolia,REST,/1/indexes,Seeded from the repo description: pushes the product index nightly — VERIFY

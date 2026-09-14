@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://repo-atlas.dev/schema/fe-architecture-extras.schema.json",
+  "title": "fe-architecture-extras",
+  "description": "Contract for fe-architecture-extras.json — enrichment merged onto the model as `extras`. Loose by design; the viz reads these keyed by repo folder.",
+  "type": "object",
+  "properties": {
+    "purposes": { "type": "object" },
+    "ownership": { "type": "object", "properties": { "perRepo": { "type": "object" } } },
+    "testFootprint": { "type": "object" },
+    "scdLib": { "type": "object" },
+    "backends": { "type": "object" },
+    "screens": {
+      "type": "object",
+      "description": "Per-FE-client screens (router-parsed) with best-effort endpoint attribution. Keyed by repo folder under perRepo.",
+      "properties": {
+        "perRepo": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "method": { "type": "string", "enum": ["router", "folder"] },
+              "routerFiles": { "type": "number" },
+              "endpointLinks": { "type": "object" },
+              "screens": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "component": { "type": "string" },
+                    "path": { "type": ["string", "null"] },
+                    "paths": { "type": "array", "items": { "type": "string" } },
+                    "roles": { "type": "array", "items": { "type": "string" } },
+                    "file": { "type": ["string", "null"] },
+                    "endpoints": { "type": "array", "items": { "type": "string" } }
+                  },
+                  "required": ["name", "endpoints"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

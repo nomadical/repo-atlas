@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://repo-atlas.dev/schema/fe-architecture.schema.json",
+  "title": "fe-architecture",
+  "description": "Contract for fe-architecture.json — the core model the viz renders. Asserts shape + types of the fields the app depends on; additionalProperties stays open so the pipeline can add fields without churn. Enum/referential rules live in scripts/guard-data.mjs; topic vocabulary in docs/topic-schema.md.",
+  "type": "object",
+  "required": ["repos", "inventory"],
+  "properties": {
+    "org": { "type": "string" },
+    "generatedAt": { "type": "string" },
+    "scanRoot": { "type": "string", "description": "Directory NAME the clones were read from — never an absolute path; this file is committed." },
+    "repoCounts": { "type": "object" },
+    "missingRepos": { "type": "array" },
+    "notes": {},
+    "azure": { "type": ["object", "null"], "description": "null when no cloud gather ran (azure-gather skipped or disabled) — an absent cloud layer is a normal configuration, not malformed data." },
+    "validation": { "type": "object" },
+    "backendTopology": {
+      "type": "object",
+      "description": "Curated backend overlay (backend-extra.json): hosts, FE→BE wiring, service edges, content repos — merged with the live scan by graph.js.",
+      "properties": {
+        "backends": { "type": "array" },
+        "feBe": { "type": "object" },
+        "backendExternals": { "type": "object" },
+        "assetConsumers": { "type": "array" },
+        "serviceEdges": { "type": "array" },
+        "contentRepos": { "type": "array" },
+        "restHostAliases": { "type": "object" }
+      }
+    },
+    "versionDrift": {},
+    "legacyPackages": {},
+    "uiConsumers": {
+      "type": "array",
+      "items": { "type": "object", "required": ["repo"], "properties": { "repo": { "type": "string" }, "version": { "type": "string" } } }
+    },
+    "frameworkConsumers": {
+      "type": "object",
+      "description": "Backend counterpart of uiConsumers: framework name (backend-extra.json frameworkDeps) → services building on it, with version + artifacts (backend-scan).",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": ["string", "null"] },
+            "artifacts": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "integrations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "protocol": { "type": "string" },
+          "channel": { "type": "string" },
+          "note": { "type": "string" },
+          "verified": { "type": "boolean" }
+        }
+      }
+    },
+    "inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "abbr": { "type": "string" },
+          "type": { "type": "string" },
+          "subtype": { "type": "string", "description": "Optional refinement of type (subtype-* topic) — closed per parent type, see docs/topic-schema.md." },
+          "language": { "type": "string", "description": "Derived, never curated: build-file scan > toolingVersions > GitHub primaryLanguage." },
+          "framework": { "type": "string", "description": "Derived alongside language (e.g. 'Quarkus 3.20.4', 'React 19.2.3')." },
+          "status": { "type": "string" },
+          "owner": { "type": "string" },
+          "cluster": { "type": "string" },
+          "applications": { "type": "array", "items": { "type": "string" } },
+          "description": { "type": "string" },
+          "contact": { "type": "string" },
+          "repo": { "type": ["string", "null"] },
+          "repoName": { "type": ["string", "null"] },
+          "serviceId": { "type": "string", "description": "Canonical service id (backlog #16); equals the inventory name." },
+          "serviceRepo": { "type": ["string", "null"], "description": "Owning repo folder, or null for a repo-less service." },
+          "introDate": { "type": "string" },
+          "sunsetDate": { "type": "string" },
+          "comment": { "type": "string" },
+          "doc": { "type": "string" },
+          "docUrl": { "type": "string" },
+          "pushedAt": { "type": ["string", "null"] },
+          "createdAt": { "type": ["string", "null"] },
+          "archived": { "type": "boolean" },
+          "health": { "type": "object", "description": "Live GitHub health: Dependabot alert counts + latest CI run (github-inventory.mjs)." },
+          "scaffold": { "type": "boolean", "description": "Auto-scaffolded from an ACR image with no curated repo — awaiting topics." },
+          "azure": { "type": ["object", "null"], "description": "null when no cloud gather ran (azure-gather skipped or disabled) — an absent cloud layer is a normal configuration, not malformed data." },
+          "meta": { "type": "object" }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["folder", "kind"],
+        "properties": {
+          "folder": { "type": "string" },
+          "displayName": { "type": "string" },
+          "serviceId": { "type": "string", "description": "Canonical service id (backlog #16); equals the inventory name." },
+          "serviceRepo": { "type": ["string", "null"], "description": "Owning repo folder (this repo, by default)." },
+          "kind": { "type": "string" },
+          "inOrg": { "type": "boolean" },
+          "remote": { "type": ["string", "null"] },
+          "language": { "type": "string" },
+          "framework": { "type": "string" },
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "defaultBranch": { "type": "string" },
+          "lastCommit": { "type": ["string", "null"] },
+          "externals": { "type": "array" },
+          "endpoints": { "type": "array", "items": { "type": "string" } },
+          "endpointLinks": { "type": "object" },
+          "liveUrl": { "type": ["string", "null"] },
+          "apiUrl": { "type": ["string", "null"] },
+          "swagger": { "type": ["string", "null"] },
+          "internalDeps": {
+            "type": "array",
+            "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "version": { "type": "string" }, "dev": { "type": "boolean" } } }
+          },
+          "toolingVersions": { "type": "object" },
+          "moduleGraph": { "type": ["object", "null"] },
+          "deployment": { "type": "array" },
+          "feToBe": { "type": ["object", "null"] },
+          "inventory": { "type": ["object", "null"] },
+          "azure": { "type": ["object", "null"] }
+        }
+      }
+    }
+  }
+}
