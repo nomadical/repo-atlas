@@ -11,7 +11,7 @@ const qs = (params) => new URLSearchParams(params).toString()
 const loaded = () => ({
   tab: 'analytics',
   type: new Set(['Service', 'Client']),
-  owner: new Set(['CSS.SI']),
+  owner: new Set(['Platform']),
   filter: 'unk',
   q: 'sky',
   group: true,

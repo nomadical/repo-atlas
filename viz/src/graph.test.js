@@ -392,14 +392,14 @@ describe('buildGraph', () => {
   it('uses serviceId as the node id (folder stays a resolvable alias) when serviceId !== folder', () => {
     const d = {
       repos: [
-        { folder: 'ui', kind: 'library', name: '@framework/ui', inventory: { name: 'ui', owner: 'CSS.SI' } },
+        { folder: 'ui', kind: 'library', name: '@meridian/ui', inventory: { name: 'ui', owner: OWNER_A } },
         {
           folder: 'device-data-service',
           serviceId: 'device-data-ingestion',
           kind: 'service',
           name: '@meridian/device-data',
           inventory: { name: 'device-data-ingestion', owner: 'CSS.AT' },
-          internalDeps: [{ name: '@framework/ui', version: '1.0.0' }],
+          internalDeps: [{ name: '@meridian/ui', version: '1.0.0' }],
         },
       ],
       inventory: [],

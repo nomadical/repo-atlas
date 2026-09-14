@@ -3,7 +3,7 @@ import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState 
 import '@xyflow/react/dist/style.css'
 import CardNode from './CardNode.jsx'
 import RegionNode from './RegionNode.jsx'
-import { buildGraph, KIND, LAYERS, EDGE_TYPES, resolveClusters, DEFAULT_CLUSTERS, matchInventory, uiPackagesOf, uiHubFoldersOf, coversAll } from './graph.js'
+import { buildGraph, KIND, LAYERS, edgeTypesFor, resolveClusters, DEFAULT_CLUSTERS, matchInventory, uiPackagesOf, uiHubFoldersOf, coversAll } from './graph.js'
 import { edgeTypes } from './floating.jsx'
 import { getUser, logout, authEnabled, relogin, isAdmin } from './auth.js'
 import { getData, decryptData } from './data.js'
@@ -1210,12 +1210,14 @@ export default function App() {
                 return (
                   <>
                     <div className="dd-group">Arrows / integrations</div>
-                    {EDGE_TYPES.filter((e) => arrowKeys.includes(e.key)).map((e) => (
-                      <FilterRow key={'e:' + e.key} checked={!hiddenEdges.has(e.key)} onChange={() => toggleEdge(e.key)}>
-                        <span className="legend-edge" style={{ borderTopColor: e.color, borderTopStyle: e.dash }} />
-                        {e.label}
-                      </FilterRow>
-                    ))}
+                    {edgeTypesFor(config)
+                      .filter((e) => arrowKeys.includes(e.key))
+                      .map((e) => (
+                        <FilterRow key={'e:' + e.key} checked={!hiddenEdges.has(e.key)} onChange={() => toggleEdge(e.key)}>
+                          <span className="legend-edge" style={{ borderTopColor: e.color, borderTopStyle: e.dash }} />
+                          {e.label}
+                        </FilterRow>
+                      ))}
                   </>
                 )
               })()}
@@ -1630,7 +1632,7 @@ export default function App() {
                 ) : null}
               </div>
             ) : null}
-            {EMBED ? null : <Legend kinds={kindsPresent} edgeTypesPresent={graph.edgeTypesPresent} hiddenEdges={hiddenEdges} />}
+            {EMBED ? null : <Legend kinds={kindsPresent} edgeTypesPresent={graph.edgeTypesPresent} hiddenEdges={hiddenEdges} config={config} />}
           </div>
         )}
 

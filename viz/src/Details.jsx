@@ -474,7 +474,7 @@ function HealthSection({ health, pushedAt }) {
   )
 }
 
-// Design-system adoption: which clients/screens consume each @framework/ui export, inverted from
+// Design-system adoption: which clients/screens consume each design-system export, inverted from
 // the per-screen component usage (clientGraph.componentAdoption). Change-impact at a glance.
 function AdoptionSection({ rows, onNavigate }) {
   if (!rows?.length) return null
@@ -509,7 +509,7 @@ function AdoptionSection({ rows, onNavigate }) {
 
 // Component Inventory record — one component's row, as the pipeline assembled it
 // Which services build on this framework card (data.frameworkConsumers, keyed by framework name —
-// e.g. nucleus). The backend counterpart of the design-system AdoptionSection: consumers with
+// e.g. a shared platform library). The backend counterpart of the design-system AdoptionSection: consumers with
 // their pinned version, red when lagging the highest version any consumer references.
 function FrameworkAdoptionSection({ name, consumers, onNavigate }) {
   if (!consumers?.length) return null

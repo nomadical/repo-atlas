@@ -5,7 +5,7 @@
 // Three classes of check:
 //   1. Coverage   — core repos still present and the repo count hasn't collapsed (e.g. a
 //                   clone failed in CI), which would silently drop nodes.
-//   2. Integrity  — every edge endpoint (service link source, @framework/ui consumer) resolves to a
+//   2. Integrity  — every edge endpoint (service link source, design-system consumer) resolves to a
 //                   real node, so the graph can't reference a node that no longer exists.
 //   3. Schema     — every inventory component's type/status is a known value, catching
 //                   malformed/typo'd GitHub topics (e.g. `status-currnet`) at the source.
@@ -91,7 +91,7 @@ export function validate(data, extras = null, opts = {}) {
     if (!isNode(link.source)) errors.push(`service link source "${link.source}" is not a known node`)
   }
   for (const c of data.uiConsumers || []) {
-    if (!repoFolders.has(c.repo)) errors.push(`@framework/ui consumer "${c.repo}" is not a present repo`)
+    if (!repoFolders.has(c.repo)) errors.push(`design-system consumer "${c.repo}" is not a present repo`)
   }
   // Curated topology extras (backend-extra.json): dangling references degrade to a missing edge/node
   // on the map (both endpoints must exist to draw), so warn rather than block.

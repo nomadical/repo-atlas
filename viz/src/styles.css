@@ -1337,7 +1337,7 @@ body {
   color: #9a5a00;
   border-color: #ffd599;
 }
-/* design-system component chip — tinted to match the @framework/ui color */
+/* design-system component chip — tinted to match the dependency-edge color */
 .ui-chip {
   background: #efe9fb;
   color: #5b3aa6;

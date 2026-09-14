@@ -79,7 +79,7 @@ test('a service link to an unknown source is an error', () => {
   assert.ok(errors.some((e) => e.includes('ghost-repo') && e.includes('not a known node')))
 })
 
-test('a @framework/ui consumer that is not a present repo is an error', () => {
+test('a design-system consumer that is not a present repo is an error', () => {
   const d = healthy()
   d.uiConsumers.push({ repo: 'not-a-repo' })
   const { errors } = validate(d)

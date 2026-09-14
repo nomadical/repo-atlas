@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { KIND, EDGE_TYPES, canonKind } from './graph.js'
+import { KIND, edgeTypesFor, canonKind } from './graph.js'
 import { Icon } from './icons.jsx'
 
 // Small color key shown over the graph canvas. Node dots = component type (kind); the Arrows key
@@ -20,9 +20,9 @@ const KIND_GROUPS = [
   ['Diagram context (not inventory components)', ['infra', 'storage', 'bus', 'content', 'package']],
 ]
 
-export function Legend({ kinds, edgeTypesPresent = [], hiddenEdges }) {
+export function Legend({ kinds, edgeTypesPresent = [], hiddenEdges, config }) {
   const present = new Set(edgeTypesPresent)
-  const arrows = EDGE_TYPES.filter((e) => present.has(e.key))
+  const arrows = edgeTypesFor(config).filter((e) => present.has(e.key))
   const grouped = new Set(KIND_GROUPS.flatMap(([, m]) => m))
   // A present kind counts as shown under its canonical Type — backend collapses onto `service`,
   // extsvc onto `external` — so a map with backends doesn't append a duplicate "Service" swatch.

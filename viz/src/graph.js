@@ -99,12 +99,15 @@ export const DEFAULT_LAYERS = Object.fromEntries(LAYERS.map((l) => [l.key, l.def
 // used by the hide-by-type filter (and the `hedge` URL param); color/dash mirror the canvas arrow
 // style so the Legend swatch matches what's drawn. Only types actually present on the current map
 // are offered as toggles (see buildGraph's edgeTypesPresent + Legend).
+// The two design-system edge labels name YOUR package (config.json `uiPackages`) — see
+// edgeTypesFor below, which fills them in. The generic wording here is the fallback for an estate
+// with no design system configured.
 export const EDGE_TYPES = [
-  { key: 'dependency', color: '#7c4dff', dash: 'solid', label: '@framework/ui dependency' },
-  // Red variant of a dependency edge: the consumer references a @framework/ui version behind the
-  // highest one in use (see buildGraph `behind`). A distinct type so it reads in the legend and can be
-  // toggled on its own; classified off edge.data.drift, not the id (it shares the dep- id prefix).
-  { key: 'drift', color: '#e53935', dash: 'dashed', label: '@framework/ui version lag' },
+  { key: 'dependency', color: '#7c4dff', dash: 'solid', label: 'Design-system dependency' },
+  // Red variant of a dependency edge: the consumer references a version behind the highest one in
+  // use (see buildGraph `behind`). A distinct type so it reads in the legend and can be toggled on
+  // its own; classified off edge.data.drift, not the id (it shares the dep- id prefix).
+  { key: 'drift', color: '#e53935', dash: 'dashed', label: 'Design-system version lag' },
   { key: 'febe', color: '#fb8c00', dash: 'solid', label: 'FE → resource' },
   { key: 'bebe', color: '#6d4c41', dash: 'dashed', label: 'Backend ↔ backend' },
   { key: 'rest', color: '#00838f', dash: 'solid', label: 'Service link (REST)' },
@@ -115,6 +118,15 @@ export const EDGE_TYPES = [
   { key: 'assets', color: '#546e7a', dash: 'dashed', label: 'Shared assets' },
   { key: 'content', color: '#8d6e63', dash: 'solid', label: 'Content source' },
 ]
+
+// EDGE_TYPES with the design-system labels resolved against config, so the legend names the package
+// people actually recognise ("@acme/ui dependency") instead of a generic phrase. Falls back to the
+// generic labels when no `uiPackages` are configured — there is no package to name in that case.
+export const edgeTypesFor = (config) => {
+  const pkg = [...uiPackagesOf(config)][0]
+  if (!pkg) return EDGE_TYPES
+  return EDGE_TYPES.map((e) => (e.key === 'dependency' ? { ...e, label: `${pkg} dependency` } : e.key === 'drift' ? { ...e, label: `${pkg} version lag` } : e))
+}
 
 // Classify a built edge by its id prefix (see the push sites in buildGraph). NOTE: backend↔backend
 // ids ('bebe-') must be tested before FE→resource ('be-') would be, but the distinct prefixes make
@@ -472,7 +484,7 @@ export function buildGraph(data, opts = {}) {
     })
   }
 
-  // @framework/ui version drift: "latest" is the highest version of any consumer references (the ui
+  // design-system version drift: "latest" is the highest version any consumer references (the ui
   // repo's own package.json version lags the published versions, so it's not a reliable baseline).
   const verParts = (v) =>
     String(v || '')

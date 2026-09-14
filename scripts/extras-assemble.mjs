@@ -19,7 +19,7 @@ const v1graph = Object.fromEntries(v1.repos.map(r=>[r.folder, r.moduleGraph]))
 const v1Folders = new Set(v1.repos.map((r) => r.folder))
 const FE_REPOS = repos.feInOrg.filter((r) => mid[r] && v1Folders.has(r))
 
-// ---- 1. @framework/ui (design system) component catalog ----
+// ---- 1. Design-system component catalog ----
 // HAND-AUDITED SNAPSHOT (July 2026), not derived — the catalog + cadence blocks below were read
 // out of the ui repo by hand and are re-emitted verbatim every night. They're stamped with
 // EXTRAS_AUDIT_AS_OF in the output so consumers can tell them from the measured fields;

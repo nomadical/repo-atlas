@@ -19,7 +19,7 @@ export function clientScreens(data, folder) {
 }
 
 // Design-system adoption: invert the per-screen component usage into "which clients/screens use each
-// @framework/ui export" — change-impact analysis for the design-system team. Takes data.extras.
+// design-system export" — change-impact analysis for the design-system team. Takes data.extras.
 export function componentAdoption(extras) {
   const per = extras?.screens?.perRepo || {}
   const map = new Map() // component -> { clients:Set, screens:number }

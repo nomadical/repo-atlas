@@ -71,7 +71,7 @@ fails a mismatched pair, e.g. `subtype-worker` on a Library). Unset = the plain 
 | `subtype-worker` | Service | background/batch processing, no request surface |
 | `subtype-connector` | Service | bridge to an external system (publishers, ingestors, CDC) |
 | `subtype-gateway` | Service | edge/routing layer (API gateway, redirect proxy) |
-| `subtype-framework` | Library | a foundation others build on (nucleus, @framework/ui) |
+| `subtype-framework` | Library | a foundation others build on (a shared platform library, your design system) |
 | `subtype-ui` | Library | UI component kit / theme |
 | `subtype-model` | Library | shared model / SDK, no UI |
 

@@ -198,7 +198,7 @@ const traceEndpoints = (startFile, resolve) => {
       if (!text) continue
       extractEndpointsFromText(text, endpoints) // use*Endpoints('path') hooks
       extractApiCallsFromText(text, endpoints) // fetch/axios/.get/.post + template-URL paths
-      extractUiComponents(text, components) // @framework/ui named imports
+      extractUiComponents(text, components) // design-system named imports
       for (const spec of importSpecs(text)) {
         const target = resolve(file, spec)
         if (target && !seen.has(target)) { seen.add(target); next.push(target) }
