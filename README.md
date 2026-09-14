@@ -12,6 +12,12 @@ in sync by hand, and the map can't quietly rot into fiction.
 This repo ships with a **synthetic demo estate** (the fictional *Meridian Labs*), so
 `npm run dev` shows a working map before you've configured anything.
 
+[![The demo map: four team lanes of components, with dependency, service and deployment edges](docs/images/demo-map.jpg)](https://nomadical.github.io/repo-atlas/)
+
+*The demo estate — [open it live](https://nomadical.github.io/repo-atlas/). Every card, edge and
+chip above was derived by the pipeline from the repos themselves; only the cluster names and colours
+are configuration.*
+
 ## What it gives you
 
 - **A graph** of components, clustered by team, with dependency, service-link and deploy edges.
