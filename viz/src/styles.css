@@ -51,6 +51,9 @@ body {
 }
 .toolbar {
   display: flex;
+  /* when the controls can't fit, wrap to a second row — never widen the page (the whole app would
+     scroll sideways, leaving the toolbar and panel stranded at the old viewport width) */
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
@@ -66,8 +69,20 @@ body {
   align-items: center;
   gap: 9px;
   font-size: 15px;
-  flex: none;
+  /* zero basis: the brand only takes leftover space (up to its natural width), truncating the
+     tagline first, so it never forces the controls onto a second row */
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
   white-space: nowrap;
+}
+.brand-text,
+.brand-sub,
+.gen {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand-mark {
   width: 16px;
@@ -94,12 +109,15 @@ body {
   padding-left: 8px;
   border-left: 1px solid rgba(255, 255, 255, 0.3);
   margin-left: 2px;
+  /* the tagline gives way well before the title */
+  flex-shrink: 100;
 }
 .gen {
   font-weight: 400;
   opacity: 0.7;
   font-size: 12px;
   margin-left: 10px;
+  flex-shrink: 100;
 }
 .spacer {
   flex: 1;
@@ -145,6 +163,7 @@ body {
 }
 /* toolbar icon-only ghost buttons: square, centered, subtle until hover */
 .toolbar .btn.ghost {
+  flex: none;
   padding: 0;
   width: 34px;
   height: 34px;
@@ -1003,8 +1022,13 @@ body {
     gap: 9px;
     padding: 10px 12px;
   }
-  .brand-text {
+  .brand-text,
+  .brand-sub {
     display: none;
+  }
+  /* only the mark / logo is left — keep it whole */
+  .brand {
+    flex: none;
   }
   .switch-label {
     display: none;
@@ -1615,7 +1639,9 @@ body {
 
 .panel {
   width: 340px;
-  flex: none;
+  /* shrink below the dragged/saved width on narrow windows instead of pushing the page wider */
+  flex: 0 1 auto;
+  min-width: 0;
   background: var(--panel);
   color: var(--ink);
   border-left: 1px solid var(--panel-bd);
