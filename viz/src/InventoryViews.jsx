@@ -321,10 +321,10 @@ export function MatrixView({ inventory, query, onSelect, config }) {
 
 // Indexed by lowercased name and repo name.
 function indexInventoryByName(inventory) {
-  const byName = {}
+  const byName = new Map()
   for (const entry of inventory) {
-    byName[entry.name.toLowerCase()] = entry
-    if (entry.repoName) byName[entry.repoName.toLowerCase()] = entry
+    byName.set(entry.name.toLowerCase(), entry)
+    if (entry.repoName) byName.set(entry.repoName.toLowerCase(), entry)
   }
   return byName
 }
@@ -357,7 +357,7 @@ export function IntegrationsTable({ integrations = [], inventory = [], query, on
   }, [integrations, normalizedQuery, sort])
   const header = (key, label) => <SortableHeader sortKey={key} label={label} sort={sort} setSort={setSort} />
   const endpoint = (name) => {
-    const entry = byName[String(name || '').toLowerCase()]
+    const entry = byName.get(String(name || '').toLowerCase())
     if (!entry) return <span>{name}</span>
     // A button, not href="#": it's an in-page action, and "#" would pollute the URL state and read
     // as a dead link to assistive tech.
