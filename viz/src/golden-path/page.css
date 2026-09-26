@@ -532,8 +532,8 @@
 }
 
 /* No scroll container above 1200px: the fixed layout fits, so the column header can stick to
-   the page under the app bar. Below that the wrapper scrolls horizontally and sticky is moot
-   (a scrollport would re-anchor the sticky offset and push the header over the first row). */
+   the page under the app bar. Below that the wrapper scrolls horizontally, which makes it the
+   header's scrollport: the header can no longer follow the page, so it stays in its own slot. */
 .tablewrap {
   overflow-x: auto;
   border-radius: var(--r);
@@ -578,6 +578,10 @@ thead th {
 /* Name and total are the two anchors: pin them to the edges of the scrollport so the checks
    can scroll between them without either end leaving the screen. */
 @media (max-width: 1199px) {
+  /* The wrapper never scrolls vertically, so the page offset would only push the header over the rows. */
+  thead th {
+    top: 0;
+  }
   thead th:first-child,
   tbody td:first-child {
     position: sticky;
