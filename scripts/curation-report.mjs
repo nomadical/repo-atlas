@@ -1,26 +1,25 @@
-// Curation backlog report — turns the inventory-coverage gap into an actionable, per-owner
-// checklist so curation gets DONE instead of sitting as ambient debt.
+// Curation backlog report: turns the inventory-coverage gap into a per-owner checklist.
 //
-// Reads github-meta.json (the full org snapshot, refreshed nightly by github-inventory.mjs) and
-// inventory-extra.json, then classifies every active repo:
-//   • uncurated   — no inventory topics at all (invisible to the map; needs the full set)
-//   • incomplete  — has a type-* (so it IS on the map) but missing owner/status/description
-// Archived repos and `arch-map-ignore` repos are excluded (genuine non-components).
+// Classifies every active repo in github-meta.json (with inventory-extra.json fallbacks):
+//   uncurated   no inventory topics at all, so invisible to the map
+//   incomplete  has a type (so it is on the map) but lacks owner, status or description
+// Archived and `arch-map-ignore` repos are genuine non-components and are skipped.
 //
-// Prints GitHub-flavoured Markdown to stdout. The curation-report.yml workflow runs this weekly
-// and opens/updates a tracking issue. Run locally any time: `node scripts/curation-report.mjs`.
+// Prints GitHub-flavoured Markdown to stdout. The curation-report.yml workflow runs it weekly and
+// updates a tracking issue. Run locally with `node scripts/curation-report.mjs`.
 import fs from 'node:fs'
 import path from 'node:path'
 import { AUDIT } from './_paths.mjs'
 import { parseTopics, TOPIC_MAPS } from './inventory.mjs'
 
-const readJson = (f) => {
+const readJson = (file) => {
   try {
-    return JSON.parse(fs.readFileSync(f, 'utf8'))
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch {
     return null
   }
 }
+
 const meta = readJson(path.join(AUDIT, 'github-meta.json'))
 const extra = readJson(path.join(AUDIT, 'inventory-extra.json')) || { repoExtras: {} }
 
@@ -29,72 +28,82 @@ if (!meta?.repos) {
   process.exit(1)
 }
 
-// owner-* value (as parseTopics produces it) -> a readable label for the report's grouping.
-// Your team vocabulary lives in config.json `owners`, so read it from there; an owner with no
-// entry prints as-is, which is usually already readable.
+// Owners configured in config.json `owners` keep their name; any other owner prints as-is.
 const OWNER_LABEL = Object.fromEntries(Object.keys(TOPIC_MAPS.owner).map((name) => [name, name]))
-const ownerLabel = (o) => OWNER_LABEL[o] || o || '— (no owner topic)'
+const ownerLabel = (owner) => OWNER_LABEL[owner] || owner || '— (no owner topic)'
 
-const uncurated = [] // { name }
-const incomplete = [] // { name, owner, missing[] }
+const isActive = (repo) => !repo.archived && !(repo.topics || []).includes('arch-map-ignore')
+const byName = (a, b) => a.name.localeCompare(b.name)
 
-for (const [name, r] of Object.entries(meta.repos)) {
-  if (r.archived || (r.topics || []).includes('arch-map-ignore')) continue
-  const t = parseTopics(r.topics)
-  const ex = extra.repoExtras?.[name]
-  const fb = ex?.fallback || {}
-  const hasInvTopics = t.type || t.status || t.owner || t.applications.length || t.cluster
-  if (!hasInvTopics && !ex && !r.props) {
-    uncurated.push({ name })
-    continue
-  }
-  // on the map (has a type, possibly via fallback) but half-curated?
-  const type = t.type || fb.type
-  if (!type) continue // owner/app/cluster only, no type — still effectively uncurated for the map
-  const owner = t.owner || fb.owner
-  const description = r.description || fb.description
-  const status = t.status || fb.status
+const hasInventoryTopics = (topics) =>
+  topics.type || topics.status || topics.owner || topics.applications.length || topics.cluster
+
+// Returns 'uncurated', { owner, missing } for a half-curated repo, or null when nothing is due.
+function classifyRepo(name, repo) {
+  const topics = parseTopics(repo.topics)
+  const repoExtra = extra.repoExtras?.[name]
+  const fallback = repoExtra?.fallback || {}
+  if (!hasInventoryTopics(topics) && !repoExtra && !repo.props) return 'uncurated'
+  // Owner, app or cluster topics without a type don't put a repo on the map either.
+  if (!(topics.type || fallback.type)) return null
+  const owner = topics.owner || fallback.owner
   const missing = []
   if (!owner) missing.push('owner')
-  if (!status) missing.push('status')
-  if (!description) missing.push('description')
-  if (missing.length) incomplete.push({ name, owner, missing })
+  if (!(topics.status || fallback.status)) missing.push('status')
+  if (!(repo.description || fallback.description)) missing.push('description')
+  return missing.length ? { owner, missing } : null
 }
 
-const total = Object.values(meta.repos).filter(
-  (r) => !r.archived && !(r.topics || []).includes('arch-map-ignore'),
-).length
+const uncurated = [] // { name }
+const incomplete = [] // { name, owner, missing }
+for (const [name, repo] of Object.entries(meta.repos)) {
+  if (!isActive(repo)) continue
+  const verdict = classifyRepo(name, repo)
+  if (verdict === 'uncurated') uncurated.push({ name })
+  else if (verdict) incomplete.push({ name, ...verdict })
+}
+
+const total = Object.values(meta.repos).filter(isActive).length
 const curated = total - uncurated.length
 
-const lines = []
-lines.push('# Curation backlog', '')
-lines.push(
-  `Snapshot from \`github-meta.json\` (${meta.generatedAt?.slice(0, 10) || 'n/a'}). ` +
-    `**${curated}/${total}** active repos carry inventory topics; **${uncurated.length}** are invisible to the map ` +
-    `and **${incomplete.length}** are half-curated.`,
-  '',
-)
-lines.push('See [`docs/repo-maintenance.md`](docs/repo-maintenance.md) for how to curate a repo.', '')
+function summarySection() {
+  return [
+    '# Curation backlog',
+    '',
+    `Snapshot from \`github-meta.json\` (${meta.generatedAt?.slice(0, 10) || 'n/a'}). ` +
+      `**${curated}/${total}** active repos carry inventory topics; **${uncurated.length}** are invisible to the map ` +
+      `and **${incomplete.length}** are half-curated.`,
+    '',
+    'See [`docs/repo-maintenance.md`](docs/repo-maintenance.md) for how to curate a repo.',
+    '',
+  ]
+}
 
-if (incomplete.length) {
-  lines.push(
+function incompleteSection() {
+  const lines = [
     '## On the map but half-curated',
     '',
     'Already have a `type-*` so they render — finish the rest.',
     '',
-  )
-  const byOwner = {}
-  for (const c of incomplete) (byOwner[ownerLabel(c.owner)] ||= []).push(c)
-  for (const owner of Object.keys(byOwner).sort()) {
+  ]
+  const reposByOwner = new Map()
+  for (const repo of incomplete) {
+    const label = ownerLabel(repo.owner)
+    if (!reposByOwner.has(label)) reposByOwner.set(label, [])
+    reposByOwner.get(label).push(repo)
+  }
+  for (const owner of [...reposByOwner.keys()].sort()) {
     lines.push(`### ${owner}`, '')
-    for (const c of byOwner[owner].sort((a, b) => a.name.localeCompare(b.name)))
-      lines.push(`- [ ] \`${c.name}\` — add ${c.missing.join(', ')}`)
+    for (const repo of reposByOwner.get(owner).sort(byName)) {
+      lines.push(`- [ ] \`${repo.name}\` — add ${repo.missing.join(', ')}`)
+    }
     lines.push('')
   }
+  return lines
 }
 
-if (uncurated.length) {
-  lines.push(
+function uncuratedSection() {
+  return [
     '## Uncurated — not on the map',
     '',
     'No inventory topics. Add at minimum a one-line description + a `type-*` topic ' +
@@ -102,12 +111,16 @@ if (uncurated.length) {
       'plus `owner-*`, `status-*`, `app-*`. Genuine non-components (PoCs, demos, dev tooling) ' +
       'should be archived or tagged `arch-map-ignore`.',
     '',
-  )
-  for (const c of uncurated.sort((a, b) => a.name.localeCompare(b.name))) lines.push(`- [ ] \`${c.name}\``)
-  lines.push('')
+    ...uncurated.sort(byName).map((repo) => `- [ ] \`${repo.name}\``),
+    '',
+  ]
 }
 
-if (!incomplete.length && !uncurated.length)
+const lines = summarySection()
+if (incomplete.length) lines.push(...incompleteSection())
+if (uncurated.length) lines.push(...uncuratedSection())
+if (!incomplete.length && !uncurated.length) {
   lines.push('🎉 Every active repo is fully curated. Nothing to do.', '')
+}
 
 process.stdout.write(lines.join('\n'))

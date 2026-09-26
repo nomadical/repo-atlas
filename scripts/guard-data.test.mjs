@@ -8,20 +8,20 @@ import { validate, CORE, MIN_REPOS, MIN_INVENTORY } from './guard-data.mjs'
 // none. A core repo to remove in the coverage test, invented when none are configured.
 const CORE_SAMPLE = CORE[0] || 'core-repo'
 const REPO_COUNT = Math.max(MIN_REPOS, CORE.length + 2)
-const EXTRA_REPOS = Array.from({ length: REPO_COUNT - CORE.length }, (_, i) => `extra-repo-${i}`)
+const EXTRA_REPOS = Array.from({ length: REPO_COUNT - CORE.length }, (_, index) => `extra-repo-${index}`)
 
 // A minimal "healthy" dataset: all core repos present (+ extras to clear MIN_REPOS), inventory
 // padded past MIN_INVENTORY with fully-curated synthetic components, clean edges + topics.
 const healthy = () => ({
   generatedAt: new Date().toISOString(),
   repos: [...CORE, CORE_SAMPLE, ...EXTRA_REPOS]
-    .filter((f, i, a) => a.indexOf(f) === i)
+    .filter((folder, index, folders) => folders.indexOf(folder) === index)
     .map((folder) => ({ folder })),
   inventory: [
     { name: 'ui', type: 'Library', status: 'Current', owner: 'Platform' },
     { name: 'Payments', type: 'Third-Party Service', status: 'Current', owner: 'Storefront' },
-    ...Array.from({ length: MIN_INVENTORY }, (_, i) => ({
-      name: `component-${i}`,
+    ...Array.from({ length: MIN_INVENTORY }, (_, index) => ({
+      name: `component-${index}`,
       type: 'Service',
       status: 'Current',
       owner: 'Platform',
@@ -38,9 +38,9 @@ test('healthy data passes with no errors', () => {
 })
 
 test('missing a core repo is an error', { skip: CORE.length ? false : 'no coreRepos configured' }, () => {
-  const d = healthy()
-  d.repos = d.repos.filter((r) => r.folder !== CORE_SAMPLE)
-  const { errors } = validate(d)
+  const data = healthy()
+  data.repos = data.repos.filter((r) => r.folder !== CORE_SAMPLE)
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('missing core repos') && e.includes(CORE_SAMPLE)))
 })
 
@@ -50,46 +50,46 @@ test('too few repos is an error', { skip: MIN_REPOS ? false : 'no minRepos confi
 })
 
 test('an inventory collapse is an error (topics stripped)', () => {
-  const d = healthy()
-  d.inventory = d.inventory.slice(0, 2)
-  const { errors } = validate(d)
+  const data = healthy()
+  data.inventory = data.inventory.slice(0, 2)
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes(`min ${MIN_INVENTORY}`)))
 })
 
 test('empty integrations is an error (lost CSV / derivation inputs)', () => {
-  const d = healthy()
-  d.integrations = []
-  const { errors } = validate(d)
+  const data = healthy()
+  data.integrations = []
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('integrations is empty')))
 })
 
 test('freshness: stale generatedAt fails only when maxAgeHours is requested', () => {
-  const d = healthy()
-  d.generatedAt = new Date(Date.now() - 48 * 3600000).toISOString()
-  assert.deepEqual(validate(d).errors, []) // no opt-in -> committed old data stays valid
-  const { errors } = validate(d, null, { maxAgeHours: 12 })
+  const data = healthy()
+  data.generatedAt = new Date(Date.now() - 48 * 3600000).toISOString()
+  assert.deepEqual(validate(data).errors, []) // no opt-in -> committed old data stays valid
+  const { errors } = validate(data, null, { maxAgeHours: 12 })
   assert.ok(errors.some((e) => e.includes('generatedAt') && e.includes('max 12h')))
   assert.deepEqual(validate(healthy(), null, { maxAgeHours: 12 }).errors, []) // fresh passes
 })
 
 test('freshness: missing generatedAt fails when maxAgeHours is requested', () => {
-  const d = healthy()
-  delete d.generatedAt
-  const { errors } = validate(d, null, { maxAgeHours: 12 })
+  const data = healthy()
+  delete data.generatedAt
+  const { errors } = validate(data, null, { maxAgeHours: 12 })
   assert.ok(errors.some((e) => e.includes('generatedAt is missing')))
 })
 
 test('a service link to an unknown source is an error', () => {
-  const d = healthy()
-  d.integrations.push({ source: 'ghost-repo', target: 'Kafka' })
-  const { errors } = validate(d)
+  const data = healthy()
+  data.integrations.push({ source: 'ghost-repo', target: 'Kafka' })
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('ghost-repo') && e.includes('not a known node')))
 })
 
 test('a design-system consumer that is not a present repo is an error', () => {
-  const d = healthy()
-  d.uiConsumers.push({ repo: 'not-a-repo' })
-  const { errors } = validate(d)
+  const data = healthy()
+  data.uiConsumers.push({ repo: 'not-a-repo' })
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('not-a-repo')))
 })
 
@@ -124,25 +124,25 @@ test('a valid (type, subtype) pair passes; unknown or mismatched subtype is an e
 })
 
 test('an unknown closed-enum status is an error (typo guard)', () => {
-  const d = healthy()
-  d.inventory[0].status = 'Currnet'
-  const { errors } = validate(d)
+  const data = healthy()
+  data.inventory[0].status = 'Currnet'
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('unknown status') && e.includes('Currnet')))
 })
 
 test('an unknown owner is a warning, not an error (open set)', () => {
-  const d = healthy()
-  d.inventory[0].owner = 'NEWTEAM'
-  const { errors, warnings } = validate(d)
+  const data = healthy()
+  data.inventory[0].owner = 'NEWTEAM'
+  const { errors, warnings } = validate(data)
   assert.equal(errors.length, 0)
   assert.ok(warnings.some((w) => w.includes('NEWTEAM')))
 })
 
 test('half-curated components are summarized into one warning (not one per component)', () => {
-  const d = healthy()
-  d.inventory.push({ name: 'half-a', type: 'Client', repoName: 'half-a' })
-  d.inventory.push({ name: 'half-b', type: 'Client', repoName: 'half-b', owner: 'Storefront' }) // missing status+description
-  const { errors, warnings } = validate(d)
+  const data = healthy()
+  data.inventory.push({ name: 'half-a', type: 'Client', repoName: 'half-a' })
+  data.inventory.push({ name: 'half-b', type: 'Client', repoName: 'half-b', owner: 'Storefront' }) // missing status+description
+  const { errors, warnings } = validate(data)
   assert.equal(errors.length, 0)
   const summary = warnings.filter((w) => w.includes('half-curated'))
   assert.equal(summary.length, 1, 'a single summary line, not one per component')
@@ -151,55 +151,59 @@ test('half-curated components are summarized into one warning (not one per compo
 })
 
 test('a repo missing its folder is a structural error', () => {
-  const d = healthy()
-  d.repos.push({ kind: 'client' }) // no folder
-  const { errors } = validate(d)
+  const data = healthy()
+  data.repos.push({ kind: 'client' }) // no folder
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('missing its folder')))
 })
 
 test('an inventory component missing its name is a structural error', () => {
-  const d = healthy()
-  d.inventory.push({ type: 'Service' }) // no name
-  const { errors } = validate(d)
+  const data = healthy()
+  data.inventory.push({ type: 'Service' }) // no name
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('missing its name')))
 })
 
 test('an inventory source resolves a non-repo third-party node', () => {
-  const d = healthy()
-  d.integrations.push({ source: 'Payments', target: 'Kafka' }) // Payments is inventory-only
-  const { errors } = validate(d)
+  const data = healthy()
+  data.integrations.push({ source: 'Payments', target: 'Kafka' }) // Payments is inventory-only
+  const { errors } = validate(data)
   assert.equal(errors.length, 0)
 })
 
 test('flags an FE apiUrl host with no backend node (soft, warning)', () => {
-  const d = healthy()
-  d.backendTopology = { backends: [{ id: 'be1', label: 'Core', host: 'api.known.com' }] }
-  d.repos.push({ folder: 'newapp', apiUrl: 'api.unknown.com' })
-  const { errors, warnings } = validate(d)
+  const data = healthy()
+  data.backendTopology = { backends: [{ id: 'be1', label: 'Core', host: 'api.known.com' }] }
+  data.repos.push({ folder: 'newapp', apiUrl: 'api.unknown.com' })
+  const { errors, warnings } = validate(data)
   assert.deepEqual(errors, []) // soft: never blocks
   assert.ok(warnings.some((w) => w.includes('newapp') && w.includes('no backend node')))
 })
 
 test('does not flag an apiUrl host that matches a backend (env-normalized)', () => {
-  const d = healthy()
-  d.backendTopology = { backends: [{ id: 'be1', label: 'Core', host: 'api.{env}.known.com' }] }
-  d.repos.push({ folder: 'newapp', apiUrl: 'api.prod.known.com' })
-  const { warnings } = validate(d)
+  const data = healthy()
+  data.backendTopology = { backends: [{ id: 'be1', label: 'Core', host: 'api.{env}.known.com' }] }
+  data.repos.push({ folder: 'newapp', apiUrl: 'api.prod.known.com' })
+  const { warnings } = validate(data)
   assert.ok(!warnings.some((w) => w.includes('newapp')))
 })
 
 test('serviceRepo pointing at a missing repo is an error (#16)', () => {
-  const d = healthy()
-  d.inventory.push({ name: 'telemetry-read', serviceId: 'telemetry-read', serviceRepo: 'no-such-repo' })
-  const { errors } = validate(d)
+  const data = healthy()
+  data.inventory.push({ name: 'telemetry-read', serviceId: 'telemetry-read', serviceRepo: 'no-such-repo' })
+  const { errors } = validate(data)
   assert.ok(errors.some((e) => e.includes('serviceRepo') && e.includes('no-such-repo')))
 })
 
 test('a serviceRepo that resolves to a present repo passes (#16)', () => {
-  const d = healthy()
-  d.repos.push({ folder: 'telemetry-service' })
-  d.inventory.push({ name: 'telemetry-read', serviceId: 'telemetry-read', serviceRepo: 'telemetry-service' })
-  const { errors } = validate(d)
+  const data = healthy()
+  data.repos.push({ folder: 'telemetry-service' })
+  data.inventory.push({
+    name: 'telemetry-read',
+    serviceId: 'telemetry-read',
+    serviceRepo: 'telemetry-service',
+  })
+  const { errors } = validate(data)
   assert.deepEqual(errors, [])
 })
 
@@ -209,9 +213,9 @@ test('entries without serviceRepo still validate (pre-migration data, #16)', () 
 })
 
 test('serviceRepo may name an owning repo known only via inventory repoName, not a drawn folder (#16)', () => {
-  const d = healthy()
-  d.inventory.push({ name: 'telemetry-write', repoName: 'telemetry-service' }) // repo not cloned/drawn
-  d.inventory.push({ name: 'telemetry-read', serviceRepo: 'telemetry-service' })
-  const { errors } = validate(d)
+  const data = healthy()
+  data.inventory.push({ name: 'telemetry-write', repoName: 'telemetry-service' }) // repo not cloned/drawn
+  data.inventory.push({ name: 'telemetry-read', serviceRepo: 'telemetry-service' })
+  const { errors } = validate(data)
   assert.deepEqual(errors, [])
 })

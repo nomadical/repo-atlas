@@ -1,146 +1,160 @@
+// Per-repo extras for the frontends: purpose, CODEOWNERS and test counts. Writes
+// scripts/extras-mid.json for extras-assemble.mjs.
 import fs from 'node:fs'
 import path from 'node:path'
 
 import { ROOT, AUDIT } from './_paths.mjs'
 import { repos } from './repos.mjs'
-const REPOS = repos.feInOrg
 
-const readJson = (p) => {
+const SKIPPED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'storybook-static',
+  'coverage',
+  '.yalc',
+])
+const CODEOWNERS_CANDIDATES = ['CODEOWNERS', '.github/CODEOWNERS', 'docs/CODEOWNERS']
+const COVERAGE_CANDIDATES = [
+  'coverage/coverage-summary.json',
+  'coverage-summary.json',
+  'coverage/coverage-final.json',
+]
+const PLAYWRIGHT_CONFIGS = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs']
+const MAX_PURPOSE_LENGTH = 200
+const HEADING = /^#{1,6}\s+/
+const REPO_COLUMN_WIDTH = 26
+const COUNT_COLUMN_WIDTH = 4
+
+const readJson = (file) => {
   try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'))
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch {
     return null
   }
 }
 
-const walk = (dir, acc = []) => {
-  let ents
+const firstExisting = (repoDir, candidates) =>
+  candidates.map((candidate) => path.join(repoDir, candidate)).find((file) => fs.existsSync(file))
+
+function listFiles(dir, files = []) {
+  let entries
   try {
-    ents = fs.readdirSync(dir, { withFileTypes: true })
+    entries = fs.readdirSync(dir, { withFileTypes: true })
   } catch {
-    return acc
+    return files
   }
-  for (const e of ents) {
-    const p = path.join(dir, e.name)
-    if (e.isDirectory()) {
-      if (['node_modules', '.git', 'dist', 'build', 'storybook-static', 'coverage', '.yalc'].includes(e.name))
-        continue
-      walk(p, acc)
-    } else acc.push(p)
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name)
+    if (!entry.isDirectory()) files.push(entryPath)
+    else if (!SKIPPED_DIRS.has(entry.name)) listFiles(entryPath, files)
   }
-  return acc
+  return files
 }
 
-const purpose = (repoDir, pj) => {
-  if (pj?.description) return { source: 'package.json', text: pj.description }
-  const rp = path.join(repoDir, 'README.md')
-  if (fs.existsSync(rp)) {
-    const lines = fs.readFileSync(rp, 'utf8').split('\n')
-    // first non-empty heading text, else first non-empty sentence
-    let heading = null,
-      sentence = null
-    for (const l of lines) {
-      const t = l.trim()
-      if (!t) continue
-      if (!heading && /^#{1,6}\s+/.test(t)) {
-        heading = t.replace(/^#{1,6}\s+/, '').trim()
-        continue
-      }
-      if (!sentence && !/^[#>!\-*`|]/.test(t) && !/^<!--/.test(t)) {
-        sentence = t.replace(/\s+/g, ' ').slice(0, 200)
-        break
-      }
+// The first prose line of the README, else its first heading.
+function readmeSummary(readmePath) {
+  let heading = null
+  for (const line of fs.readFileSync(readmePath, 'utf8').split('\n')) {
+    const text = line.trim()
+    if (!text) continue
+    if (!heading && HEADING.test(text)) {
+      heading = text.replace(HEADING, '').trim()
+      continue
     }
-    return { source: 'README.md', text: sentence || heading || null }
+    const isProse = !/^[#>!\-*`|]/.test(text) && !/^<!--/.test(text)
+    if (isProse) return text.replace(/\s+/g, ' ').slice(0, MAX_PURPOSE_LENGTH)
   }
-  return { source: null, text: null }
+  return heading
 }
 
-const parseCodeowners = (repoDir) => {
-  const cands = ['CODEOWNERS', '.github/CODEOWNERS', 'docs/CODEOWNERS']
-  const found = cands.map((c) => path.join(repoDir, c)).find((p) => fs.existsSync(p))
+function purpose(repoDir, packageJson) {
+  if (packageJson?.description) return { source: 'package.json', text: packageJson.description }
+  const readmePath = path.join(repoDir, 'README.md')
+  if (!fs.existsSync(readmePath)) return { source: null, text: null }
+  return { source: 'README.md', text: readmeSummary(readmePath) || null }
+}
+
+function parseCodeowners(repoDir) {
+  const found = firstExisting(repoDir, CODEOWNERS_CANDIDATES)
   if (!found) return { present: false, file: null, rules: [], owners: [] }
-  const lines = fs.readFileSync(found, 'utf8').split('\n')
   const rules = []
-  const owners = new Set()
-  for (const raw of lines) {
-    const l = raw.replace(/#.*$/, '').trim()
-    if (!l) continue
-    const parts = l.split(/\s+/)
-    const pattern = parts[0]
-    const own = parts.slice(1)
-    own.forEach((o) => owners.add(o))
-    rules.push({ pattern, owners: own })
+  const allOwners = new Set()
+  for (const rawLine of fs.readFileSync(found, 'utf8').split('\n')) {
+    const line = rawLine.replace(/#.*$/, '').trim()
+    if (!line) continue
+    const [pattern, ...owners] = line.split(/\s+/)
+    for (const owner of owners) allOwners.add(owner)
+    rules.push({ pattern, owners })
   }
-  return { present: true, file: path.relative(repoDir, found), rules, owners: [...owners].sort() }
+  return {
+    present: true,
+    file: path.relative(repoDir, found),
+    rules,
+    owners: [...allOwners].sort(),
+  }
 }
 
-const out = {}
-for (const repo of REPOS) {
-  const repoDir = path.join(ROOT, repo)
-  const pj = readJson(path.join(repoDir, 'package.json'))
-  const files = walk(repoDir)
-  const rel = files.map((f) => path.relative(repoDir, f))
-  const count = (re) => rel.filter((f) => re.test(f)).length
+function readCoverage(repoDir) {
+  const summaryPath = firstExisting(repoDir, COVERAGE_CANDIDATES)
+  if (summaryPath) {
+    const source = path.relative(repoDir, summaryPath)
+    const total = readJson(summaryPath)?.total
+    if (!total) return { lines: null, statements: null, source, note: 'present but no total block' }
+    return {
+      lines: total.lines?.pct ?? null,
+      statements: total.statements?.pct ?? null,
+      source,
+    }
+  }
+  if (fs.existsSync(path.join(repoDir, 'coverage'))) {
+    return { lines: null, statements: null, source: 'coverage/', note: 'dir exists, no summary json' }
+  }
+  return null
+}
+
+function testStats(repoDir) {
+  const relativeFiles = listFiles(repoDir).map((file) => path.relative(repoDir, file))
+  const count = (regex) => relativeFiles.filter((file) => regex.test(file)).length
   const testFiles = count(/\.test\.[cm]?[jt]sx?$/)
   const specFiles = count(/\.spec\.[cm]?[jt]sx?$/)
-  const stories = count(/\.stories\.[cm]?[jt]sx?$/)
-  const snapshots = count(/\.snap$/)
-  // coverage
-  let coverage = null
-  const covSummary = [
-    'coverage/coverage-summary.json',
-    'coverage-summary.json',
-    'coverage/coverage-final.json',
-  ]
-    .map((c) => path.join(repoDir, c))
-    .find((p) => fs.existsSync(p))
-  if (covSummary) {
-    const cs = readJson(covSummary)
-    if (cs?.total)
-      coverage = {
-        lines: cs.total.lines?.pct ?? null,
-        statements: cs.total.statements?.pct ?? null,
-        source: path.relative(repoDir, covSummary),
-      }
-    else
-      coverage = {
-        lines: null,
-        statements: null,
-        source: path.relative(repoDir, covSummary),
-        note: 'present but no total block',
-      }
-  } else if (fs.existsSync(path.join(repoDir, 'coverage'))) {
-    coverage = { lines: null, statements: null, source: 'coverage/', note: 'dir exists, no summary json' }
-  }
-  // Playwright suites (e2e harnesses): a repo with a playwright config counts its .spec files
-  // as Playwright specs rather than unit specs.
-  const isPlaywright = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'].some((c) =>
-    fs.existsSync(path.join(repoDir, c)),
-  )
-  const playwright = isPlaywright ? specFiles : null
-  out[repo] = {
-    purpose: purpose(repoDir, pj),
-    codeowners: parseCodeowners(repoDir),
-    tests: {
-      unitTest: testFiles,
-      unitSpec: specFiles,
-      unitTotal: testFiles + specFiles,
-      stories,
-      snapshots,
-      playwrightSpecs: playwright,
-      coverage,
-    },
+  // In a repo with a Playwright config, the .spec files are Playwright specs.
+  const hasPlaywright = PLAYWRIGHT_CONFIGS.some((config) => fs.existsSync(path.join(repoDir, config)))
+  return {
+    unitTest: testFiles,
+    unitSpec: specFiles,
+    unitTotal: testFiles + specFiles,
+    stories: count(/\.stories\.[cm]?[jt]sx?$/),
+    snapshots: count(/\.snap$/),
+    playwrightSpecs: hasPlaywright ? specFiles : null,
+    coverage: readCoverage(repoDir),
   }
 }
-fs.writeFileSync(path.join(AUDIT, 'scripts/extras-mid.json'), JSON.stringify(out, null, 2))
-for (const [r, v] of Object.entries(out))
+
+function gatherRepo(repo) {
+  const repoDir = path.join(ROOT, repo)
+  const packageJson = readJson(path.join(repoDir, 'package.json'))
+  const tests = testStats(repoDir)
+  return {
+    purpose: purpose(repoDir, packageJson),
+    codeowners: parseCodeowners(repoDir),
+    tests,
+  }
+}
+
+const extras = {}
+for (const repo of repos.feInOrg) extras[repo] = gatherRepo(repo)
+
+fs.writeFileSync(path.join(AUDIT, 'scripts/extras-mid.json'), JSON.stringify(extras, null, 2))
+for (const [repo, repoExtras] of Object.entries(extras)) {
   console.log(
-    r.padEnd(26),
+    repo.padEnd(REPO_COLUMN_WIDTH),
     'tests:',
-    String(v.tests.unitTotal).padStart(4),
+    String(repoExtras.tests.unitTotal).padStart(COUNT_COLUMN_WIDTH),
     'stories:',
-    String(v.tests.stories).padStart(4),
+    String(repoExtras.tests.stories).padStart(COUNT_COLUMN_WIDTH),
     'CODEOWNERS:',
-    v.codeowners.present ? 'yes' : 'NO',
+    repoExtras.codeowners.present ? 'yes' : 'NO',
   )
+}

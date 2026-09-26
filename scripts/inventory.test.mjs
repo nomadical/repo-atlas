@@ -1,6 +1,5 @@
-// Tests for inventory.mjs's parsing primitives — the hand-rolled CSV parser and the topic
-// parser feed everything downstream (integrations, third-party meta, the whole Component
-// Inventory), so regressions here silently reshape the map. Run with `node --test`.
+// Tests for inventory.mjs's CSV and topic parsers. Everything downstream is built on them, so a
+// regression here silently reshapes the map. Run with `node --test`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseCsv, parseTopics, loadIntegrations, TOPIC_MAPS } from './inventory.mjs'
@@ -43,9 +42,9 @@ test('parseCsv: blank rows are dropped, missing trailing newline kept', () => {
 // ---- parseTopics ----------------------------------------------------------------------
 
 test('parseTopics: type/status map to canonical display values', () => {
-  const t = parseTopics(['type-service', 'status-current'])
-  assert.equal(t.type, 'Service')
-  assert.equal(t.status, 'Current')
+  const parsed = parseTopics(['type-service', 'status-current'])
+  assert.equal(parsed.type, 'Service')
+  assert.equal(parsed.status, 'Current')
 })
 
 // owner/app are YOUR vocabulary (config.json `owners` / `applications`) rather than a built-in
@@ -69,9 +68,9 @@ test('parseTopics: subtype-* parses to its display value; unknown subtype slug t
 })
 
 test('parseTopics: unknown app slug title-cases; unknown owner upper-cases dashes to dots', () => {
-  const t = parseTopics(['app-fleet-ops', 'owner-new-team'])
-  assert.deepEqual(t.applications, ['Fleet Ops'])
-  assert.equal(t.owner, 'NEW.TEAM')
+  const parsed = parseTopics(['app-fleet-ops', 'owner-new-team'])
+  assert.deepEqual(parsed.applications, ['Fleet Ops'])
+  assert.equal(parsed.owner, 'NEW.TEAM')
 })
 
 test('parseTopics: cluster override — a configured label keeps its casing, unknown title-cases', () => {
@@ -81,8 +80,8 @@ test('parseTopics: cluster override — a configured label keeps its casing, unk
 })
 
 test('parseTopics: unrelated topics are ignored', () => {
-  const t = parseTopics(['react', 'arch-map-ignore'])
-  assert.deepEqual(t, {
+  const parsed = parseTopics(['react', 'arch-map-ignore'])
+  assert.deepEqual(parsed, {
     type: null,
     subtype: null,
     status: null,
@@ -97,14 +96,15 @@ test('parseTopics: unrelated topics are ignored', () => {
 test('loadIntegrations: real CSV parses into non-empty source/target rows', () => {
   const rows = loadIntegrations()
   assert.ok(rows.length > 0, 'integrations.csv produced zero rows — header/BOM regression?')
-  for (const r of rows) {
-    assert.ok(r.source && r.target, `row missing source/target: ${JSON.stringify(r)}`)
-    assert.ok(['REST', 'Kafka'].includes(r.protocol), `unexpected protocol: ${r.protocol}`)
-    assert.equal(typeof r.verified, 'boolean')
+  for (const row of rows) {
+    assert.ok(row.source && row.target, `row missing source/target: ${JSON.stringify(row)}`)
+    assert.ok(['REST', 'Kafka'].includes(row.protocol), `unexpected protocol: ${row.protocol}`)
+    assert.equal(typeof row.verified, 'boolean')
   }
 })
 
 test('loadIntegrations: "— VERIFY" notes mark rows unverified', () => {
-  const rows = loadIntegrations()
-  for (const r of rows) if (/verify/i.test(r.note)) assert.equal(r.verified, false)
+  for (const row of loadIntegrations()) {
+    if (/verify/i.test(row.note)) assert.equal(row.verified, false)
+  }
 })
