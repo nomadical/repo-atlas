@@ -329,3 +329,14 @@ test('parseLines keeps valid JSONL entries and skips malformed lines', async () 
   const entries = parseLines('{"a":1}\nnot json\n\n{"b":2}\n')
   assert.deepEqual(entries, [{ a: 1 }, { b: 2 }])
 })
+
+test('parseLines warns with the real line number and skips lines that are not entries', async (t) => {
+  const { parseLines } = await import('../lib/store.mjs')
+  const warn = t.mock.method(console, 'warn', () => {})
+  const entries = parseLines('{"a":1}\n\n\nnot json\nnull\n0\n{"b":2}\n')
+  assert.deepEqual(entries, [{ a: 1 }, { b: 2 }])
+  assert.deepEqual(
+    warn.mock.calls.map((call) => call.arguments[0]),
+    ['skipping malformed line 4', 'skipping malformed line 5', 'skipping malformed line 6'],
+  )
+})
