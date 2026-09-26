@@ -286,16 +286,6 @@ body {
   outline-offset: 3px;
   border-radius: 16px;
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
 .switch {
   display: inline-flex;
   align-items: center;
@@ -2432,4 +2422,27 @@ body {
 }
 .adm-msg.err {
   color: var(--danger-ink);
+}
+
+/* Reduced motion: keep colour, shadow and fade feedback, drop anything that moves. Last in the
+   file so it wins over the hover lifts above. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .node-card:hover,
+  .region-label:hover {
+    transform: none;
+  }
+  .switch-thumb {
+    transition: none;
+  }
+  .spinner {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
 }
