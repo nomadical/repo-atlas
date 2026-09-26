@@ -21,56 +21,71 @@ export const PARAM_KEYS = [...Object.values(STATE_TO_PARAM), 'component', 'range
 const SHOW_URL = { dev: 'deviations', unk: 'not-scanned' }
 const SHOW_STATE = { deviations: 'dev', 'not-scanned': 'unk' }
 const RANGE_KEYS = ['quarter', 'year', 'custom'] // 'all' is the default and is never written
+// `none` because an empty selection is real — an empty string would read as "not set".
+const NO_SEGMENTS = 'none'
 
 const listOf = (set) => [...set].sort().join(',')
-const iso = (t) => new Date(t).toISOString().slice(0, 10)
+const isoDay = (time) => new Date(time).toISOString().slice(0, 10)
+
+function segmentsParam(segments) {
+  const list = listOf(segments)
+  if (list === DEFAULT_SEGMENT) return ''
+  return list || NO_SEGMENTS
+}
+
+// Only a custom window pins dates; a named one is recomputed.
+const rangeDateParam = (range, time) => (range.key === 'custom' && time ? isoDay(time) : '')
 
 // Defaults are left out, so an untouched view stays a clean `?view=golden-path`.
 export function toParams({ state, range, component = null }) {
-  const out = {}
-  const put = (k, v) => {
-    if (v) out[k] = v
+  const params = {}
+  const put = (key, value) => {
+    if (value) params[key] = value
   }
   put('component', component || '')
   put('tab', state.tab === 'analytics' ? 'analytics' : '')
-  const segments = listOf(state.segments)
-  // `none` because an empty selection is real — an empty string would read as "not set".
-  put('segments', segments === DEFAULT_SEGMENT ? '' : segments || 'none')
+  put('segments', segmentsParam(state.segments))
   put('type', listOf(state.type))
   put('owner', listOf(state.owner))
   put('show', SHOW_URL[state.filter] || '')
   put('search', state.q.trim())
   put('group', state.group ? 'true' : '')
   put('range', range.key === 'all' ? '' : range.key)
-  // Only a custom window pins dates; a named one is recomputed.
-  put('from', range.key === 'custom' && range.from ? iso(range.from) : '')
-  put('to', range.key === 'custom' && range.to ? iso(range.to) : '')
-  return out
+  put('from', rangeDateParam(range, range.from))
+  put('to', rangeDateParam(range, range.to))
+  return params
 }
+
+function segmentsFrom(param) {
+  if (param === NO_SEGMENTS) return new Set()
+  if (!param) return new Set([DEFAULT_SEGMENT])
+  return new Set(param.split(',').filter(Boolean))
+}
+
+// An unparsable date reads as null, so the caller can fall back.
+const dateFrom = (param) => Date.parse(param || '') || null
 
 // The reverse. Malformed values fall back to defaults: a hand-edited link shows the page, not an error.
 export function fromParams(search) {
-  const p = new URLSearchParams(search)
-  const list = (k) => (p.get(k) || '').split(',').filter(Boolean)
-  const segments = p.get('segments')
-  const key = RANGE_KEYS.includes(p.get('range')) ? p.get('range') : 'all'
+  const params = new URLSearchParams(search)
+  const listParam = (key) => (params.get(key) || '').split(',').filter(Boolean)
+  const rangeKey = RANGE_KEYS.includes(params.get('range')) ? params.get('range') : 'all'
+  const isCustom = rangeKey === 'custom'
   return {
-    component: p.get('component') || null,
+    component: params.get('component') || null,
     state: {
-      tab: p.get('tab') === 'analytics' ? 'analytics' : 'table',
-      segments: new Set(
-        segments === 'none' ? [] : segments ? segments.split(',').filter(Boolean) : [DEFAULT_SEGMENT],
-      ),
-      type: new Set(list('type')),
-      owner: new Set(list('owner')),
-      filter: SHOW_STATE[p.get('show')] || 'all',
-      q: p.get('search') || '',
-      group: p.get('group') === 'true',
+      tab: params.get('tab') === 'analytics' ? 'analytics' : 'table',
+      segments: segmentsFrom(params.get('segments')),
+      type: new Set(listParam('type')),
+      owner: new Set(listParam('owner')),
+      filter: SHOW_STATE[params.get('show')] || 'all',
+      q: params.get('search') || '',
+      group: params.get('group') === 'true',
     },
     range: {
-      key,
-      from: key === 'custom' ? Date.parse(p.get('from') || '') || null : null,
-      to: key === 'custom' ? Date.parse(p.get('to') || '') || null : null,
+      key: rangeKey,
+      from: isCustom ? dateFrom(params.get('from')) : null,
+      to: isCustom ? dateFrom(params.get('to')) : null,
     },
   }
 }

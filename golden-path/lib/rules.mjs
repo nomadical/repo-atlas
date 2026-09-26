@@ -33,12 +33,17 @@ export function setRules(file) {
    missing key = "could not tell" and still counts against the component. Logging/tracing
    deliberately lack it — see docs/goldenpath/todo.md. */
 export const CHECKS = [
-  { k: 'lang', name: 'Language', read: (u) => u.language },
-  { k: 'fw', name: 'Framework', read: (u) => u.framework },
-  { k: 'db', name: 'Database', read: (u) => u.database, absent: 'this component has no database' },
-  { k: 'build', name: 'Build', read: (u) => u.buildTool },
-  { k: 'log', name: 'Logging', read: (u) => u.logging },
-  { k: 'trace', name: 'Tracing', read: (u) => u.tracing },
+  { k: 'lang', name: 'Language', read: (row) => row.language },
+  { k: 'fw', name: 'Framework', read: (row) => row.framework },
+  {
+    k: 'db',
+    name: 'Database',
+    read: (row) => row.database,
+    absent: 'this component has no database',
+  },
+  { k: 'build', name: 'Build', read: (row) => row.buildTool },
+  { k: 'log', name: 'Logging', read: (row) => row.logging },
+  { k: 'trace', name: 'Tracing', read: (row) => row.tracing },
 ]
 
 // Derived: a column reads "not collected" until the first night that carries it.
@@ -46,61 +51,72 @@ export let COLLECTED = { lang: true, fw: true, build: true, db: false, log: fals
 
 export function deriveCollected(rows) {
   const seen = { ...COLLECTED }
-  for (const c of CHECKS) {
-    if (seen[c.k]) continue
-    seen[c.k] = rows.some((u) => c.read(u) !== undefined)
+  for (const check of CHECKS) {
+    if (seen[check.k]) continue
+    seen[check.k] = rows.some((row) => check.read(row) !== undefined)
   }
   COLLECTED = seen
   return COLLECTED
 }
 
+const rulesFor = (row) => RULES[row.type] || {}
+
 // In scope = the Golden Path claims at least one rule for this kind.
-export const inScope = (u) => Object.keys(RULES[u.type] || {}).length > 0
+export const inScope = (row) => Object.keys(rulesFor(row)).length > 0
+
+const RULE_ALTERNATIVES = ' / '
+const VALUE_WORD_SEPARATORS = /[^a-z0-9.+#]+/
 
 // Word boundaries, not substrings — `includes` let "Java" pass on "JavaScript".
-// ' / ' in a rule is a list of alternatives.
+// Only the first word of each alternative is compared.
 function conforms(value, spec) {
-  const words = String(value)
-    .toLowerCase()
-    .split(/[^a-z0-9.+#]+/)
-    .filter(Boolean)
-  return spec.split(' / ').some((want) => {
-    const first = want.toLowerCase().split(' ')[0]
-    return words.includes(first)
+  const words = String(value).toLowerCase().split(VALUE_WORD_SEPARATORS).filter(Boolean)
+  return spec.split(RULE_ALTERNATIVES).some((alternative) => {
+    const firstWord = alternative.toLowerCase().split(' ')[0]
+    return words.includes(firstWord)
   })
+}
+
+function noRuleReason(row, check) {
+  if (row.type === 'Unclassified') {
+    return 'No type-* topic on the GitHub repository, so nobody has said which rules apply'
+  }
+  return `Golden Path defines no ${check.name.toLowerCase()} rule for a ${row.type.toLowerCase()}`
+}
+
+function cellOf(row, check, { approved, notApplicable }, asOf) {
+  const spec = rulesFor(row)[check.k]
+  if (!spec) return { s: 'na', reason: noRuleReason(row, check) }
+
+  const curatedNotApplicable = asOfDate((notApplicable[row.repository] || {})[check.k], asOf)
+  if (curatedNotApplicable) return { s: 'na', spec, audit: curatedNotApplicable, curated: true }
+  if (!COLLECTED[check.k]) return { s: 'unk', spec }
+
+  const value = check.read(row)
+  if (value === null && check.absent) {
+    return { s: 'na', spec, reason: `Scanned: ${check.absent}, so the rule has nothing to judge` }
+  }
+  if (value == null) return { s: 'unk', spec }
+  if (conforms(value, spec)) return { s: 'ok', spec, v: value }
+
+  const approval = asOfDate((approved[row.repository] || {})[check.k], asOf)
+  if (approval) return { s: 'dev', spec, v: value, audit: approval }
+  return { s: 'bad', spec, v: value }
 }
 
 // One row of cells: ok, dev (approved deviation), bad, unk (not scanned), na.
 // `asOf` narrows curated decisions to the night being evaluated.
-export function cellsOf(u, decisionLog = {}, asOf) {
+export function cellsOf(row, decisionLog = {}, asOf) {
   const { approved = {}, notApplicable = {}, excluded = {} } = decisionLog
-  const ex = asOfDate(excluded[u.repository], asOf)
-  if (ex) return CHECKS.map(() => ({ s: 'na', audit: ex, excluded: true }))
-  return CHECKS.map((c) => {
-    const spec = (RULES[u.type] || {})[c.k]
-    if (!spec)
-      return {
-        s: 'na',
-        reason:
-          u.type === 'Unclassified'
-            ? 'No type-* topic on the GitHub repository, so nobody has said which rules apply'
-            : `Golden Path defines no ${c.name.toLowerCase()} rule for a ${u.type.toLowerCase()}`,
-      }
-    const custom = asOfDate((notApplicable[u.repository] || {})[c.k], asOf)
-    if (custom) return { s: 'na', spec, audit: custom, curated: true }
-    if (!COLLECTED[c.k]) return { s: 'unk', spec }
-    const v = c.read(u)
-    if (v === null && c.absent)
-      return { s: 'na', spec, reason: `Scanned: ${c.absent}, so the rule has nothing to judge` }
-    if (v == null) return { s: 'unk', spec }
-    if (conforms(v, spec)) return { s: 'ok', spec, v }
-    const appr = asOfDate((approved[u.repository] || {})[c.k], asOf)
-    return appr ? { s: 'dev', spec, v, audit: appr } : { s: 'bad', spec, v }
-  })
+  const exclusion = asOfDate(excluded[row.repository], asOf)
+  if (exclusion) return CHECKS.map(() => ({ s: 'na', audit: exclusion, excluded: true }))
+  return CHECKS.map((check) => cellOf(row, check, { approved, notApplicable }, asOf))
 }
 
+const isConforming = (cell) => cell.s === 'ok' || cell.s === 'dev'
+
 // Not-scanned stays in the denominator: silence is not conformance.
-export const totalOf = (cs) => {
-  const app = cs.filter((c) => c.s !== 'na')
-  return { met: app.filter((c) => c.s === 'ok' || c.s === 'dev').length, of: app.length }
+export const totalOf = (cells) => {
+  const applicable = cells.filter((cell) => cell.s !== 'na')
+  return { met: applicable.filter(isConforming).length, of: applicable.length }
 }

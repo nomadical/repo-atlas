@@ -2,32 +2,40 @@
    entries in order. */
 import { CHECKS, cellsOf } from './rules.mjs'
 
+// A null value means the repository is gone that night.
+function applyChanges(rows, changed) {
+  for (const [repository, row] of Object.entries(changed)) {
+    if (row === null) delete rows[repository]
+    else rows[repository] = row
+  }
+}
+
 // -> [{ d, t, rows }], oldest first. Rows are shared between nights; nobody mutates one.
 export function expandHistory(file) {
-  const cur = {}
+  const current = {}
   return (file.history || []).map(({ date, changed }) => {
-    for (const k of Object.keys(changed)) changed[k] === null ? delete cur[k] : (cur[k] = changed[k])
-    return { d: date, t: Date.parse(date), rows: { ...cur } }
+    applyChanges(current, changed)
+    return { d: date, t: Date.parse(date), rows: { ...current } }
   })
 }
 
 // The end state only — same fold, so the guard and the page cannot disagree.
 export const rowsAfter = (nights) => {
-  const acc = {}
-  for (const { changed } of nights)
-    for (const [k, v] of Object.entries(changed)) {
-      if (v === null) delete acc[k]
-      else acc[k] = v
-    }
-  return acc
+  const rows = {}
+  for (const { changed } of nights) applyChanges(rows, changed)
+  return rows
 }
 
 // Only what moved; a repository that vanished is recorded as null.
-export function diffRows(prev, rows) {
+export function diffRows(previousRows, rows) {
   const changed = {}
-  for (const k of Object.keys(rows))
-    if (JSON.stringify(prev[k]) !== JSON.stringify(rows[k])) changed[k] = rows[k]
-  for (const k of Object.keys(prev)) if (!rows[k]) changed[k] = null
+  for (const repository of Object.keys(rows)) {
+    const moved = JSON.stringify(previousRows[repository]) !== JSON.stringify(rows[repository])
+    if (moved) changed[repository] = rows[repository]
+  }
+  for (const repository of Object.keys(previousRows)) {
+    if (!rows[repository]) changed[repository] = null
+  }
   return changed
 }
 
@@ -36,13 +44,13 @@ export function statsOn(night, { decisionLog = {}, keep = () => true } = {}) {
   const totals = { ok: 0, dev: 0, bad: 0, unk: 0 }
   // One entry per check even when no row survives the filter: the charts index this by column.
   const perCheck = CHECKS.map(() => ({ met: 0, applicable: 0 }))
-  for (const u of Object.values(night.rows)) {
-    if (!keep(u, night.d)) continue
-    cellsOf(u, decisionLog, night.d).forEach((c, i) => {
-      if (c.s === 'na') return
-      totals[c.s]++
-      perCheck[i].applicable++
-      if (c.s === 'ok' || c.s === 'dev') perCheck[i].met++
+  for (const row of Object.values(night.rows)) {
+    if (!keep(row, night.d)) continue
+    cellsOf(row, decisionLog, night.d).forEach((cell, checkIndex) => {
+      if (cell.s === 'na') return
+      totals[cell.s]++
+      perCheck[checkIndex].applicable++
+      if (cell.s === 'ok' || cell.s === 'dev') perCheck[checkIndex].met++
     })
   }
   return { t: night.t, ...totals, perCheck }

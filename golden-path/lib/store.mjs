@@ -7,11 +7,11 @@ export function parseLines(text) {
   return text
     .split('\n')
     .filter(Boolean)
-    .map((l, i) => {
+    .map((line, index) => {
       try {
-        return JSON.parse(l)
+        return JSON.parse(line)
       } catch {
-        console.warn(`skipping malformed line ${i + 1}`)
+        console.warn(`skipping malformed line ${index + 1}`)
         return null
       }
     })
@@ -23,9 +23,10 @@ export function fileStore({ path }) {
     list() {
       try {
         return parseLines(fs.readFileSync(path, 'utf8'))
-      } catch (e) {
-        if (e.code === 'ENOENT') return [] // no file yet == empty log, not an error
-        throw e // any other fs error must NOT read as "no decisions" — the route answers 500
+      } catch (error) {
+        // No file yet is an empty log. Any other fs error must not read as "no decisions".
+        if (error.code === 'ENOENT') return []
+        throw error
       }
     },
     append(entry) {

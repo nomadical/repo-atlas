@@ -19,33 +19,40 @@ import { diffRows } from './lib/history.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.join(HERE, '..')
 const OUT = path.join(HERE, 'history.json')
-const SRC = ['github-meta.json', 'fe-architecture.json', 'backend-tooling.json']
+const SOURCES = ['github-meta.json', 'fe-architecture.json', 'backend-tooling.json']
+const GIT_MAX_BUFFER = 1 << 28
+
 // stderr ignored: `git show` shouts when a file did not exist yet that night, which is expected.
-const git = (...a) =>
-  execFileSync('git', a, {
+const git = (...args) =>
+  execFileSync('git', args, {
     cwd: REPO,
     encoding: 'utf8',
-    maxBuffer: 1 << 28,
+    maxBuffer: GIT_MAX_BUFFER,
     stdio: ['ignore', 'pipe', 'ignore'],
   })
 
 // One commit per date: the last one, so a day carries the state it went to bed with.
-const commits = git('log', '--format=%H %ad', '--date=short', '--', ...SRC)
-  .trim()
-  .split('\n')
-const byDay = new Map()
-for (const line of commits) {
-  // git logs newest first
-  const [sha, day] = line.split(' ')
-  if (!byDay.has(day)) byDay.set(day, sha)
+function lastCommitPerDay() {
+  const lines = git('log', '--format=%H %ad', '--date=short', '--', ...SOURCES)
+    .trim()
+    .split('\n')
+  const shaByDay = new Map()
+  // git logs newest first, so the first commit seen for a day is its last.
+  for (const line of lines) {
+    const [sha, day] = line.split(' ')
+    if (!shaByDay.has(day)) shaByDay.set(day, sha)
+  }
+  return shaByDay
 }
-let days = [...byDay.keys()].sort()
 
 // --days N: keep only the last N calendar nights, for quick smoke-testing this ~7s-per-night replay.
-const daysArg = process.argv.indexOf('--days')
-if (daysArg !== -1) days = days.slice(-Number(process.argv[daysArg + 1]))
+function selectDays(allDays) {
+  const daysFlag = process.argv.indexOf('--days')
+  if (daysFlag === -1) return allDays
+  return allDays.slice(-Number(process.argv[daysFlag + 1]))
+}
 
-const read = (sha, file) => {
+const readAtCommit = (sha, file) => {
   try {
     return JSON.parse(git('show', `${sha}:${file}`))
   } catch {
@@ -55,62 +62,79 @@ const read = (sha, file) => {
 
 function snapshot(sha) {
   return rowsFrom({
-    meta: read(sha, 'github-meta.json'),
-    fe: read(sha, 'fe-architecture.json'),
-    be: read(sha, 'backend-tooling.json'),
+    meta: readAtCommit(sha, 'github-meta.json'),
+    fe: readAtCommit(sha, 'fe-architecture.json'),
+    be: readAtCommit(sha, 'backend-tooling.json'),
   })
 }
 
-const snaps = []
-for (const d of days) {
-  const rows = snapshot(byDay.get(d))
-  if (rows) snaps.push({ d, rows })
-  process.stderr.write(`\r${snaps.length}/${days.length} nights`)
+function replayNights(shaByDay, days) {
+  const snapshots = []
+  for (const day of days) {
+    const rows = snapshot(shaByDay.get(day))
+    if (rows) snapshots.push({ d: day, rows })
+    process.stderr.write(`\r${snapshots.length}/${days.length} nights`)
+  }
+  process.stderr.write('\n')
+  return snapshots
 }
-process.stderr.write('\n')
-if (!snaps.length) throw new Error('no nightly snapshots found in git history')
+
+const FIELDS = {
+  repository: 'GitHub repository name, and the key of the row',
+  type: 'from the type-* topic on the repository; Unclassified when there is none',
+  owner: 'team, from the Component Inventory or the owner-* topic',
+  applications: 'products the component serves',
+  status: 'lifecycle status from the inventory: Current, Planned, Sunsetting',
+  archived: 'present and true when the repository is archived on GitHub',
+  contact: 'technical contact from the inventory',
+  inventoryName: 'inventory display name, present only when it differs from the repository name',
+  archMapIgnore:
+    'present and true when the repository carries the arch-map-ignore topic. That ' +
+    'topic keeps a repository off the architecture map; it says nothing about the Golden Path, ' +
+    'so this page does not read it. Carried as a fact, deliberately unused.',
+  language: 'scanned language and version — Java for backends, TypeScript/JavaScript for front ends',
+  framework: 'scanned framework and version — Quarkus or React',
+  buildTool: 'scanned build tool — Maven or Gradle; null where nothing was scanned',
+}
+
+function printSummary(snapshots, history) {
+  const first = snapshots[0]
+  const last = snapshots[snapshots.length - 1]
+  const lastRows = Object.values(last.rows)
+  const countLast = (predicate) => lastRows.filter(predicate).length
+  const unchangedNights = history.filter((night) => !Object.keys(night.changed).length).length
+  console.log(`${snapshots.length} nights, ${first.d} → ${last.d}`)
+  console.log(
+    `${lastRows.length} repositories on the last night, ` +
+      `${countLast((row) => row.type === 'Unclassified')} unclassified, ` +
+      `${countLast((row) => row.archived)} archived, ` +
+      `${countLast((row) => row.archMapIgnore)} tagged arch-map-ignore`,
+  )
+  console.log(
+    `history.json — ${(statSync(OUT).size / 1024).toFixed(0)} KB, ` +
+      `${unchangedNights} nights with nothing changed`,
+  )
+}
+
+const shaByDay = lastCommitPerDay()
+const days = selectDays([...shaByDay.keys()].sort())
+const snapshots = replayNights(shaByDay, days)
+if (!snapshots.length) throw new Error('no nightly snapshots found in git history')
 
 // The first night lists everything; after that, only what moved.
-const history = snaps.map(({ d, rows }, i) => ({
+const history = snapshots.map(({ d, rows }, index) => ({
   date: d,
-  changed: i ? diffRows(snaps[i - 1].rows, rows) : rows,
+  changed: index ? diffRows(snapshots[index - 1].rows, rows) : rows,
 }))
 
 const out = {
   generatedAt: new Date().toISOString(),
-  source: `replayed from git log over ${SRC.join(', ')} — one entry per night the pipeline ran`,
+  source: `replayed from git log over ${SOURCES.join(', ')} — one entry per night the pipeline ran`,
   format:
     'history[].changed maps a repository name to its state that night, or to null if it was ' +
     'gone. Apply the entries in order to rebuild any night; the first one carries every repository.',
-  fields: {
-    repository: 'GitHub repository name, and the key of the row',
-    type: 'from the type-* topic on the repository; Unclassified when there is none',
-    owner: 'team, from the Component Inventory or the owner-* topic',
-    applications: 'products the component serves',
-    status: 'lifecycle status from the inventory: Current, Planned, Sunsetting',
-    archived: 'present and true when the repository is archived on GitHub',
-    contact: 'technical contact from the inventory',
-    inventoryName: 'inventory display name, present only when it differs from the repository name',
-    archMapIgnore:
-      'present and true when the repository carries the arch-map-ignore topic. That ' +
-      'topic keeps a repository off the architecture map; it says nothing about the Golden Path, ' +
-      'so this page does not read it. Carried as a fact, deliberately unused.',
-    language: 'scanned language and version — Java for backends, TypeScript/JavaScript for front ends',
-    framework: 'scanned framework and version — Quarkus or React',
-    buildTool: 'scanned build tool — Maven or Gradle; null where nothing was scanned',
-  },
+  fields: FIELDS,
   history,
 }
 writeFileSync(OUT, JSON.stringify(out, null, 2))
-const last = snaps[snaps.length - 1].rows
-console.log(`${snaps.length} nights, ${snaps[0].d} → ${snaps[snaps.length - 1].d}`)
-console.log(
-  `${Object.keys(last).length} repositories on the last night, ` +
-    `${Object.values(last).filter((r) => r.type === 'Unclassified').length} unclassified, ` +
-    `${Object.values(last).filter((r) => r.archived).length} archived, ` +
-    `${Object.values(last).filter((r) => r.archMapIgnore).length} tagged arch-map-ignore`,
-)
-console.log(
-  `history.json — ${(statSync(OUT).size / 1024).toFixed(0)} KB, ` +
-    `${history.filter((n) => !Object.keys(n.changed).length).length} nights with nothing changed`,
-)
+printSummary(snapshots, history)
