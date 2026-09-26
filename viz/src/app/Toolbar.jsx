@@ -124,11 +124,15 @@ export function DetailSwitch({ mode, setMode }) {
   )
 }
 
-function searchPlaceholder(view) {
-  if (view === 'table') return 'Filter inventory…'
-  if (view === 'integrations') return 'Filter integrations…'
-  return 'Search repos…'
-}
+// What the box does in each view: the graph highlights matches, the other views filter their rows.
+const SEARCH_COPY = new Map([
+  ['graph', { label: 'Search repos', title: 'Highlight matching cards — Enter to step through matches' }],
+  ['table', { label: 'Filter inventory', title: 'Show only the inventory rows that match' }],
+  ['matrix', { label: 'Filter components', title: 'Show only the matrix components that match' }],
+  ['integrations', { label: 'Filter integrations', title: 'Show only the integrations that match' }],
+])
+
+const searchCopy = (view) => SEARCH_COPY.get(view) || SEARCH_COPY.get('graph')
 
 function SearchStepper({ matchIdx, matchCount, stepMatch }) {
   return (
@@ -165,6 +169,7 @@ export function SearchBox({ view, query, setQuery, searchList, matchIdx, stepMat
     else if (searchList.length > 1) stepMatch(1)
     else frameNodes(searchList)
   }
+  const copy = searchCopy(view)
   return (
     <div className="search-wrap">
       <Icon name="search" className="search-icon" />
@@ -172,10 +177,11 @@ export function SearchBox({ view, query, setQuery, searchList, matchIdx, stepMat
         className="search"
         type="search"
         value={query}
-        placeholder={searchPlaceholder(view)}
+        placeholder={copy.label + '…'}
+        aria-label={copy.label}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={onKeyDown}
-        title="Highlight matching cards — Enter to step through matches"
+        title={copy.title}
       />
       {query && view === 'graph' ? (
         <SearchStepper matchIdx={matchIdx} matchCount={searchList.length} stepMatch={stepMatch} />
