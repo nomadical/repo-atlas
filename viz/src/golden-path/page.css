@@ -188,7 +188,10 @@
   background: none;
   color: var(--mut);
   cursor: pointer;
-  padding: 6px 8px;
+  /* 32px is the smallest comfortable hit area; the icon stays 15px. */
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
   display: grid;
   place-items: center;
 }
