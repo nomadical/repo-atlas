@@ -41,6 +41,7 @@ import {
 } from './app/Toolbar.jsx'
 import { contextMenuItems } from './app/contextMenuItems.js'
 import { activatedNodeId } from './app/keyboard.js'
+import { afterLayout, motionDuration, revealNode } from './app/viewport.js'
 import {
   EMPTY_LAYOUT,
   UNDO_LIMIT,
@@ -361,6 +362,9 @@ export default function App() {
   const [helper, setHelper] = useState(NO_HELPER) // alignment guide lines while dragging
   const [ctx, setCtx] = useState(null) // context menu target: { x, y, node }, node null = pane
   const rfRef = useRef(null) // ReactFlow instance
+  const canvasRef = useRef(null)
+  // Until this time a frameNodes() animation owns the viewport, so revealing the selection waits.
+  const framingUntil = useRef(0)
   const layoutUndo = useRef([]) // prior layout snapshots for Cmd/Ctrl+Z
   const pushUndo = useCallback(() => {
     layoutUndo.current.push(layout)
@@ -858,15 +862,27 @@ export default function App() {
   const onSelectScreen = useCallback((screen, clientTitle) => {
     if (screen) setSel({ screen, clientTitle })
   }, [])
+  // Waits for layout so a Details panel opening in the same click has already narrowed the canvas.
   const frameNodes = useCallback((ids) => {
     if (!ids?.length) return
-    rfRef.current?.fitView({
-      nodes: ids.map((id) => ({ id })),
-      duration: FRAME_DURATION,
-      padding: 0.5,
-      maxZoom: 1.3,
-    })
+    framingUntil.current = performance.now() + FRAME_DURATION
+    afterLayout(() =>
+      rfRef.current?.fitView({
+        nodes: ids.map((id) => ({ id })),
+        duration: motionDuration(FRAME_DURATION),
+        padding: 0.5,
+        maxZoom: 1.3,
+      }),
+    )
   }, [])
+  // The Details panel narrows the canvas and can cover the card just selected: pan it back into view.
+  useEffect(() => {
+    if (!selId) return
+    return afterLayout(() => {
+      if (performance.now() < framingUntil.current) return
+      revealNode(rfRef.current, selId, canvasRef.current, FRAME_DURATION)
+    })
+  }, [selId])
   // Cross-navigation from the Details panel. `key` may be a node id, a repo folder or serviceId
   // (adoption chips are keyed by folder), a repo name, or an internal package name. No-op when
   // that node isn't on the map.
@@ -992,7 +1008,10 @@ export default function App() {
     },
     [admin],
   )
-  const fitView = useCallback(() => rfRef.current?.fitView({ duration: FRAME_DURATION, padding: 0.15 }), [])
+  const fitView = useCallback(
+    () => rfRef.current?.fitView({ duration: motionDuration(FRAME_DURATION), padding: 0.15 }),
+    [],
+  )
   const extras = data?.extras
 
   const { filterCount, isDefaultFilters } = filterSummary({ view, facets, layers, hiddenEdges, groupParam })
@@ -1237,7 +1256,7 @@ export default function App() {
             setSel={setSel}
           />
         ) : (
-          <div className="canvas" key={flowKey} onKeyDown={onCanvasKeyDown}>
+          <div className="canvas" key={flowKey} ref={canvasRef} onKeyDown={onCanvasKeyDown}>
             <ReactFlow
               onInit={(instance) => (rfRef.current = instance)}
               colorMode={dark ? 'dark' : 'light'}
