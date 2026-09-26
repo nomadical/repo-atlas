@@ -705,7 +705,7 @@ tbody tr[data-repo]:hover td {
   background: var(--hov);
 }
 /* Nothing dims, so the open row says so itself. */
-tbody tr[data-repo][aria-expanded='true'] td {
+tbody tr[data-repo].open td {
   background: var(--acc-soft);
 }
 tbody tr[data-repo] {
@@ -735,6 +735,15 @@ tr.grp .gm {
   color: var(--acc);
 }
 .nm {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   font-weight: 560;
   overflow: hidden;
   text-overflow: ellipsis;

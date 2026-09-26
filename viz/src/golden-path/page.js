@@ -776,8 +776,9 @@ export function mountPage(hostEl, root) {
     const cells = cellsOf(repo)
     const name = esc(repo.repository)
     const title = name + (repo.inventoryName ? ` — inventory: ${esc(repo.inventoryName)}` : '')
-    return `<tr tabindex="0" role="button" aria-haspopup="dialog" data-repo="${name}" aria-expanded="false">
-      <td><div class="nm" title="${title}">${name}</div><div class="sub2">${rowBadges(repo)}
+    // The row stays a table row; its name is the button, and a click anywhere on the row does the same.
+    return `<tr data-repo="${name}">
+      <td><button class="nm" type="button" aria-expanded="false" aria-controls="drawer" title="${title}">${name}</button><div class="sub2">${rowBadges(repo)}
         </div></td>
       ${cells.map(checkCellHtml).join('')}
       <td><div class="total">${rowTotalHtml(cells)}</div></td></tr>`
@@ -1155,8 +1156,13 @@ export function mountPage(hostEl, root) {
     byId('exclude-all')?.addEventListener('click', () => mountForm('exclude'))
   }
 
+  function markRow(row, open) {
+    row.classList.toggle('open', open)
+    row.querySelector('.nm').setAttribute('aria-expanded', String(open))
+  }
+
   function markOpenRow(repoName) {
-    for (const row of tableRows()) row.setAttribute('aria-expanded', String(row.dataset.repo === repoName))
+    for (const row of tableRows()) markRow(row, row.dataset.repo === repoName)
     lastRow = root.querySelector(`tbody tr[data-repo="${CSS.escape(repoName)}"]`) || lastRow
   }
 
@@ -1207,8 +1213,8 @@ export function mountPage(hostEl, root) {
     current = null
     byId('drawer').classList.remove('open')
     byId('drawer').setAttribute('aria-hidden', 'true')
-    for (const row of tableRows()) row.setAttribute('aria-expanded', 'false')
-    if (lastRow && root.contains(lastRow)) lastRow.focus()
+    for (const row of tableRows()) markRow(row, false)
+    if (lastRow && root.contains(lastRow)) lastRow.querySelector('.nm').focus()
     if (!fromPopState) writeUrl({ push: true })
   }
 
@@ -1654,14 +1660,6 @@ export function mountPage(hostEl, root) {
   byId('tbl').addEventListener('click', (event) => {
     const row = event.target.closest('tr[data-repo]')
     if (row) openRow(row)
-  })
-  byId('tbl').addEventListener('keydown', (event) => {
-    const row = event.target.closest('tr[data-repo]')
-    if (!row) return
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      openRow(row)
-    }
   })
 
   byId('seg').onclick = onFilterButton
