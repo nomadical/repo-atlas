@@ -3,108 +3,118 @@ import path from 'node:path'
 
 import { AUDIT, ORG } from './_paths.mjs'
 import { repos } from './repos.mjs'
-const R = (f) => JSON.parse(fs.readFileSync(path.join(AUDIT, f), 'utf8'))
-const mid = R('scripts/extras-mid.json')
-// guarded like the screens/backend reads below: a depcruise crash before its final write must
-// degrade to the grep graphs, not kill the whole extras assembly
-let dc = {}
-try {
-  dc = R('scripts/depcruise-out.json')
-} catch {}
-const v1 = R('fe-architecture.json')
-const v1graph = Object.fromEntries(v1.repos.map((r) => [r.folder, r.moduleGraph]))
 
-// The org FE repos, auto-discovered (repos.mjs) — the same scope extras-gather scanned, guarded
-// per-repo in case extras-mid.json predates a newly-cloned repo, and intersected with the
-// assembled model so repos the map excludes (ignored/archived/PoCs) don't leave orphan
-// ownership/testFootprint/purposes blocks in the extras.
-const v1Folders = new Set(v1.repos.map((r) => r.folder))
-const FE_REPOS = repos.feInOrg.filter((r) => mid[r] && v1Folders.has(r))
+function readAuditJson(file) {
+  return JSON.parse(fs.readFileSync(path.join(AUDIT, file), 'utf8'))
+}
 
-// ---- 1. Design-system component catalog ----
-// HAND-AUDITED SNAPSHOT (July 2026), not derived — the catalog + cadence blocks below were read
-// out of the ui repo by hand and are re-emitted verbatim every night. They're stamped with
-// EXTRAS_AUDIT_AS_OF in the output so consumers can tell them from the measured fields;
-// refresh the lists (and the date) when re-auditing.
-// HAND-AUDITED, not derived: a library's real public surface (what the barrel actually exports vs.
-// what merely exists under src/components) and its release habits need a human to read out. Fill
-// these in for your design system and set EXTRAS_AUDIT_AS_OF; the detail panel hides the section
-// while they're null. The asOf is stamped into the output so a consumer can always tell a dated
-// hand-audit from a nightly-measured field.
+function readOptionalAuditJson(file, fallback) {
+  try {
+    return readAuditJson(file)
+  } catch {
+    return fallback
+  }
+}
+
+const gathered = readAuditJson('scripts/extras-mid.json')
+// Optional: a depcruise crash before its final write degrades to the grep graphs.
+const depcruise = readOptionalAuditJson('scripts/depcruise-out.json', {})
+const model = readAuditJson('fe-architecture.json')
+const grepGraphByFolder = new Map(model.repos.map((repo) => [repo.folder, repo.moduleGraph]))
+// Only repos on the assembled map, so excluded ones (ignored, archived, PoCs) leave no orphan blocks.
+const mappedFolders = new Set(model.repos.map((repo) => repo.folder))
+
+// The same scope extras-gather scanned. extras-mid.json can predate a newly cloned repo.
+const FE_REPOS = repos.feInOrg.filter((folder) => gathered[folder] && mappedFolders.has(folder))
+
+// ---- Design-system catalog and cadence (hand-audited) ------------------------------------------
+// A library's real public surface and release habits need a human to read out. Fill these in and
+// set EXTRAS_AUDIT_AS_OF; the detail panel hides the section while they're null. The asOf is
+// emitted so consumers can tell a dated hand-audit from a measured field.
 const EXTRAS_AUDIT_AS_OF = null
 const designSystemCatalog = null
 const designSystemCadence = null
 
-// ---- 3. ownership ----
-const ownership = {}
-for (const repo of FE_REPOS) ownership[repo] = mid[repo].codeowners
-// extras-gather scans FE repos only, so a backend's CODEOWNERS has to be hand-carried here if you
-// want it on the map. Key it by the repo's CANONICAL name — a stale pre-rename key matches no repo
-// card and just sits as dead weight in the extras. e.g.:
+// ---- Ownership -------------------------------------------------------------------------------
+// extras-gather scans FE repos only, so a backend's CODEOWNERS has to be added here by hand, keyed
+// by the repo's canonical name (a pre-rename key matches no card). For example:
 //   ownership['my-backend'] = { present:true, file:'CODEOWNERS',
 //     rules:[{ pattern:'*', owners:['@my-org/backend-team'] }],
 //     owners:['@my-org/backend-team'], curated:true, asOf:EXTRAS_AUDIT_AS_OF }
+const ownership = {}
+for (const folder of FE_REPOS) ownership[folder] = gathered[folder].codeowners
 const reposWithoutCodeowners = Object.entries(ownership)
-  .filter(([, v]) => !v.present)
-  .map(([k]) => k)
+  .filter(([, codeowners]) => !codeowners.present)
+  .map(([folder]) => folder)
 
-// ---- 4. test footprint — counted live per repo by extras-gather.mjs (file-walk) ----
-const testFootprint = {}
-for (const repo of FE_REPOS) {
-  const t = mid[repo].tests
-  testFootprint[repo] = {
-    unitTestFiles: t.unitTotal,
-    breakdown: { dotTest: t.unitTest, dotSpec: t.unitSpec },
-    snapshots: t.snapshots ?? 0,
-    stories: t.stories,
-    playwrightSpecs: t.playwrightSpecs,
-    coverage: t.coverage,
+// ---- Test footprint (counted by extras-gather) -----------------------------------------------
+function testFootprintOf(tests) {
+  return {
+    unitTestFiles: tests.unitTotal,
+    breakdown: { dotTest: tests.unitTest, dotSpec: tests.unitSpec },
+    snapshots: tests.snapshots ?? 0,
+    stories: tests.stories,
+    playwrightSpecs: tests.playwrightSpecs,
+    coverage: tests.coverage,
   }
 }
 
-// ---- 5. purposes ----
-// The purpose is the repo's GitHub description — OWNER-OWNED, the same one-line "what it is" the
-// governance page asks every owner to write. Falls back to the README/package.json first line
-// (extras-gather) only when a repo has no description yet, so a terse or missing description is a
-// visible curation gap for the owner to fix, not something patched over in a central file.
-const descByRepo = Object.fromEntries((v1.repos || []).map((r) => [r.folder, r.inventory?.description || '']))
-const purposes = {}
-for (const repo of FE_REPOS) {
-  const base = mid[repo].purpose
-  const desc = descByRepo[repo]?.trim()
-  purposes[repo] = desc
-    ? { source: 'github description', text: desc, reliable: true }
-    : { source: base.source, text: base.text, reliable: false }
+const testFootprint = {}
+for (const folder of FE_REPOS) testFootprint[folder] = testFootprintOf(gathered[folder].tests)
+
+// ---- Purposes --------------------------------------------------------------------------------
+// The purpose is the repo's GitHub description, which the owner maintains. The README fallback is
+// marked unreliable so a missing description stays a visible gap instead of being patched over.
+const descriptionByFolder = new Map(
+  (model.repos || []).map((repo) => [repo.folder, repo.inventory?.description || '']),
+)
+
+function purposeOf(folder) {
+  const description = descriptionByFolder.get(folder)?.trim()
+  if (description) return { source: 'github description', text: description, reliable: true }
+  const fallback = gathered[folder].purpose
+  return { source: fallback.source, text: fallback.text, reliable: false }
 }
 
-// ---- 6. backend layer (scanned live by backend-scan.mjs from the cloned Java repos) ----
-let backendTooling = { scanned: {}, missing: [] }
-try {
-  backendTooling = R('backend-tooling.json')
-} catch {}
-// canonical GitHub name per repo basename (name-drift.json, from sync-names) — a checkout under a
-// pre-rename folder (e.g. pharma-backend → intervention-backend) still resolves to the curated
-// backend node, so a stale local folder and a canonical CI clone map to the same node.
-let renameMap = {}
-try {
-  const nd = R('name-drift.json')
-  renameMap = Object.fromEntries(
-    (nd.renames || []).map((r) => [r.from.split('/').pop().toLowerCase(), r.to.split('/').pop()]),
-  )
-} catch {}
-const canonicalOf = (name) => renameMap[String(name || '').toLowerCase()] || name
-const backends = {
-  scanned: Object.entries(backendTooling.scanned).map(([folder, s]) => ({
+const purposes = {}
+for (const folder of FE_REPOS) purposes[folder] = purposeOf(folder)
+
+// ---- Backends (scanned by backend-scan.mjs) --------------------------------------------------
+const backendTooling = readOptionalAuditJson('backend-tooling.json', { scanned: {}, missing: [] })
+
+// Canonical GitHub name per repo basename, so a checkout under a pre-rename folder resolves to the
+// same curated backend node as a canonical CI clone.
+function loadRenamedBasenames() {
+  try {
+    const nameDrift = readAuditJson('name-drift.json')
+    const basename = (slug) => slug.split('/').pop()
+    return new Map(
+      (nameDrift.renames || []).map((rename) => [basename(rename.from).toLowerCase(), basename(rename.to)]),
+    )
+  } catch {
+    return new Map()
+  }
+}
+
+const renamedBasenames = loadRenamedBasenames()
+const canonicalOf = (name) => renamedBasenames.get(String(name || '').toLowerCase()) || name
+
+function scannedBackend([folder, scan]) {
+  return {
     folder,
-    repoName: s.repoName || folder,
-    canonicalName: canonicalOf(s.repoName || folder),
-    defaultBranch: s.defaultBranch,
-    lastCommit: s.lastCommit,
-    stack: { language: s.java, framework: s.framework, build: s.buildTool },
-    tooling: s.tooling,
-    modules: s.modules,
+    repoName: scan.repoName || folder,
+    canonicalName: canonicalOf(scan.repoName || folder),
+    defaultBranch: scan.defaultBranch,
+    lastCommit: scan.lastCommit,
+    stack: { language: scan.java, framework: scan.framework, build: scan.buildTool },
+    tooling: scan.tooling,
+    modules: scan.modules,
     method: 'static (build.gradle/pom.xml + settings.gradle includes / pom <module>)',
-  })),
+  }
+}
+
+const backends = {
+  scanned: Object.entries(backendTooling.scanned).map(scannedBackend),
   missing: backendTooling.missing.map((folder) => ({
     folder,
     status: 'missing',
@@ -112,124 +122,141 @@ const backends = {
   })),
 }
 
-// ---- 7. accurate module graphs ----
-// depcruise (TS-resolved) where it ran; otherwise the grep graph from the main pipeline when
-// that repo produced one; n/a for repos with no src/ graph at all.
-const accurateModuleGraphs = {
-  method: 'depcruise where node_modules+typescript available; grep fallback otherwise',
-  perRepo: {},
+// ---- Accurate module graphs ------------------------------------------------------------------
+// depcruise (TS-resolved) where it ran, else the main pipeline's grep graph, else n/a.
+// depcruise misses the CRA baseUrl aliases in this repo, so its grep graph is flagged as better.
+const DEPCRUISE_UNDERCOUNTED_REPO = 'knowledge-base'
+
+function depcruiseGraph(folder, result) {
+  const graph = {
+    method: 'depcruise',
+    tsResolved: true,
+    modules: result.modules,
+    resolvedDeps: result.resolvedDeps,
+    crossFolderEdges: result.crossFolderEdges,
+    edges: result.edges,
+  }
+  if (folder === DEPCRUISE_UNDERCOUNTED_REPO) {
+    graph.warning =
+      'depcruise resolved only 1 cross-folder edge (CRA tsconfig/jsconfig baseUrl aliases not picked up); grep graph (25 edges) is more representative.'
+    graph.grepCrossFolderEdges = grepGraphByFolder.get(folder)?.crossFolderEdges ?? null
+  }
+  return graph
 }
-for (const repo of FE_REPOS) {
-  if (dc[repo] && dc[repo].method === 'depcruise') {
-    const entry = {
-      method: 'depcruise',
-      tsResolved: true,
-      modules: dc[repo].modules,
-      resolvedDeps: dc[repo].resolvedDeps,
-      crossFolderEdges: dc[repo].crossFolderEdges,
-      edges: dc[repo].edges,
-    }
-    if (repo === 'knowledge-base') {
-      entry.warning =
-        'depcruise resolved only 1 cross-folder edge (CRA tsconfig/jsconfig baseUrl aliases not picked up); grep graph (25 edges) is more representative.'
-      entry.grepCrossFolderEdges = v1graph[repo]?.crossFolderEdges ?? null
-    }
-    accurateModuleGraphs.perRepo[repo] = entry
-  } else if (v1graph[repo]?.edges?.length) {
-    const g = v1graph[repo]
-    accurateModuleGraphs.perRepo[repo] = {
+
+function accurateModuleGraphOf(folder) {
+  const result = depcruise[folder]
+  if (result && result.method === 'depcruise') return depcruiseGraph(folder, result)
+  const grepGraph = grepGraphByFolder.get(folder)
+  if (grepGraph?.edges?.length) {
+    return {
       method: 'grep',
       tsResolved: false,
       reason: 'no node_modules installed -> depcruise cannot resolve TS',
-      crossFolderEdges: g?.crossFolderEdges ?? null,
-      edges: g?.edges ?? [],
+      crossFolderEdges: grepGraph?.crossFolderEdges ?? null,
+      edges: grepGraph?.edges ?? [],
     }
-  } else {
-    accurateModuleGraphs.perRepo[repo] = { method: 'n/a', reason: 'no src/ graph (assets/test-only repo)' }
   }
+  return { method: 'n/a', reason: 'no src/ graph (assets/test-only repo)' }
 }
-// A note on how far the TS-resolved graphs agreed with the grep ones the last time you compared
-// them — the honest way to say how much to trust the grep fallback. Set it when you check.
-accurateModuleGraphs.validation = null
 
-// ---- 8. per-screen views (router-parsed, with best-effort endpoint attribution) ----
-// Reuse the repo-level swagger deep-links from fe-architecture.json so per-screen endpoints render
-// the same clickable links the repo card already shows. Heuristic data — see scripts/screens-gather.mjs.
-let screensRaw = { perRepo: {} }
-try {
-  screensRaw = R('scripts/screens-out.json')
-} catch {}
-// Curated corrections to the heuristic screen data (screens-extra.json, keyed by repo folder):
+const perRepoModuleGraphs = {}
+for (const folder of FE_REPOS) perRepoModuleGraphs[folder] = accurateModuleGraphOf(folder)
+
+const accurateModuleGraphs = {
+  method: 'depcruise where node_modules+typescript available; grep fallback otherwise',
+  perRepo: perRepoModuleGraphs,
+  // How far the TS-resolved graphs agreed with the grep ones when last compared: the honest measure
+  // of how far to trust the grep fallback. Set it when you check.
+  validation: null,
+}
+
+// ---- Per-screen views (router-parsed, heuristic; see screens-gather.mjs) ---------------------
+const gatheredScreens = readOptionalAuditJson('scripts/screens-out.json', { perRepo: {} })
+// Curated corrections, keyed by repo folder:
 //   { "<folder>": { drop:[component…], patch:{ "<component>": { name?, path?, roles?, endpoints?(replace),
 //     addEndpoints?[…] } }, add:[ { name, component?, path?, roles?, endpoints? } ] } }
 // Keys starting with "_" (e.g. _README) are ignored so the file can document itself.
-let screensExtra = {}
-try {
-  screensExtra = R('screens-extra.json')
-} catch {}
+const screenOverrides = readOptionalAuditJson('screens-extra.json', {})
 
-// Apply a folder's curated overrides to its gathered screen list.
-const applyScreenOverrides = (list, ov) => {
-  if (!ov) return list
-  const dropped = new Set(ov.drop || [])
-  let out = list.filter((s) => !dropped.has(s.component) && !dropped.has(s.name))
-  if (ov.patch) {
-    out = out.map((s) => {
-      const p = ov.patch[s.component] || ov.patch[s.name]
-      if (!p) return s
-      const endpoints = p.endpoints
-        ? [...p.endpoints]
-        : [...new Set([...(s.endpoints || []), ...(p.addEndpoints || [])])].sort()
-      return { ...s, ...p, endpoints, curated: true }
-    })
-  }
-  for (const a of ov.add || []) {
-    out.push({
-      name: a.name,
-      component: a.component || a.name,
-      path: a.path || null,
-      paths: a.path ? [a.path] : [],
-      roles: a.roles || [],
-      file: a.file || null,
-      endpoints: (a.endpoints || []).slice().sort(),
-      curated: true,
-    })
-  }
-  out.sort((x, y) => x.name.localeCompare(y.name))
-  return out
+function patchScreen(screen, patches) {
+  const patch = patches[screen.component] || patches[screen.name]
+  if (!patch) return screen
+  const endpoints = patch.endpoints
+    ? [...patch.endpoints]
+    : [...new Set([...(screen.endpoints || []), ...(patch.addEndpoints || [])])].sort()
+  return { ...screen, ...patch, endpoints, curated: true }
 }
 
-const endpointLinksByRepo = Object.fromEntries(v1.repos.map((r) => [r.folder, r.endpointLinks || {}]))
-const mappedRepos = new Set(v1.repos.map((r) => r.folder)) // only repos that exist on the assembled map
+function addedScreen(addition) {
+  return {
+    name: addition.name,
+    component: addition.component || addition.name,
+    path: addition.path || null,
+    paths: addition.path ? [addition.path] : [],
+    roles: addition.roles || [],
+    file: addition.file || null,
+    endpoints: (addition.endpoints || []).slice().sort(),
+    curated: true,
+  }
+}
+
+function applyScreenOverrides(screens, overrides) {
+  if (!overrides) return screens
+  const dropped = new Set(overrides.drop || [])
+  let result = screens.filter((screen) => !dropped.has(screen.component) && !dropped.has(screen.name))
+  if (overrides.patch) result = result.map((screen) => patchScreen(screen, overrides.patch))
+  for (const addition of overrides.add || []) result.push(addedScreen(addition))
+  result.sort((a, b) => a.name.localeCompare(b.name))
+  return result
+}
+
+// Reuses the repo-level swagger deep-links so screen endpoints get the same links as the repo card.
+const endpointLinksByFolder = new Map(model.repos.map((repo) => [repo.folder, repo.endpointLinks || {}]))
+
+function linksUsedBy(screens, links) {
+  const used = {}
+  for (const screen of screens) {
+    for (const endpoint of screen.endpoints) {
+      if (links[endpoint]) used[endpoint] = links[endpoint]
+    }
+  }
+  return used
+}
+
+function collectScreens() {
+  const perRepo = {}
+  // Repos with curated screens only (nothing gathered) still get a block.
+  const overrideFolders = Object.keys(screenOverrides).filter(
+    (key) => !key.startsWith('_') && mappedFolders.has(key),
+  )
+  const folders = new Set([...Object.keys(gatheredScreens.perRepo || {}), ...overrideFolders])
+  for (const folder of folders) {
+    if (!mappedFolders.has(folder)) continue
+    const report = gatheredScreens.perRepo?.[folder] || { method: 'curated', routerFiles: 0, screens: [] }
+    const screens = applyScreenOverrides(report.screens || [], screenOverrides[folder])
+    if (!screens.length) continue
+    perRepo[folder] = {
+      method: report.method,
+      routerFiles: report.routerFiles,
+      endpointLinks: linksUsedBy(screens, endpointLinksByFolder.get(folder) || {}),
+      screens,
+    }
+  }
+  return perRepo
+}
+
 const screens = {
   method:
     'router parse (*Router.tsx / <Route>) + import-graph endpoint tracing; folder fallback; screens-extra.json overrides',
-  perRepo: {},
-}
-// repos that have only curated screens (no gathered data) still get a block from screens-extra
-const overrideFolders = Object.keys(screensExtra).filter((k) => !k.startsWith('_') && mappedRepos.has(k))
-const folders = new Set([...Object.keys(screensRaw.perRepo || {}), ...overrideFolders])
-for (const folder of folders) {
-  if (!mappedRepos.has(folder)) continue
-  const rep = screensRaw.perRepo?.[folder] || { method: 'curated', routerFiles: 0, screens: [] }
-  const finalScreens = applyScreenOverrides(rep.screens || [], screensExtra[folder])
-  if (!finalScreens.length) continue
-  const links = endpointLinksByRepo[folder] || {}
-  const used = {}
-  for (const s of finalScreens) for (const e of s.endpoints) if (links[e]) used[e] = links[e]
-  screens.perRepo[folder] = {
-    method: rep.method,
-    routerFiles: rep.routerFiles,
-    endpointLinks: used,
-    screens: finalScreens,
-  }
+  perRepo: collectScreens(),
 }
 
+// ---- Output ----------------------------------------------------------------------------------
 const out = {
   org: ORG,
   generatedAt: new Date().toISOString(),
   basedOn: 'fe-architecture.json',
-  // componentCatalog/releaseCadence are the dated hand-audit blocks above, not nightly-measured
   designSystem: {
     asOf: EXTRAS_AUDIT_AS_OF,
     componentCatalog: designSystemCatalog,
@@ -241,9 +268,7 @@ const out = {
   purposes,
   backends,
   accurateModuleGraphs,
-  // dated hand-audit observations (some are stale by design — e.g. "only pharma-backend is
-  // present" predates the nightly backend auto-discovery); the asOf says when they were true
-  // Dated hand-audit observations about the estate — things a scan can't see. Add your own.
+  // Dated hand-audit observations a scan can't see. Add your own.
   notes: { asOf: EXTRAS_AUDIT_AS_OF, items: [] },
 }
 fs.writeFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), JSON.stringify(out, null, 2))
