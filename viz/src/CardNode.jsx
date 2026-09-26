@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { KIND } from './graph.js'
 import { Icon } from './icons.jsx'
@@ -57,7 +58,8 @@ function HealthFlag({ health }) {
   )
 }
 
-export default function CardNode({ data, selected }) {
+// Memoised: hover re-renders the canvas, but a card only changes when its data or selection does.
+function CardNode({ data, selected }) {
   const kind = KIND[data.kind] || { color: UNKNOWN_KIND_COLOR, label: data.kind }
   const statusClass = data.status && STATUS_CLASS[data.status]
   const inventory = data.repo?.inventory || data.inventory
@@ -133,3 +135,5 @@ export default function CardNode({ data, selected }) {
     </div>
   )
 }
+
+export default memo(CardNode)

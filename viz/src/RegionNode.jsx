@@ -1,4 +1,4 @@
-import React from 'react'
+import { memo } from 'react'
 import { NodeResizer } from '@xyflow/react'
 
 const MIN_REGION_WIDTH = 160
@@ -6,7 +6,7 @@ const MIN_REGION_HEIGHT = 120
 
 // Cluster outline. The body is click-through (pointer-events:none) so cards stay interactive; the
 // label is the drag handle. Admins get resize handles while the region is selected.
-export default function RegionNode({ data, selected }) {
+function RegionNode({ data, selected }) {
   const reportResize = (_event, params) =>
     data.onResize?.({
       x: Math.round(params.x),
@@ -34,3 +34,5 @@ export default function RegionNode({ data, selected }) {
     </div>
   )
 }
+
+export default memo(RegionNode)

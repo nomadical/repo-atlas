@@ -635,16 +635,19 @@ export default function App() {
   const lit = useMemo(() => (focusNodes ? litAround(focusNodes, graph.edges) : null), [focusNodes, graph])
 
   // Only className changes: spreading the existing nodes keeps their measured dims, so no flicker.
+  // Unchanged nodes and edges keep their identity so React Flow skips re-rendering them.
   useEffect(() => {
     setRfNodes((nodes) =>
       nodes.map((node) => {
         if (node.type === 'region') return node
-        return { ...node, className: lit ? focusClass(lit.ln, node.id) : undefined }
+        const className = lit ? focusClass(lit.ln, node.id) : undefined
+        return node.className === className ? node : { ...node, className }
       }),
     )
     setRfEdges((edges) =>
       edges.map((edge) => {
         const className = lit ? focusClass(lit.le, edge.id) : undefined
+        if (edge.className === className) return edge
         // edge labels render in a portal and read data.dim
         return { ...edge, className, data: { ...edge.data, dim: className === 'dim' } }
       }),
