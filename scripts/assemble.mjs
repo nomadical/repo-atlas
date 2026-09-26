@@ -6,7 +6,13 @@ import { uncloned, OUTSIDE, remoteOf } from './repos.mjs'
 import { loadInventory, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
 import { loadServiceMap, serviceIdentity } from './service-map.mjs'
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } }
+const readJson = (file) => {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return null
+  }
+}
 // Curated per-repo knowledge (FE→BE notes, Azure name maps, …) — data, not code (repo-extra.json).
 const repoExtra = readJson(path.join(AUDIT, 'repo-extra.json')) || {}
 // App config (config.json) — same file the viz reads. The pipeline only needs a couple of fields
@@ -26,7 +32,10 @@ const serviceMap = loadServiceMap()
 for (const e of inventory) Object.assign(e, serviceIdentity(e.name, null, serviceMap))
 // merge third-party metadata onto the matching inventory entries
 const tpMeta = loadThirdPartyMeta()
-for (const e of inventory) { const m = tpMeta[e.name.toLowerCase()]; if (m) e.meta = m }
+for (const e of inventory) {
+  const m = tpMeta[e.name.toLowerCase()]
+  if (m) e.meta = m
+}
 const integrations = loadIntegrations()
 
 // ---- code-derived Kafka integrations (backend-scan.mjs messaging channels) -----------------
@@ -38,9 +47,12 @@ const integrations = loadIntegrations()
 // consumer-only topics come from it. A curated integrations.csv row for the same pair is kept
 // (its channel/note win) but flips to verified — the code confirms it.
 let beTooling = null
-try { beTooling = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-tooling.json'), 'utf8')) } catch {}
+try {
+  beTooling = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-tooling.json'), 'utf8'))
+} catch {}
 if (beTooling?.scanned) {
-  const producers = {}, consumers = {} // topic -> Set(component)
+  const producers = {},
+    consumers = {} // topic -> Set(component)
   for (const [folder, s] of Object.entries(beTooling.scanned)) {
     const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
     for (const ch of s.messaging || []) {
@@ -50,18 +62,25 @@ if (beTooling?.scanned) {
     }
   }
   const pairs = {} // "source\u0000target" -> Set(topics)
-  const addPair = (s, t, topic) => { if (s !== t) (pairs[s + '\u0000' + t] = pairs[s + '\u0000' + t] || new Set()).add(topic) }
+  const addPair = (s, t, topic) => {
+    if (s !== t) (pairs[s + '\u0000' + t] = pairs[s + '\u0000' + t] || new Set()).add(topic)
+  }
   for (const topic of new Set([...Object.keys(producers), ...Object.keys(consumers)])) {
-    const ps = [...(producers[topic] || [])], cs = [...(consumers[topic] || [])]
-    if (ps.length && cs.length) { for (const p of ps) for (const c of cs) addPair(p, c, topic) }
-    else if (ps.length) for (const p of ps) addPair(p, 'Kafka', topic)
+    const ps = [...(producers[topic] || [])],
+      cs = [...(consumers[topic] || [])]
+    if (ps.length && cs.length) {
+      for (const p of ps) for (const c of cs) addPair(p, c, topic)
+    } else if (ps.length) for (const p of ps) addPair(p, 'Kafka', topic)
     else for (const c of cs) addPair('Kafka', c, topic)
   }
   // The edge label shows the first few topics; the COMPLETE list is preserved in `channelFull`
   // whenever it would be truncated, so a busy pair never silently hides a real topic (e.g.
   // one gateway consuming another service's topic behind a bare "+1"). The renderer shows it on hover.
   const SHOWN = 3
-  const label = (ts) => { const a = [...ts].sort(); return a.slice(0, SHOWN).join(', ') + (a.length > SHOWN ? ` +${a.length - SHOWN}` : '') }
+  const label = (ts) => {
+    const a = [...ts].sort()
+    return a.slice(0, SHOWN).join(', ') + (a.length > SHOWN ? ` +${a.length - SHOWN}` : '')
+  }
   const full = (ts) => [...ts].sort().join(', ')
   // Dedup key is (source, target) over KAFKA rows only — mirroring the REST block's
   // protocol-aware pkey below: a pair can legitimately talk both REST and Kafka, so Kafka
@@ -73,19 +92,33 @@ if (beTooling?.scanned) {
     const k = `${r.source}\u0000${r.target}`.toLowerCase()
     if (!(k in byPair)) byPair[k] = r
   }
-  let added = 0, confirmed = 0
+  let added = 0,
+    confirmed = 0
   for (const [key, ts] of Object.entries(pairs)) {
     const [s, t] = key.split('\u0000')
     const cur = byPair[key.toLowerCase()]
-    const ch = label(ts), cf = full(ts)
+    const ch = label(ts),
+      cf = full(ts)
     if (cur) {
       cur.verified = true
       cur.via = 'code'
       cur.curated = true // provenance survives the flip: the Admin panel keeps curated rows in integrations.csv on save
-      if (!cur.channel) { cur.channel = ch; if (cf !== ch) cur.channelFull = cf }
+      if (!cur.channel) {
+        cur.channel = ch
+        if (cf !== ch) cur.channelFull = cf
+      }
       confirmed++
     } else {
-      integrations.push({ source: s, target: t, protocol: 'Kafka', channel: ch, ...(cf !== ch ? { channelFull: cf } : {}), note: 'Derived from mp.messaging topics (backend-scan)', verified: true, via: 'code' })
+      integrations.push({
+        source: s,
+        target: t,
+        protocol: 'Kafka',
+        channel: ch,
+        ...(cf !== ch ? { channelFull: cf } : {}),
+        note: 'Derived from mp.messaging topics (backend-scan)',
+        verified: true,
+        via: 'code',
+      })
       added++
     }
   }
@@ -95,16 +128,30 @@ if (beTooling?.scanned) {
 // auto-derived from the clone/scan/inventory pipeline. graph.js merges this with the live
 // backend scan (extras.backends.scanned) so a newly-cloned backend still appears. Optional:
 // a missing/garbled file degrades to an empty overlay (backends fall back to scan-only).
-let backendTopology = { backends: [], feBe: {}, backendExternals: {}, assetConsumers: [], serviceEdges: [], contentRepos: [], restHostAliases: {} }
+let backendTopology = {
+  backends: [],
+  feBe: {},
+  backendExternals: {},
+  assetConsumers: [],
+  serviceEdges: [],
+  contentRepos: [],
+  restHostAliases: {},
+}
 try {
   const be = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-extra.json'), 'utf8'))
   backendTopology = {
-    backends: be.backends || [], feBe: be.feBe || {}, backendExternals: be.backendExternals || {},
-    assetConsumers: be.assetConsumers || [], serviceEdges: be.serviceEdges || [], contentRepos: be.contentRepos || [],
+    backends: be.backends || [],
+    feBe: be.feBe || {},
+    backendExternals: be.backendExternals || {},
+    assetConsumers: be.assetConsumers || [],
+    serviceEdges: be.serviceEdges || [],
+    contentRepos: be.contentRepos || [],
     restHostAliases: be.restHostAliases || {},
     ...(be.assetsSource ? { assetsSource: be.assetsSource } : {}),
   }
-} catch (e) { console.warn('backend-extra.json not loaded — backend overlay empty:', e.message) }
+} catch (e) {
+  console.warn('backend-extra.json not loaded — backend overlay empty:', e.message)
+}
 
 // ---- code-derived REST integrations (backend-scan.mjs outbound URL config) -----------------
 // These backends don't use a typed REST client — they configure an outbound base URL and call it
@@ -127,15 +174,25 @@ if (beTooling?.scanned) {
     for (const a of [b.id, b.repo, b.label, b.invAlias].filter(Boolean)) beCanon[a.toLowerCase()] = canonName
   }
   const canon = (name) => (name == null ? name : beCanon[String(name).toLowerCase()] || name)
-  const normHost = (h) => String(h || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '')
-    .replace(/:\d+$/, '').replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}').toLowerCase()
-  const regDomain = (h) => { const p = String(h).split('.'); return p.length > 1 ? p.slice(-2).join('.') : h }
+  const normHost = (h) =>
+    String(h || '')
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/:\d+$/, '')
+      .replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}')
+      .toLowerCase()
+  const regDomain = (h) => {
+    const p = String(h).split('.')
+    return p.length > 1 ? p.slice(-2).join('.') : h
+  }
 
   // token -> canonical component, from every resolvable identity already in the data. NB: backend
   // host FIELDS are indexed only as the full host (api.example.com), never the bare head 'api',
   // which would wrongly swallow unrelated externals (api.tive.com, api.dsv.com, …).
   const nodeIndex = {}
-  const put = (tok, name) => { if (tok && !(tok in nodeIndex)) nodeIndex[String(tok).toLowerCase()] = name }
+  const put = (tok, name) => {
+    if (tok && !(tok in nodeIndex)) nodeIndex[String(tok).toLowerCase()] = name
+  }
   for (const e of inventory) put(e.name, canon(e.name))
   for (const b of backendTopology.backends || []) {
     const c = canon(b.id)
@@ -149,7 +206,11 @@ if (beTooling?.scanned) {
   for (const [lname, m] of Object.entries(tpMeta)) {
     const name = byName[lname]?.name || lname
     if (m.url) put(regDomain(normHost(m.url)), name)
-    for (const h of m.hosts || []) { const nh = normHost(h); put(nh, name); put(regDomain(nh), name) }
+    for (const h of m.hosts || []) {
+      const nh = normHost(h)
+      put(nh, name)
+      put(regDomain(nh), name)
+    }
   }
   // Curated internal aliases (backend-extra.json restHostAliases): a URL token (gateway path segment
   // like skycore/<service>, or a host head) that resolves to a component under a different name —
@@ -168,7 +229,7 @@ if (beTooling?.scanned) {
     const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
     for (const p of s.restProvides || []) {
       const comp = canon((p.module && byName[p.module.toLowerCase()]?.name) || repoComponent)
-      ;(rootsByComponent[comp] = rootsByComponent[comp] || new Set())
+      rootsByComponent[comp] = rootsByComponent[comp] || new Set()
       for (const r of p.roots || []) rootsByComponent[comp].add(r)
     }
   }
@@ -191,7 +252,8 @@ if (beTooling?.scanned) {
   // so a derived REST edge must never confirm/swallow the Kafka row for the same pair (or vice versa).
   const pkey = (sc, tg, pr) => `${canon(sc)}\u0000${canon(tg)}\u0000${(pr || 'REST').toLowerCase()}`
   const byPairR = Object.fromEntries(integrations.map((r) => [pkey(r.source, r.target, r.protocol), r]))
-  let addedR = 0, confirmedR = 0
+  let addedR = 0,
+    confirmedR = 0
   const unresolved = new Map() // host -> Set(source)
   for (const [folder, s] of Object.entries(beTooling.scanned)) {
     const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
@@ -204,11 +266,14 @@ if (beTooling?.scanned) {
         continue
       }
       if (target === source) continue // self-reference (e.g. ip.be.application.url → own host)
-      const seg0 = '/' + (((c.path || '').split('/').filter(Boolean))[0] || '')
+      const seg0 = '/' + ((c.path || '').split('/').filter(Boolean)[0] || '')
       const roots = rootsByComponent[target]
-      const channel = roots && roots.has(seg0)
-        ? seg0 // path prefix matches a real @Path resource root on the target → confirmed label
-        : (c.path && c.path !== '/' ? c.path : c.propKey.replace(/[._-]?(base-?url|url|endpoint)$/i, ''))
+      const channel =
+        roots && roots.has(seg0)
+          ? seg0 // path prefix matches a real @Path resource root on the target → confirmed label
+          : c.path && c.path !== '/'
+            ? c.path
+            : c.propKey.replace(/[._-]?(base-?url|url|endpoint)$/i, '')
       const key = pkey(source, target, 'REST')
       const cur = byPairR[key]
       if (cur) {
@@ -218,7 +283,15 @@ if (beTooling?.scanned) {
         if (!cur.channel) cur.channel = channel
         confirmedR++
       } else {
-        const row = { source, target, protocol: 'REST', channel, note: 'Derived from outbound URL config (backend-scan)', verified: true, via: 'code' }
+        const row = {
+          source,
+          target,
+          protocol: 'REST',
+          channel,
+          note: 'Derived from outbound URL config (backend-scan)',
+          verified: true,
+          via: 'code',
+        }
         integrations.push(row)
         byPairR[key] = row
         addedR++
@@ -234,7 +307,10 @@ if (beTooling?.scanned) {
   for (const r of integrations) {
     const k = pkey(r.source, r.target, r.protocol)
     const prev = best.get(k)
-    if (!prev) { best.set(k, r); continue }
+    if (!prev) {
+      best.set(k, r)
+      continue
+    }
     const [win, lose] = rank(r) > rank(prev) ? [r, prev] : [prev, r]
     if (!win.channel && lose.channel) win.channel = lose.channel
     if (!win.note && lose.note) win.note = lose.note
@@ -246,16 +322,22 @@ if (beTooling?.scanned) {
   integrations.push(...best.values())
 
   const unresolvedList = [...unresolved.keys()].sort()
-  console.log(`rest integrations derived from code: ${addedR} added, ${confirmedR} CSV rows confirmed, ${removed} alias-duplicate rows merged, ${unresolvedList.length} unresolved hosts${unresolvedList.length ? ' (' + unresolvedList.join(', ') + ')' : ''}`)
+  console.log(
+    `rest integrations derived from code: ${addedR} added, ${confirmedR} CSV rows confirmed, ${removed} alias-duplicate rows merged, ${unresolvedList.length} unresolved hosts${unresolvedList.length ? ' (' + unresolvedList.join(', ') + ')' : ''}`,
+  )
 }
 
 const INV_ALIAS = {}
 const renamedBasename = {} // local folder -> repo basename after a GitHub rename (filled from name-drift.json below)
 const inventoryFor = (folder) => {
   if (INV_ALIAS[folder]) return byName[INV_ALIAS[folder].toLowerCase()] || null
-  return (byRepo[folder] || [])[0] || (renamedBasename[folder] ? (byRepo[renamedBasename[folder]] || [])[0] : null) || null
+  return (
+    (byRepo[folder] || [])[0] ||
+    (renamedBasename[folder] ? (byRepo[renamedBasename[folder]] || [])[0] : null) ||
+    null
+  )
 }
-const S = (f) => JSON.parse(fs.readFileSync(path.join(AUDIT,'scripts',f),'utf8'))
+const S = (f) => JSON.parse(fs.readFileSync(path.join(AUDIT, 'scripts', f), 'utf8'))
 const gather = S('gather-out.json')
 const wf = S('workflows-out.json')
 const mg = S('modulegraph-out.json')
@@ -267,7 +349,9 @@ const mg = S('modulegraph-out.json')
 // Renames are applied at runtime so links stay canonical even before the local folder/CSV
 // catch up; both cases are surfaced in pipeline health.
 let nameDrift = null
-try { nameDrift = JSON.parse(fs.readFileSync(path.join(AUDIT, 'name-drift.json'), 'utf8')) } catch {}
+try {
+  nameDrift = JSON.parse(fs.readFileSync(path.join(AUDIT, 'name-drift.json'), 'utf8'))
+} catch {}
 const renamedUrl = Object.fromEntries((nameDrift?.renames || []).map((r) => [r.from.toLowerCase(), r.url]))
 const remotes = {}
 for (const g of gather) {
@@ -275,7 +359,10 @@ for (const g of gather) {
   const m = String(url || '').match(/github\.com\/([^/]+\/[^/.]+)/i)
   if (m && renamedUrl[m[1].toLowerCase()]) {
     url = renamedUrl[m[1].toLowerCase()] + '.git'
-    renamedBasename[g.folder] = url.split('/').pop().replace(/\.git$/, '') // keep inventory matching working
+    renamedBasename[g.folder] = url
+      .split('/')
+      .pop()
+      .replace(/\.git$/, '') // keep inventory matching working
   }
   remotes[g.folder] = url
 }
@@ -283,7 +370,19 @@ for (const g of gather) {
 // Graph node kind, derived from the component's type (type-* GitHub topic). Repos outside the
 // configured org are 'external-repo' (out of scope). type-third-party-service never applies to a
 // cloned repo.
-const TYPE_KIND = { 'Client': 'client', 'Service': 'service', 'Library': 'library', 'Assets': 'assets', 'Tests': 'tests', 'Third-Party Service': 'external', 'Firmware': 'firmware', 'Infrastructure': 'infrastructure', 'Hardware': 'hardware', 'Data': 'data', 'Config': 'config' }
+const TYPE_KIND = {
+  Client: 'client',
+  Service: 'service',
+  Library: 'library',
+  Assets: 'assets',
+  Tests: 'tests',
+  'Third-Party Service': 'external',
+  Firmware: 'firmware',
+  Infrastructure: 'infrastructure',
+  Hardware: 'hardware',
+  Data: 'data',
+  Config: 'config',
+}
 const remoteFor = (folder) => remotes[folder] ?? null
 // The same org test discovery used (repos.mjs → _paths.mjs `inOrg`), so a repo accepted there
 // can't be flipped out of scope here.
@@ -296,12 +395,18 @@ const kindFor = (folder) => {
 // Per-repo FE→backend notes (env vars + backend hosts, curated) — repo-extra.json `feToBe`.
 const feToBe = repoExtra.feToBe || {}
 
-const allScanned = gather.map(g => {
+const allScanned = gather.map((g) => {
   const tv = g.tooling
-  const pick = (o) => o ? (o.resolved ?? o.declared ?? null) : null
-  const deploy = (wf[g.folder]||[]).filter(w=>w.deploys).map(w=>({
-    workflow:w.file, triggers:w.triggers, branches:w.branches, environments:w.environments, target:w.target,
-  }))
+  const pick = (o) => (o ? (o.resolved ?? o.declared ?? null) : null)
+  const deploy = (wf[g.folder] || [])
+    .filter((w) => w.deploys)
+    .map((w) => ({
+      workflow: w.file,
+      triggers: w.triggers,
+      branches: w.branches,
+      environments: w.environments,
+      target: w.target,
+    }))
   const m = mg[g.folder]
   return {
     folder: g.folder,
@@ -320,51 +425,89 @@ const allScanned = gather.map(g => {
     liveUrl: g.liveUrl ?? null,
     apiUrl: g.apiUrl ?? null,
     swagger: g.swagger ?? null,
-    internalDeps: g.internalDeps.map(d=>({name:d.name,version:d.version,dev:d.dev})),
+    internalDeps: g.internalDeps.map((d) => ({ name: d.name, version: d.version, dev: d.dev })),
     legacyPackages: g.legacyPackages,
     toolingVersions: {
-      react: pick(tv.react), vite: pick(tv.vite), typescript: pick(tv.typescript),
+      react: pick(tv.react),
+      vite: pick(tv.vite),
+      typescript: pick(tv.typescript),
       mui: pick(tv.mui),
       storybook: tv.storybook.pkg ? `${tv.storybook.pkg}@${pick(tv.storybook)}` : null,
       node: tv.node.value ? `${tv.node.value} (${tv.node.source})` : null,
-      buildTool: g.scripts?.start?.includes('craco')||g.scripts?.start?.includes('react-scripts')||g.scripts?.build?.includes('react-scripts') ? 'CRA/craco (react-scripts)' : (pick(tv.vite) ? 'vite' : (g.scripts?.dev?.includes('astro')?'astro':'other')),
+      buildTool:
+        g.scripts?.start?.includes('craco') ||
+        g.scripts?.start?.includes('react-scripts') ||
+        g.scripts?.build?.includes('react-scripts')
+          ? 'CRA/craco (react-scripts)'
+          : pick(tv.vite)
+            ? 'vite'
+            : g.scripts?.dev?.includes('astro')
+              ? 'astro'
+              : 'other',
     },
-    moduleGraph: m ? { method:m.method, crossFolderEdges:m.crossFolderEdges, srcFiles:m.srcFiles??null, topFolders:m.topFolders??null, edges:m.edges } : { method:'grep', crossFolderEdges:0, edges:[], note:'no src/ dir' },
-    deployment: deploy.length?deploy:[{note:'no deploying workflow detected'}],
-    feToBe: feToBe[g.folder] || { method:'grep', backends:[] },
+    moduleGraph: m
+      ? {
+          method: m.method,
+          crossFolderEdges: m.crossFolderEdges,
+          srcFiles: m.srcFiles ?? null,
+          topFolders: m.topFolders ?? null,
+          edges: m.edges,
+        }
+      : { method: 'grep', crossFolderEdges: 0, edges: [], note: 'no src/ dir' },
+    deployment: deploy.length ? deploy : [{ note: 'no deploying workflow detected' }],
+    feToBe: feToBe[g.folder] || { method: 'grep', backends: [] },
   }
 })
 
 // attach the inventory record (from GitHub topics/description/properties) to each scanned repo
-for (const r of allScanned) { const e = inventoryFor(r.folder); if (e) r.inventory = e }
+for (const r of allScanned) {
+  const e = inventoryFor(r.folder)
+  if (e) r.inventory = e
+}
 // Two local clones of the SAME GitHub repo (e.g. a leftover checkout under the pre-rename folder
 // name) would draw duplicate cards — keep the clone whose folder matches the canonical repo
 // basename (else the freshest), and surface the shadowed folder in pipeline health.
 const byRemote = {}
-for (const r of allScanned) if (r.remote) (byRemote[r.remote.toLowerCase()] = byRemote[r.remote.toLowerCase()] || []).push(r)
+for (const r of allScanned)
+  if (r.remote) (byRemote[r.remote.toLowerCase()] = byRemote[r.remote.toLowerCase()] || []).push(r)
 const duplicateClones = []
 const shadowed = new Set()
 for (const group of Object.values(byRemote)) {
   if (group.length < 2) continue
-  const base = group[0].remote.split('/').pop().replace(/\.git$/i, '')
-  const keep = group.find((r) => r.folder === base)
-    || [...group].sort((a, b) => String(b.lastCommit || '').localeCompare(String(a.lastCommit || '')))[0]
-  for (const r of group) if (r !== keep) { shadowed.add(r.folder); duplicateClones.push(`${r.folder} — same repo as ${keep.folder} (stale clone, remove it)`) }
+  const base = group[0].remote
+    .split('/')
+    .pop()
+    .replace(/\.git$/i, '')
+  const keep =
+    group.find((r) => r.folder === base) ||
+    [...group].sort((a, b) => String(b.lastCommit || '').localeCompare(String(a.lastCommit || '')))[0]
+  for (const r of group)
+    if (r !== keep) {
+      shadowed.add(r.folder)
+      duplicateClones.push(`${r.folder} — same repo as ${keep.folder} (stale clone, remove it)`)
+    }
 }
 // The map shows CURATED components only — repos that carry inventory topics. The org-wide CI
 // clone also pulls in POCs, archived repos, themes, load-test harnesses and rename-duplicates;
 // those have no topics, so they're excluded here and surfaced as a curation backlog
 // (validation.uncuratedRepos). Repos outside the configured org have no inventory either.
-const repos = allScanned.filter(r => r.inventory && !shadowed.has(r.folder))
+const repos = allScanned.filter((r) => r.inventory && !shadowed.has(r.folder))
 // Service identity for each drawn repo (backlog #16, Phase 1 — additive): serviceId = its inventory
 // name, serviceRepo = its own folder. Default is identity, so the viz (still folder-keyed) is unchanged.
 for (const r of repos) Object.assign(r, serviceIdentity(r.inventory?.name ?? r.folder, r.folder, serviceMap))
-const uncuratedRepos = allScanned.filter(r => !r.inventory && !shadowed.has(r.folder) && !OUTSIDE.includes(r.folder) && !ignored.has(r.folder)).map(r => r.folder)
+const uncuratedRepos = allScanned
+  .filter(
+    (r) => !r.inventory && !shadowed.has(r.folder) && !OUTSIDE.includes(r.folder) && !ignored.has(r.folder),
+  )
+  .map((r) => r.folder)
 // "New" repos: created on GitHub within the last ARCH_NEW_REPO_DAYS (default 90). Replaces the
 // old hardcoded last-known-repo snapshot — derived from live metadata, and self-expiring.
 const NEW_REPO_DAYS = Number(process.env.ARCH_NEW_REPO_DAYS) > 0 ? Number(process.env.ARCH_NEW_REPO_DAYS) : 90
 const newlyDiscovered = repos
-  .filter((r) => r.inventory?.createdAt && Date.now() - Date.parse(r.inventory.createdAt) < NEW_REPO_DAYS * 86400000)
+  .filter(
+    (r) =>
+      r.inventory?.createdAt && Date.now() - Date.parse(r.inventory.createdAt) < NEW_REPO_DAYS * 86400000,
+  )
   .map((r) => r.folder)
 
 // The design-system package(s) that resolve to the single `ui` hub card, from config.json
@@ -375,34 +518,46 @@ const UI_PACKAGES = new Set(Array.isArray(appConfig.uiPackages) ? appConfig.uiPa
 const isUiPkg = (name) => UI_PACKAGES.has(name)
 // Exclude the design system itself (it yalc-links its own package during local dev, which would
 // otherwise register as a self-consumer with a bogus file: version).
-const uiConsumers = repos.filter(r=>!isUiPkg(r.name) && r.internalDeps.some(d=>isUiPkg(d.name)))
-  .map(r=>({repo:r.folder, version:r.internalDeps.find(d=>isUiPkg(d.name)).version}))
-const legacyPackages = repos.filter(r=>r.legacyPackages).map(r=>r.folder)
+const uiConsumers = repos
+  .filter((r) => !isUiPkg(r.name) && r.internalDeps.some((d) => isUiPkg(d.name)))
+  .map((r) => ({ repo: r.folder, version: r.internalDeps.find((d) => isUiPkg(d.name)).version }))
+const legacyPackages = repos.filter((r) => r.legacyPackages).map((r) => r.folder)
 
 const driftFor = (getter) => {
   const map = {}
-  for (const r of repos) { const v = getter(r); if (v) (map[v]=map[v]||[]).push(r.folder) }
+  for (const r of repos) {
+    const v = getter(r)
+    if (v) (map[v] = map[v] || []).push(r.folder)
+  }
   const distinct = Object.keys(map)
-  return distinct.length>1 ? Object.entries(map).map(([version,reposIn])=>({version,repos:reposIn})) : []
+  return distinct.length > 1
+    ? Object.entries(map).map(([version, reposIn]) => ({ version, repos: reposIn }))
+    : []
 }
 
 // Folder name(s) the design-system repo is checked out under, so its own source version can be
 // compared against what consumers pin. config.json `uiHubFolders`; defaults to 'ui'.
-const UI_HUB_FOLDERS = Array.isArray(appConfig.uiHubFolders) && appConfig.uiHubFolders.length
-  ? appConfig.uiHubFolders : ['ui']
+const UI_HUB_FOLDERS =
+  Array.isArray(appConfig.uiHubFolders) && appConfig.uiHubFolders.length ? appConfig.uiHubFolders : ['ui']
 const UI_DRIFT_KEY = [...UI_PACKAGES][0] || 'design system'
 
 const versionDrift = {
-  [UI_DRIFT_KEY]: uiConsumers.map(c=>({repo:c.repo,version:c.version}))
+  [UI_DRIFT_KEY]: uiConsumers
+    .map((c) => ({ repo: c.repo, version: c.version }))
     // the library source HEAD version, read from the ui repo's own package.json (never hardcode
     // it — a stamped literal fossilizes and gets re-emitted nightly as if measured)
-    .concat((()=>{ const v = repos.find(r=>UI_HUB_FOLDERS.includes(r.folder))?.version; return v ? [{repo:'ui (library source HEAD)',version:v}] : [] })()),
-  mui: driftFor(r=> r.toolingVersions.mui),
-  storybook: driftFor(r=> r.toolingVersions.storybook),
-  node: driftFor(r=> r.toolingVersions.node),
-  react: driftFor(r=> r.toolingVersions.react),
-  typescript: driftFor(r=> r.toolingVersions.typescript),
-  vite: driftFor(r=> r.toolingVersions.vite),
+    .concat(
+      (() => {
+        const v = repos.find((r) => UI_HUB_FOLDERS.includes(r.folder))?.version
+        return v ? [{ repo: 'ui (library source HEAD)', version: v }] : []
+      })(),
+    ),
+  mui: driftFor((r) => r.toolingVersions.mui),
+  storybook: driftFor((r) => r.toolingVersions.storybook),
+  node: driftFor((r) => r.toolingVersions.node),
+  react: driftFor((r) => r.toolingVersions.react),
+  typescript: driftFor((r) => r.toolingVersions.typescript),
+  vite: driftFor((r) => r.toolingVersions.vite),
 }
 
 // HAND-WRITTEN AUDIT SNAPSHOT — not derived. A place for dated observations a scan can't make
@@ -415,7 +570,7 @@ const notes = []
 // Pipeline self-checks surfaced in the viz (see graph.js for the Unclassified-repo check).
 const orgRepos = repos.filter((r) => r.inOrg !== false && r.kind !== 'external-repo')
 const validation = {
-  newlyDiscovered,                                                  // created on GitHub in the last NEW_REPO_DAYS
+  newlyDiscovered, // created on GitHub in the last NEW_REPO_DAYS
   unclonedOrgRepos: process.env.ATLAS_DISCOVER === '1' ? uncloned() : [], // on the org, missing locally
   staleClones: orgRepos.filter((r) => !r.lastCommit).map((r) => r.folder), // git read failed -> unreliable
   duplicateClones, // two local checkouts of the same GitHub repo (stale pre-rename folder)
@@ -436,14 +591,19 @@ const validation = {
   // fix the topic, or record the decommission) instead of silently forcing it to Removed.
   statusMismatch: inventory
     .filter((e) => e.archived && e.status !== 'Removed')
-    .map((e) => `${e.name} — archived on GitHub but status is ${e.status ? `"${e.status}"` : 'unset'} (should be Removed)`),
+    .map(
+      (e) =>
+        `${e.name} — archived on GitHub but status is ${e.status ? `"${e.status}"` : 'unset'} (should be Removed)`,
+    ),
 }
 
 // ---- Azure overlay (azure-resources.json, written by azure-gather.mjs; optional) ----
 // Maps what is ACTUALLY deployed (storage/Front Door/ACR, read via the az CLI) onto the
 // repos and inventory entries, and cross-checks it against the curated data.
 let azure = null
-try { azure = JSON.parse(fs.readFileSync(path.join(AUDIT, 'azure-resources.json'), 'utf8')) } catch {}
+try {
+  azure = JSON.parse(fs.readFileSync(path.join(AUDIT, 'azure-resources.json'), 'utf8'))
+} catch {}
 
 // Azure app key ({env}{app}website resource name → repo folder) and ACR image name → inventory
 // name (covers renames). OWNER-OWNED via repo custom properties, falling back to repo-extra.json:
@@ -460,7 +620,10 @@ const ACR_ALIAS = { ...(repoExtra.acrAlias || {}) }
 const ACR_REGISTRIES = Array.isArray(appConfig.containerRegistries) ? appConfig.containerRegistries : []
 for (const [name, r] of Object.entries(ghMeta?.repos || {})) {
   const props = r.props || {}
-  for (const key of String(props['azure-app-key'] || '').split(/[\s,]+/).filter(Boolean)) AZURE_APP_MAP[key] = name
+  for (const key of String(props['azure-app-key'] || '')
+    .split(/[\s,]+/)
+    .filter(Boolean))
+    AZURE_APP_MAP[key] = name
   if (props['acr-image']) ACR_ALIAS[props['acr-image']] = inventoryFor(name)?.name || name
 }
 
@@ -471,7 +634,7 @@ if (azure) {
     const r = byFolder[AZURE_APP_MAP[app]]
     if (!r) continue
     r.azure = r.azure || { envs: {} }
-    const moduleUrl = (x) => (x?.path && x.domains?.[0]) ? x.domains[0] + x.path : null
+    const moduleUrl = (x) => (x?.path && x.domains?.[0] ? x.domains[0] + x.path : null)
     for (const [env, e] of Object.entries(a.envs)) {
       const cur = r.azure.envs[env]
       if (cur && (cur.deployed || '') >= (e.deployed || '')) {
@@ -483,34 +646,47 @@ if (azure) {
       }
       const m = moduleUrl(cur)
       r.azure.envs[env] = {
-        domains: e.domains?.length ? e.domains : (cur?.domains || []),
-        deployed: e.deployed || null, storage: e.storage || null, path: e.path || null,
+        domains: e.domains?.length ? e.domains : cur?.domains || [],
+        deployed: e.deployed || null,
+        storage: e.storage || null,
+        path: e.path || null,
         modules: [...new Set([...(cur?.modules || []), ...(m ? [m] : [])])],
       }
     }
   }
   for (const r of repos) {
     if (!r.azure) continue
-    r.azure.lastDeploy = Object.values(r.azure.envs).map((e) => e.deployed).filter(Boolean).sort().pop() || null
+    r.azure.lastDeploy =
+      Object.values(r.azure.envs)
+        .map((e) => e.deployed)
+        .filter(Boolean)
+        .sort()
+        .pop() || null
     const prod = r.azure.envs.prod
     if (prod?.domains?.length) r.liveUrl = prod.domains[0] // real prod domain beats the curated {env} template
   }
 
   // BE services: ACR image last-push + infra resources -> inventory entries
   const invByName = Object.fromEntries(inventory.map((e) => [e.name.toLowerCase(), e]))
-  const invByRepo = Object.fromEntries(inventory.filter((e) => e.repoName).map((e) => [e.repoName.toLowerCase(), e]))
+  const invByRepo = Object.fromEntries(
+    inventory.filter((e) => e.repoName).map((e) => [e.repoName.toLowerCase(), e]),
+  )
   const invFor = (key) => invByName[key.toLowerCase()] || invByRepo[key.toLowerCase()] || null
   // ACR services with no inventory entry: if a GitHub repo of the same name exists, scaffold
   // an entry so the service shows up in the table/matrix as "awaiting curation" (set topics
   // on the repo to complete it) rather than only as a warning chip. (ghMeta loaded above.)
-  const acrUnknown = [], scaffolded = []
+  const acrUnknown = [],
+    scaffolded = []
   for (const [registry, repoMap] of Object.entries(azure.acr || {})) {
     for (const [repo, meta] of Object.entries(repoMap)) {
       // Prefer the alias target, but fall back to the raw repo name so an existing entry that
       // happens to match the repo (e.g. a curated `intervention-backend`) is merged into rather
       // than duplicated by a scaffold (the alias points at a differently-named entry).
       const e = invFor(ACR_ALIAS[repo] || repo) || (ACR_ALIAS[repo] && invFor(repo))
-      if (e) { e.azure = { ...(e.azure || {}), image: `${registry}.azurecr.io/${repo}`, lastPush: meta.lastPush }; continue }
+      if (e) {
+        e.azure = { ...(e.azure || {}), image: `${registry}.azurecr.io/${repo}`, lastPush: meta.lastPush }
+        continue
+      }
       // Only scaffold inventory entries from registries the config claims as first-party — an
       // upstream mirror's images aren't components. Unset => every discovered registry counts.
       if ((ACR_REGISTRIES.length && !ACR_REGISTRIES.includes(registry)) || repo.includes('/')) continue
@@ -519,10 +695,21 @@ if (azure) {
       if (gm && (gm.topics || []).includes('arch-map-ignore')) continue
       if (gm) {
         const entry = {
-          name: repo, abbr: '', type: 'Service', status: '', owner: '', applications: [],
-          description: gm.description || '', contact: '', introDate: '', sunsetDate: '',
-          comment: '', doc: '',
-          repo: gm.url, repoName: repo, scaffold: true,
+          name: repo,
+          abbr: '',
+          type: 'Service',
+          status: '',
+          owner: '',
+          applications: [],
+          description: gm.description || '',
+          contact: '',
+          introDate: '',
+          sunsetDate: '',
+          comment: '',
+          doc: '',
+          repo: gm.url,
+          repoName: repo,
+          scaffold: true,
           azure: { image: `${registry}.azurecr.io/${repo}`, lastPush: meta.lastPush },
         }
         inventory.push(entry)
@@ -534,11 +721,18 @@ if (azure) {
   }
   for (const res of azure.infra || []) {
     const e = res.service && invFor(ACR_ALIAS[res.service] || res.service)
-    if (e) { e.azure = e.azure || {}; (e.azure.infra = e.azure.infra || []).push({ name: res.name, type: res.type.split('/').pop(), env: res.env }) }
+    if (e) {
+      e.azure = e.azure || {}
+      ;(e.azure.infra = e.azure.infra || []).push({
+        name: res.name,
+        type: res.type.split('/').pop(),
+        env: res.env,
+      })
+    }
   }
 
   // drift checks -> pipeline-health popover
-  const recent = (iso, days) => iso && (Date.now() - new Date(iso).getTime()) < days * 86400000
+  const recent = (iso, days) => iso && Date.now() - new Date(iso).getTime() < days * 86400000
   Object.assign(validation, {
     azureUnmappedApps: Object.entries(azure.apps || {})
       .filter(([app, a]) => !AZURE_APP_MAP[app] && Object.values(a.envs).some((e) => e.domains?.length))
@@ -546,12 +740,15 @@ if (azure) {
         const e = a.envs.prod || Object.values(a.envs).find((x) => x.domains?.length)
         return `${app} → ${e.domains[0]}${e.path || ''}`
       }),
-    azureEnvDrift: repos.filter((r) => r.azure).map((r) => {
-      const wfEnvs = new Set(r.deployment.flatMap((d) => d.environments || []))
-      if (!wfEnvs.size) return null
-      const extra = Object.keys(r.azure.envs).filter((e) => !wfEnvs.has(e) && e !== 'sandbox')
-      return extra.length ? `${r.folder}: deployed ${extra.join(', ')} not in workflows` : null
-    }).filter(Boolean),
+    azureEnvDrift: repos
+      .filter((r) => r.azure)
+      .map((r) => {
+        const wfEnvs = new Set(r.deployment.flatMap((d) => d.environments || []))
+        if (!wfEnvs.size) return null
+        const extra = Object.keys(r.azure.envs).filter((e) => !wfEnvs.has(e) && e !== 'sandbox')
+        return extra.length ? `${r.folder}: deployed ${extra.join(', ')} not in workflows` : null
+      })
+      .filter(Boolean),
     azureRemovedButDeployed: inventory
       .filter((e) => /removed|sunsetting/i.test(e.status) && recent(e.azure?.lastPush, 180))
       .map((e) => `${e.name} (image pushed ${e.azure.lastPush.slice(0, 10)})`),
@@ -559,20 +756,23 @@ if (azure) {
     azureAcrNotInInventory: acrUnknown,
     // mappings in this file that point at Azure names that no longer exist (resource renamed/removed)
     azureStaleMappings: [
-      ...Object.keys(AZURE_APP_MAP).filter((k) => !azure.apps?.[k])
+      ...Object.keys(AZURE_APP_MAP)
+        .filter((k) => !azure.apps?.[k])
         .map((k) => `azureAppMap '${k}' — no such app in Azure anymore`),
       ...(() => {
         const known = new Set([
           ...Object.values(azure.acr || {}).flatMap((r) => Object.keys(r)),
           ...(azure.infra || []).map((i) => i.service).filter(Boolean),
         ])
-        return Object.keys(ACR_ALIAS).filter((k) => !known.has(k))
+        return Object.keys(ACR_ALIAS)
+          .filter((k) => !known.has(k))
           .map((k) => `acrAlias '${k}' — not found in ACR or infra names`)
       })(),
       // …and alias VALUES that resolve to no inventory component (component renamed after the
       // alias was written): the infra loop above has no raw-name fallback, so a stale value
       // silently drops that component's azure.infra.
-      ...Object.entries(ACR_ALIAS).filter(([, target]) => !invFor(target))
+      ...Object.entries(ACR_ALIAS)
+        .filter(([, target]) => !invFor(target))
         .map(([k, target]) => `acrAlias '${k}' → '${target}' — no such inventory component (renamed?)`),
     ],
   })
@@ -586,7 +786,10 @@ if (azure) {
 //   3. GitHub primaryLanguage (github-meta.json) — the zero-curation fallback for everything else
 const beStackByRepo = {}
 for (const [folder, s] of Object.entries(beTooling?.scanned || {})) {
-  beStackByRepo[(s.repoName || folder).toLowerCase()] = { language: s.java || 'Java', framework: s.framework || null }
+  beStackByRepo[(s.repoName || folder).toLowerCase()] = {
+    language: s.java || 'Java',
+    framework: s.framework || null,
+  }
 }
 const feStackOf = (r) => {
   const tv = r?.toolingVersions
@@ -597,17 +800,33 @@ const feStackOf = (r) => {
   }
 }
 const repoByFolderOrName = {}
-for (const r of repos) { repoByFolderOrName[r.folder.toLowerCase()] = r; if (r.displayName) repoByFolderOrName[r.displayName.toLowerCase()] = r }
+for (const r of repos) {
+  repoByFolderOrName[r.folder.toLowerCase()] = r
+  if (r.displayName) repoByFolderOrName[r.displayName.toLowerCase()] = r
+}
 for (const e of inventory) {
   const owningRepo = (e.serviceRepo || e.repoName || '').toLowerCase()
-  const stack = beStackByRepo[owningRepo]
-    || feStackOf(repoByFolderOrName[owningRepo])
-    || (ghMeta?.repos?.[e.repoName]?.language ? { language: ghMeta.repos[e.repoName].language, framework: null } : null)
-  if (stack) { e.language = stack.language; if (stack.framework) e.framework = stack.framework }
+  const stack =
+    beStackByRepo[owningRepo] ||
+    feStackOf(repoByFolderOrName[owningRepo]) ||
+    (ghMeta?.repos?.[e.repoName]?.language
+      ? { language: ghMeta.repos[e.repoName].language, framework: null }
+      : null)
+  if (stack) {
+    e.language = stack.language
+    if (stack.framework) e.framework = stack.framework
+  }
 }
 for (const r of repos) {
-  const stack = feStackOf(r) || (ghMeta?.repos?.[r.displayName || r.folder]?.language ? { language: ghMeta.repos[r.displayName || r.folder].language, framework: null } : null)
-  if (stack) { r.language = stack.language; if (stack.framework) r.framework = stack.framework }
+  const stack =
+    feStackOf(r) ||
+    (ghMeta?.repos?.[r.displayName || r.folder]?.language
+      ? { language: ghMeta.repos[r.displayName || r.folder].language, framework: null }
+      : null)
+  if (stack) {
+    r.language = stack.language
+    if (stack.framework) r.framework = stack.framework
+  }
 }
 
 // ---- framework adoption (backend counterpart of uiConsumers) ---------------------------
@@ -617,20 +836,31 @@ const frameworkConsumers = {}
 for (const [folder, s] of Object.entries(beTooling?.scanned || {})) {
   const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
   for (const [fw, info] of Object.entries(s.frameworks || {})) {
-    ;(frameworkConsumers[fw] = frameworkConsumers[fw] || []).push({ name: repoComponent, version: info.version, artifacts: info.artifacts })
+    ;(frameworkConsumers[fw] = frameworkConsumers[fw] || []).push({
+      name: repoComponent,
+      version: info.version,
+      artifacts: info.artifacts,
+    })
   }
 }
 
 const missingRepos = [] // locally-present-but-uncloned repos; nothing detects these today
 
 const out = {
-  org:ORG,
-  generatedAt:new Date().toISOString(),
+  org: ORG,
+  generatedAt: new Date().toISOString(),
   // Only the directory NAME, never the absolute path: this file is committed, and whoever ran the
   // pipeline shouldn't publish their home directory layout along with the model. Enough to tell one
   // checkout dir from another when a run looks wrong.
   scanRoot: path.basename(ROOT),
-  azure: azure ? { generatedAt: azure.generatedAt, subscription: azure.subscription?.name, tenant: azure.subscription?.tenant, warnings: azure.warnings } : null,
+  azure: azure
+    ? {
+        generatedAt: azure.generatedAt,
+        subscription: azure.subscription?.name,
+        tenant: azure.subscription?.tenant,
+        warnings: azure.warnings,
+      }
+    : null,
   validation,
   inventory,
   integrations,
@@ -639,7 +869,12 @@ const out = {
   // restamped nightly as if re-measured; nothing detects that condition in CI and nothing consumes
   // the field, so it's now honestly empty and `missing` is derived from it.
   missingRepos,
-  repoCounts:{ withPackageJson:repos.length, missing:missingRepos.length, inOrg:repos.filter(r=>r.inOrg).length, outsideOrg:repos.filter(r=>!r.inOrg).length },
+  repoCounts: {
+    withPackageJson: repos.length,
+    missing: missingRepos.length,
+    inOrg: repos.filter((r) => r.inOrg).length,
+    outsideOrg: repos.filter((r) => !r.inOrg).length,
+  },
   repos,
   uiConsumers,
   frameworkConsumers,
@@ -648,5 +883,5 @@ const out = {
   // dated hand-audit observations — see NOTES_AS_OF above
   notes: { asOf: NOTES_AS_OF, items: notes },
 }
-fs.writeFileSync(path.join(AUDIT,'fe-architecture.json'), JSON.stringify(out,null,2))
-console.log('wrote fe-architecture.json; repos:',repos.length)
+fs.writeFileSync(path.join(AUDIT, 'fe-architecture.json'), JSON.stringify(out, null, 2))
+console.log('wrote fe-architecture.json; repos:', repos.length)

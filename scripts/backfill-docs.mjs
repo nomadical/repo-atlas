@@ -63,7 +63,12 @@ function rowsFromCsv(text) {
   return rowArrays.map((r) => {
     const o = Object.fromEntries(header.map((h, i) => [h, (r[i] || '').trim()]))
     const v = o[docCol]
-    return { name: o[nameCol], label: isUrl(v) ? '' : v, url: isUrl(v) ? v : '', repoName: repoCol ? repoBasename(o[repoCol]) : null }
+    return {
+      name: o[nameCol],
+      label: isUrl(v) ? '' : v,
+      url: isUrl(v) ? v : '',
+      repoName: repoCol ? repoBasename(o[repoCol]) : null,
+    }
   })
 }
 
@@ -95,7 +100,10 @@ function rowsFromHtml(html) {
     const docCell = cells[docI] || ''
     const href = (docCell.match(/href="([^"]+)"/) || [])[1] || ''
     const label = stripTags(docCell)
-    const repoName = repoI < cells.length ? repoBasename((cells[repoI].match(/href="([^"]+)"/) || [])[1] || cells[repoI]) : null
+    const repoName =
+      repoI < cells.length
+        ? repoBasename((cells[repoI].match(/href="([^"]+)"/) || [])[1] || cells[repoI])
+        : null
     out.push({ name, label: isUrl(label) ? '' : label, url: href || (isUrl(label) ? label : ''), repoName })
   }
   return out
@@ -124,7 +132,8 @@ const resolveTarget = (name, repoName) => {
   // repo record, since several components can share one repo (e.g. the device-data-* family) and the
   // per-repo `doc` can hold only one of their pages.
   if (nonRepoByName.has(name.toLowerCase())) return ['nonRepo', nonRepoByName.get(name.toLowerCase())]
-  if (repoName && (extra.repoExtras[repoName] || !knownRepos || knownRepos.has(repoName))) return ['repo', repoName]
+  if (repoName && (extra.repoExtras[repoName] || !knownRepos || knownRepos.has(repoName)))
+    return ['repo', repoName]
   const keyByName = NAME_TO_KEY[name] || (extra.repoExtras[name] ? name : null)
   if (keyByName) return ['repo', keyByName]
   return [null, null]
@@ -153,9 +162,13 @@ const apply = (rec, tag, label, url) => {
 for (const { name, label, url, repoName } of rows) {
   if ((!label && !url) || !name) continue
   const [kind, ref] = resolveTarget(name, repoName)
-  if (kind === 'repo') apply((extra.repoExtras[ref] = extra.repoExtras[ref] || {}), `${name} (${ref})`, label, url)
+  if (kind === 'repo')
+    apply((extra.repoExtras[ref] = extra.repoExtras[ref] || {}), `${name} (${ref})`, label, url)
   else if (kind === 'nonRepo') apply(ref, `${name} (no-repo)`, label, url)
-  else unmatched.push(`${name}${repoName ? ` (repo ${repoName} not tracked)` : ' (no repo, no matching component)'} → "${label || url}"`)
+  else
+    unmatched.push(
+      `${name}${repoName ? ` (repo ${repoName} not tracked)` : ' (no repo, no matching component)'} → "${label || url}"`,
+    )
 }
 
 const p = (heading, list) => {

@@ -9,21 +9,45 @@ export function InventoryTable({ inventory, query, onSelect, externals = {}, doc
   const [sort, setSort] = useState({ key: 'name', dir: 1 })
   const q = query.trim().toLowerCase()
   const val = (e, k) =>
-    k === 'deployed' ? e.azure?.lastPush || '' : k === 'alerts' ? (e.health?.alerts?.total ?? -1) : k === 'ci' ? e.health?.ci?.conclusion || '' : e[k] || ''
+    k === 'deployed'
+      ? e.azure?.lastPush || ''
+      : k === 'alerts'
+        ? (e.health?.alerts?.total ?? -1)
+        : k === 'ci'
+          ? e.health?.ci?.conclusion || ''
+          : e[k] || ''
   const rows = useMemo(() => {
     let r = inventory
     if (q)
       r = r.filter((e) =>
-        [e.name, e.abbr, e.type, e.status, e.owner, e.contact, e.description, (e.applications || []).join(' ')].join(' ').toLowerCase().includes(q),
+        [
+          e.name,
+          e.abbr,
+          e.type,
+          e.status,
+          e.owner,
+          e.contact,
+          e.description,
+          (e.applications || []).join(' '),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
       )
     return [...r].sort((a, b) => {
       const av = val(a, sort.key)
       const bv = val(b, sort.key)
-      return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) * sort.dir
+      return (
+        (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) *
+        sort.dir
+      )
     })
   }, [inventory, q, sort])
   const th = (key, label) => (
-    <th className={'sortable' + (sort.key === key ? ' sorted' : '')} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}>
+    <th
+      className={'sortable' + (sort.key === key ? ' sorted' : '')}
+      onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}
+    >
       {label}
       {sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
@@ -90,7 +114,9 @@ export function InventoryTable({ inventory, query, onSelect, externals = {}, doc
                   {e.type}
                   {e.subtype ? <div className="muted small">{e.subtype}</div> : null}
                 </td>
-                <td className="small">{[e.language, e.framework].filter(Boolean).join(' · ') || <span className="muted">—</span>}</td>
+                <td className="small">
+                  {[e.language, e.framework].filter(Boolean).join(' · ') || <span className="muted">—</span>}
+                </td>
                 <td>
                   <StatusChip status={e.status} />
                 </td>
@@ -100,7 +126,9 @@ export function InventoryTable({ inventory, query, onSelect, externals = {}, doc
                 <td className="small">{e.owner}</td>
                 <td className="small">
                   {e.health?.ci ? (
-                    <span className={'ci-chip ci-' + (e.health.ci.conclusion || e.health.ci.status || 'unknown')}>
+                    <span
+                      className={'ci-chip ci-' + (e.health.ci.conclusion || e.health.ci.status || 'unknown')}
+                    >
                       {e.health.ci.conclusion || e.health.ci.status}
                     </span>
                   ) : (
@@ -127,7 +155,12 @@ export function InventoryTable({ inventory, query, onSelect, externals = {}, doc
                 <td className="small">{(e.applications || []).join(', ')}</td>
                 <td className="small">
                   {(e.doc || e.docUrl) && docHref(e.doc, e.docUrl, docSearchUrl) ? (
-                    <a href={docHref(e.doc, e.docUrl, docSearchUrl)} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()}>
+                    <a
+                      href={docHref(e.doc, e.docUrl, docSearchUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(ev) => ev.stopPropagation()}
+                    >
                       {e.doc || e.docUrl}
                     </a>
                   ) : (
@@ -163,12 +196,27 @@ export function InventoryTable({ inventory, query, onSelect, externals = {}, doc
 // (see MatrixView) — so this is curation, not a gate, and an empty map is fine.
 const DEFAULT_APP_LABELS = {}
 const appLabelsOf = (config) => {
-  const m = config?.applicationLabels && Object.keys(config.applicationLabels).length ? config.applicationLabels : DEFAULT_APP_LABELS
+  const m =
+    config?.applicationLabels && Object.keys(config.applicationLabels).length
+      ? config.applicationLabels
+      : DEFAULT_APP_LABELS
   return Object.entries(m)
 }
 // Rows reflect the component Type directly (a fixed, sensible order); only types actually present
 // render, and any unknown type appends after the known ones.
-const TYPE_ROWS = ['Client', 'Service', 'Library', 'Tests', 'Third-Party Service', 'Infrastructure', 'Data', 'Config', 'Firmware', 'Hardware', 'Assets']
+const TYPE_ROWS = [
+  'Client',
+  'Service',
+  'Library',
+  'Tests',
+  'Third-Party Service',
+  'Infrastructure',
+  'Data',
+  'Config',
+  'Firmware',
+  'Hardware',
+  'Assets',
+]
 const rowOf = (type) => type || 'Other'
 const MX_STATUS_MOD = { Sunsetting: 'st-sunsetting', Planned: 'st-planned', Removed: 'st-removed' }
 const UNASSIGNED = '(no application)'
@@ -178,17 +226,28 @@ const UNASSIGNED = '(no application)'
 // narrowed by the active group/status filters (facetInventory), so this just lays it out.
 export function MatrixView({ inventory, query, onSelect, config }) {
   const q = query.trim().toLowerCase()
-  const items = q ? inventory.filter((e) => [e.name, e.owner, e.type, e.abbr, (e.applications || []).join(' ')].join(' ').toLowerCase().includes(q)) : inventory
+  const items = q
+    ? inventory.filter((e) =>
+        [e.name, e.owner, e.type, e.abbr, (e.applications || []).join(' ')]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      )
+    : inventory
   const appsOf = (e) => (e.applications && e.applications.length ? e.applications : [UNASSIGNED])
   const present = new Set(items.flatMap(appsOf))
   const appLabels = appLabelsOf(config)
   // columns: known apps (in display order) then any extra; the "no application" column shows as "—".
   const wanted = (full) => present.has(full)
   const cols = appLabels.filter(([full]) => wanted(full))
-  for (const a of present) if (wanted(a) && !appLabels.some(([full]) => full === a) && a !== UNASSIGNED) cols.push([a, a])
+  for (const a of present)
+    if (wanted(a) && !appLabels.some(([full]) => full === a) && a !== UNASSIGNED) cols.push([a, a])
   if (wanted(UNASSIGNED)) cols.push([UNASSIGNED, '—'])
   const rowsPresent = new Set(items.map((e) => rowOf(e.type)))
-  const rows = [...TYPE_ROWS.filter((t) => rowsPresent.has(t)), ...[...rowsPresent].filter((t) => !TYPE_ROWS.includes(t)).sort()]
+  const rows = [
+    ...TYPE_ROWS.filter((t) => rowsPresent.has(t)),
+    ...[...rowsPresent].filter((t) => !TYPE_ROWS.includes(t)).sort(),
+  ]
   const cell = (full, row) => items.filter((e) => appsOf(e).includes(full) && rowOf(e.type) === row)
   return (
     <div className="matrix-wrap">
@@ -238,7 +297,8 @@ export function MatrixView({ inventory, query, onSelect, config }) {
         <span className="mx-chip mx-legend st-removed">Removed</span>
       </div>
       <div className="matrix-note">
-        Columns = Application · rows = component Type · both inferred from the inventory. Header tooltips show the full application name.
+        Columns = Application · rows = component Type · both inferred from the inventory. Header tooltips show
+        the full application name.
       </div>
     </div>
   )
@@ -262,11 +322,19 @@ export function IntegrationsTable({ integrations = [], inventory = [], query, on
   }, [inventory])
   const rows = useMemo(() => {
     let r = integrations
-    if (q) r = r.filter((it) => [it.source, it.target, it.protocol, it.channel, it.note].join(' ').toLowerCase().includes(q))
-    return [...r].sort((a, b) => String(a[sort.key] ?? '').localeCompare(String(b[sort.key] ?? '')) * sort.dir)
+    if (q)
+      r = r.filter((it) =>
+        [it.source, it.target, it.protocol, it.channel, it.note].join(' ').toLowerCase().includes(q),
+      )
+    return [...r].sort(
+      (a, b) => String(a[sort.key] ?? '').localeCompare(String(b[sort.key] ?? '')) * sort.dir,
+    )
   }, [integrations, q, sort])
   const th = (key, label) => (
-    <th className={'sortable' + (sort.key === key ? ' sorted' : '')} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}>
+    <th
+      className={'sortable' + (sort.key === key ? ' sorted' : '')}
+      onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}
+    >
       {label}
       {sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
@@ -304,7 +372,13 @@ export function IntegrationsTable({ integrations = [], inventory = [], query, on
             <tr key={it.source + '→' + it.target + ':' + i}>
               <td className="small">{endpoint(it.source)}</td>
               <td className="small">{endpoint(it.target)}</td>
-              <td className="small">{it.protocol ? <span className="ext-chip">{it.protocol}</span> : <span className="muted">—</span>}</td>
+              <td className="small">
+                {it.protocol ? (
+                  <span className="ext-chip">{it.protocol}</span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
               <td className="small">{it.channel || <span className="muted">—</span>}</td>
               <td className="small">{it.verified ? '✓' : <span className="muted">unverified</span>}</td>
               <td className="small muted">{it.note || ''}</td>

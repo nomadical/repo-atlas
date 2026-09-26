@@ -4,7 +4,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { toParams, fromParams, defaultState, STATE_TO_PARAM, PARAM_KEYS, DEFAULT_SEGMENT } from '../lib/url.mjs'
+import {
+  toParams,
+  fromParams,
+  defaultState,
+  STATE_TO_PARAM,
+  PARAM_KEYS,
+  DEFAULT_SEGMENT,
+} from '../lib/url.mjs'
 
 const qs = (params) => new URLSearchParams(params).toString()
 // A state with nothing left at its default, so the round trip has something to lose on every field.
@@ -23,10 +30,16 @@ test('every field of the state is carried by a parameter', () => {
   /* The one test that catches the mistake nobody would notice: a filter added to the screen and
      wired to the controls, but never serialised. It works perfectly until somebody shares it. */
   for (const key of Object.keys(defaultState())) {
-    assert.ok(STATE_TO_PARAM[key], `state.${key} has no URL parameter — add it to STATE_TO_PARAM (and to toParams/fromParams)`)
+    assert.ok(
+      STATE_TO_PARAM[key],
+      `state.${key} has no URL parameter — add it to STATE_TO_PARAM (and to toParams/fromParams)`,
+    )
   }
   for (const param of Object.values(STATE_TO_PARAM)) {
-    assert.ok(PARAM_KEYS.includes(param), `${param} is missing from PARAM_KEYS, so switching it off would leave it in the address bar`)
+    assert.ok(
+      PARAM_KEYS.includes(param),
+      `${param} is missing from PARAM_KEYS, so switching it off would leave it in the address bar`,
+    )
   }
 })
 
@@ -42,7 +55,11 @@ test('a fully loaded view round-trips unchanged', () => {
 
 test('defaults are never written, so the plain view has a clean URL', () => {
   const params = toParams({ state: defaultState(), range: { key: 'all', from: 1, to: 2 } })
-  assert.deepEqual(params, {}, `nothing should be written for the default view, got ${JSON.stringify(params)}`)
+  assert.deepEqual(
+    params,
+    {},
+    `nothing should be written for the default view, got ${JSON.stringify(params)}`,
+  )
   // ...and reading nothing back gives the default view again.
   assert.deepEqual(fromParams('').state, defaultState())
 })
@@ -86,11 +103,22 @@ test('the state filters read as words in the link', () => {
 })
 
 test('a hand-edited link degrades to the default view rather than breaking', () => {
-  const cases = ['show=nonsense', 'range=nonsense', 'tab=nonsense', 'group=yes', 'range=custom&from=notadate&to=alsonot', 'type=&owner=']
+  const cases = [
+    'show=nonsense',
+    'range=nonsense',
+    'tab=nonsense',
+    'group=yes',
+    'range=custom&from=notadate&to=alsonot',
+    'type=&owner=',
+  ]
   for (const search of cases) {
     const back = fromParams(search)
     assert.equal(back.state.filter, 'all', `${search}: unknown filter falls back to all`)
-    assert.equal(back.state.tab, back.state.tab === 'analytics' ? 'analytics' : 'table', `${search}: tab is one of the two`)
+    assert.equal(
+      back.state.tab,
+      back.state.tab === 'analytics' ? 'analytics' : 'table',
+      `${search}: tab is one of the two`,
+    )
     assert.ok(back.range.key === 'all' || back.range.key === 'custom', `${search}: range is a known key`)
     if (search.includes('notadate')) {
       assert.equal(back.range.from, null, 'an unparsable date reads as absent, so the caller can fall back')
@@ -101,8 +129,14 @@ test('a hand-edited link degrades to the default view rather than breaking', () 
 })
 
 test('lists are order-independent, so the same view is always the same link', () => {
-  const a = toParams({ state: { ...defaultState(), type: new Set(['Client', 'Service']) }, range: { key: 'all' } })
-  const b = toParams({ state: { ...defaultState(), type: new Set(['Service', 'Client']) }, range: { key: 'all' } })
+  const a = toParams({
+    state: { ...defaultState(), type: new Set(['Client', 'Service']) },
+    range: { key: 'all' },
+  })
+  const b = toParams({
+    state: { ...defaultState(), type: new Set(['Service', 'Client']) },
+    range: { key: 'all' },
+  })
   assert.equal(a.type, b.type, 'two readers who picked the same types should produce the same URL')
 })
 

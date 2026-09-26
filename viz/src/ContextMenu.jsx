@@ -36,7 +36,13 @@ export default function ContextMenu({ x, y, items, onClose }) {
     }
   }, [onClose])
   return (
-    <div className="ctx-menu" ref={ref} style={{ left: pos.left, top: pos.top }} role="menu" onContextMenu={(e) => e.preventDefault()}>
+    <div
+      className="ctx-menu"
+      ref={ref}
+      style={{ left: pos.left, top: pos.top }}
+      role="menu"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {list.map((it, i) =>
         it.separator ? (
           <div key={i} className="ctx-sep" />

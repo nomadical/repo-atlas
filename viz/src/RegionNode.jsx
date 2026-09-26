@@ -15,7 +15,14 @@ export default function RegionNode({ data, selected }) {
           color={data.color}
           handleClassName="region-resize-handle"
           lineClassName="region-resize-line"
-          onResizeEnd={(_, p) => data.onResize?.({ x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.width), h: Math.round(p.height) })}
+          onResizeEnd={(_, p) =>
+            data.onResize?.({
+              x: Math.round(p.x),
+              y: Math.round(p.y),
+              w: Math.round(p.width),
+              h: Math.round(p.height),
+            })
+          }
         />
       ) : null}
       <span className="region-label" style={{ color: data.color }}>

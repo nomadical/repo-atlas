@@ -23,7 +23,13 @@ export function Dropdown({ label, badge, caret = true, align = 'left', className
   }, [open])
   return (
     <div className={'dd' + (className ? ' ' + className : '')} ref={ref}>
-      <button className={'btn dd-btn' + (open ? ' on' : '')} onClick={() => setOpen((o) => !o)} title={title} aria-haspopup="menu" aria-expanded={open}>
+      <button
+        className={'btn dd-btn' + (open ? ' on' : '')}
+        onClick={() => setOpen((o) => !o)}
+        title={title}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         {label}
         {badge ? <span className="dd-badge">{badge}</span> : null}
         {caret ? (
@@ -33,7 +39,9 @@ export function Dropdown({ label, badge, caret = true, align = 'left', className
         ) : null}
       </button>
       {open ? (
-        <div className={'dd-menu' + (align === 'right' ? ' right' : '')}>{typeof children === 'function' ? children(() => setOpen(false)) : children}</div>
+        <div className={'dd-menu' + (align === 'right' ? ' right' : '')}>
+          {typeof children === 'function' ? children(() => setOpen(false)) : children}
+        </div>
       ) : null}
     </div>
   )

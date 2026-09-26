@@ -58,7 +58,9 @@ export function fromParams(search) {
     component: p.get('component') || null,
     state: {
       tab: p.get('tab') === 'analytics' ? 'analytics' : 'table',
-      segments: new Set(segments === 'none' ? [] : segments ? segments.split(',').filter(Boolean) : [DEFAULT_SEGMENT]),
+      segments: new Set(
+        segments === 'none' ? [] : segments ? segments.split(',').filter(Boolean) : [DEFAULT_SEGMENT],
+      ),
       type: new Set(list('type')),
       owner: new Set(list('owner')),
       filter: SHOW_STATE[p.get('show')] || 'all',

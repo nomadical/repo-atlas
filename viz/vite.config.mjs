@@ -35,24 +35,42 @@ const PIPELINE = [
   'scripts/depcruise-accurate.mjs',
   'scripts/extras-assemble.mjs',
 ]
-const SCRATCH = ['scripts/gather-out.json','scripts/workflows-out.json','scripts/modulegraph-out.json','scripts/extras-mid.json','scripts/depcruise-out.json']
+const SCRATCH = [
+  'scripts/gather-out.json',
+  'scripts/workflows-out.json',
+  'scripts/modulegraph-out.json',
+  'scripts/extras-mid.json',
+  'scripts/depcruise-out.json',
+]
 
 function readMergedData() {
   const main = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture.json'), 'utf8'))
   let extras = null
-  try { extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8')) } catch {}
+  try {
+    extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8'))
+  } catch {}
   let config = null // app config (editable page title) — admin-curated, not pipeline output
-  try { config = JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')) } catch {}
+  try {
+    config = JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8'))
+  } catch {}
   // Raw inventory-extra so the Admin panel can edit Documentation in read-only deploys (see bundle.mjs)
   let inventoryExtra = null
-  try { inventoryExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'inventory-extra.json'), 'utf8')) } catch {}
+  try {
+    inventoryExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'inventory-extra.json'), 'utf8'))
+  } catch {}
   // Raw service-map so the Admin panel's Services tab is populated (see bundle.mjs)
   let serviceMap = null
-  try { serviceMap = JSON.parse(fs.readFileSync(path.join(AUDIT, 'service-map.json'), 'utf8')) } catch {}
+  try {
+    serviceMap = JSON.parse(fs.readFileSync(path.join(AUDIT, 'service-map.json'), 'utf8'))
+  } catch {}
   return { ...main, extras, config, inventoryExtra, serviceMap }
 }
 
-const json = (res, code, body) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)) }
+const json = (res, code, body) => {
+  res.statusCode = code
+  res.setHeader('content-type', 'application/json')
+  res.end(JSON.stringify(body))
+}
 
 // Curation files the Admin panel reads/writes. Allowlisted so a crafted request can't write an
 // arbitrary path. JSON files are pretty-printed; the integrations file is raw CSV text.
@@ -63,12 +81,25 @@ const CURATION = {
   config: { file: 'config.json', json: true },
   serviceMap: { file: 'service-map.json', json: true },
 }
-const readJsonBody = (req) => new Promise((resolve, reject) => {
-  let d = ''
-  req.on('data', (c) => { d += c; if (d.length > 8 * 1024 * 1024) { req.destroy(); reject(new Error('body too large')) } })
-  req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}) } catch (e) { reject(e) } })
-  req.on('error', reject)
-})
+const readJsonBody = (req) =>
+  new Promise((resolve, reject) => {
+    let d = ''
+    req.on('data', (c) => {
+      d += c
+      if (d.length > 8 * 1024 * 1024) {
+        req.destroy()
+        reject(new Error('body too large'))
+      }
+    })
+    req.on('end', () => {
+      try {
+        resolve(d ? JSON.parse(d) : {})
+      } catch (e) {
+        reject(e)
+      }
+    })
+    req.on('error', reject)
+  })
 
 async function runPipeline() {
   const log = []
@@ -82,7 +113,11 @@ async function runPipeline() {
       return { ok: false, log }
     }
   }
-  for (const f of SCRATCH) { try { fs.unlinkSync(path.join(AUDIT, f)) } catch {} }
+  for (const f of SCRATCH) {
+    try {
+      fs.unlinkSync(path.join(AUDIT, f))
+    } catch {}
+  }
   return { ok: true, log }
 }
 
@@ -119,7 +154,13 @@ function apiPlugin() {
           // Admin panel: raw curation files (so it can edit inventory-extra.json, which is merged
           // away in the served data) and a write-back endpoint.
           if (req.url === '/api/curation' && req.method === 'GET') {
-            const read = (f) => { try { return fs.readFileSync(path.join(AUDIT, f), 'utf8') } catch { return null } }
+            const read = (f) => {
+              try {
+                return fs.readFileSync(path.join(AUDIT, f), 'utf8')
+              } catch {
+                return null
+              }
+            }
             const out = {}
             for (const [key, { file, json: isJson }] of Object.entries(CURATION)) {
               const raw = read(file)

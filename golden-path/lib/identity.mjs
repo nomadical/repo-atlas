@@ -2,7 +2,8 @@
    ALREADY verified token — signature, issuer and expiry are requireAuth's job. */
 
 // Falling order of readability. Identity, not authorization — never gate on this.
-export const authorFrom = (claims = {}) => claims.name || claims.preferred_username || claims.email || 'unknown'
+export const authorFrom = (claims = {}) =>
+  claims.name || claims.preferred_username || claims.email || 'unknown'
 
 /* An address counts only when the directory vouches for it: a verified `email`, or
    `preferred_username` (the UPN, which the user cannot edit). An unverified email would let anyone

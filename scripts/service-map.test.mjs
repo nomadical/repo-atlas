@@ -29,7 +29,10 @@ test('override links a repo-less service to its owning (monorepo) repo', () => {
 
 test('an explicit null override wins over the scanned repo', () => {
   const map = { 'some-service': { repo: null } }
-  assert.deepEqual(serviceIdentity('some-service', 'some-repo', map), { serviceId: 'some-service', serviceRepo: null })
+  assert.deepEqual(serviceIdentity('some-service', 'some-repo', map), {
+    serviceId: 'some-service',
+    serviceRepo: null,
+  })
 })
 
 test('serviceId is always the name verbatim; unmapped falls back to ownRepo', () => {
@@ -45,9 +48,13 @@ test('committed service-map.json overrides resolve against the committed data', 
   const names = new Set((data.inventory || []).map((e) => e.name))
   // known repos = drawn folders ∪ repoNames referenced by inventory (owning repo may be a real repo
   // that isn't cloned in a given run), matching the guard's resolution rule.
-  const knownRepos = new Set([...(data.repos || []).map((r) => r.folder), ...(data.inventory || []).map((e) => e.repoName).filter(Boolean)])
+  const knownRepos = new Set([
+    ...(data.repos || []).map((r) => r.folder),
+    ...(data.inventory || []).map((e) => e.repoName).filter(Boolean),
+  ])
   for (const [name, ov] of Object.entries(map)) {
     assert.ok(names.has(name), `service-map key "${name}" is not a known inventory service`)
-    if (ov.repo != null) assert.ok(knownRepos.has(ov.repo), `service-map "${name}".repo "${ov.repo}" is not a known repo`)
+    if (ov.repo != null)
+      assert.ok(knownRepos.has(ov.repo), `service-map "${name}".repo "${ov.repo}" is not a known repo`)
   }
 })

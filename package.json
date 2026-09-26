@@ -9,6 +9,8 @@
     "history:guard": "node golden-path/guard-history.mjs",
     "test": "node --test scripts/*.test.mjs golden-path/test/*.test.mjs && npm --prefix viz test",
     "build": "npm --prefix viz ci && npm --prefix viz run build && node scripts/bundle.mjs",
-    "dev": "npm --prefix viz run dev"
+    "dev": "npm --prefix viz run dev",
+    "format": "viz/node_modules/.bin/oxfmt --write scripts server golden-path viz/src viz/vite.config.mjs viz/vitest.config.mjs",
+    "format:check": "viz/node_modules/.bin/oxfmt --check scripts server golden-path viz/src viz/vite.config.mjs viz/vitest.config.mjs"
   }
 }

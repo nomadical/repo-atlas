@@ -13,17 +13,30 @@ export const asOfDate = (a, asOf) => {
 // for the nights before the revoke — deleting them would rewrite history in the analytics replay.
 // Null-prototype objects: a component named `__proto__` must be a key, not a prototype write.
 export function replay(entries) {
-  const approved = Object.create(null), notApplicable = Object.create(null), excluded = Object.create(null)
+  const approved = Object.create(null),
+    notApplicable = Object.create(null),
+    excluded = Object.create(null)
   for (const e of entries) {
-    const audit = { ref:e.ref || '', reason:e.reason || '', by:e.author || 'unknown', at:(e.ts || '').slice(0, 10) }
-    if (e.type === 'deviation') approved[e.component] = { ...(approved[e.component] || {}), [e.check]:audit }
-    else if (e.type === 'not-applicable') notApplicable[e.component] = { ...(notApplicable[e.component] || {}), [e.check]:audit }
+    const audit = {
+      ref: e.ref || '',
+      reason: e.reason || '',
+      by: e.author || 'unknown',
+      at: (e.ts || '').slice(0, 10),
+    }
+    if (e.type === 'deviation') approved[e.component] = { ...(approved[e.component] || {}), [e.check]: audit }
+    else if (e.type === 'not-applicable')
+      notApplicable[e.component] = { ...(notApplicable[e.component] || {}), [e.check]: audit }
     else if (e.type === 'exclusion') excluded[e.component] = audit
     else if (e.type === 'revoke') {
       const at = (e.ts || '').slice(0, 10)
-      const mark = (a) => { if (a && !a.revokedAt) a.revokedAt = at }
+      const mark = (a) => {
+        if (a && !a.revokedAt) a.revokedAt = at
+      }
       if (!e.check) mark(excluded[e.component])
-      else { mark((approved[e.component] || {})[e.check]); mark((notApplicable[e.component] || {})[e.check]) }
+      else {
+        mark((approved[e.component] || {})[e.check])
+        mark((notApplicable[e.component] || {})[e.check])
+      }
     }
   }
   return { approved, notApplicable, excluded }
@@ -45,7 +58,8 @@ export function validateEntry(body = {}) {
     return 'check must be a short identifier'
   }
   for (const [field, max] of Object.entries(LIMITS)) {
-    if (body[field] != null && String(body[field]).length > max) return `${field} must be at most ${max} characters`
+    if (body[field] != null && String(body[field]).length > max)
+      return `${field} must be at most ${max} characters`
   }
   return null
 }

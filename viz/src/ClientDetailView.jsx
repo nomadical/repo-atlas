@@ -46,13 +46,21 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
     let r = rep.screens
     if (needle) {
       r = r.filter((s) =>
-        [s.name, s.path, (s.paths || []).join(' '), (s.roles || []).join(' '), (s.endpoints || []).join(' '), (s.components || []).join(' ')]
+        [
+          s.name,
+          s.path,
+          (s.paths || []).join(' '),
+          (s.roles || []).join(' '),
+          (s.endpoints || []).join(' '),
+          (s.components || []).join(' '),
+        ]
           .join(' ')
           .toLowerCase()
           .includes(needle),
       )
     }
-    const val = (s) => (sort.key === 'endpoints' ? s.endpoints?.length || 0 : sort.key === 'route' ? s.path || '' : s.name || '')
+    const val = (s) =>
+      sort.key === 'endpoints' ? s.endpoints?.length || 0 : sort.key === 'route' ? s.path || '' : s.name || ''
     return [...r].sort((a, b) => {
       const av = val(a)
       const bv = val(b)
@@ -61,7 +69,10 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
   }, [rep.screens, q, sort])
 
   const Th = ({ k, children }) => (
-    <th className={'sortable' + (sort.key === k ? ' sorted' : '')} onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}>
+    <th
+      className={'sortable' + (sort.key === k ? ' sorted' : '')}
+      onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}
+    >
       {children}
       {sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
@@ -70,7 +81,12 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
   return (
     <div className="table-wrap">
       <div className="table-meta">
-        <input className="table-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter screens, routes, endpoints, components…" />
+        <input
+          className="table-filter"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Filter screens, routes, endpoints, components…"
+        />
         <span className="muted small">
           {rows.length} of {rep.screens.length} screens
         </span>
@@ -103,7 +119,11 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
                 <div className="screen-name">{s.name}</div>
                 {s.file ? <div className="muted small mono">{s.file}</div> : null}
               </td>
-              <td className="mono small">{(s.paths?.length ? s.paths : s.path ? [s.path] : []).join(', ') || <span className="muted">—</span>}</td>
+              <td className="mono small">
+                {(s.paths?.length ? s.paths : s.path ? [s.path] : []).join(', ') || (
+                  <span className="muted">—</span>
+                )}
+              </td>
               <td className="small">
                 {s.roles?.length ? (
                   <div className="chiprow">
@@ -162,7 +182,8 @@ function ScreensGraph({ data, folder, dark, onSelectScreen, clientTitle }) {
   if (!graph) return null
   const onNodeClick = (_, node) => {
     if (node.data.kind === 'screen') onSelectScreen?.(node.data.screen, clientTitle)
-    else if (node.data.kind === 'endpoint' && node.data.link) window.open(node.data.link, '_blank', 'noopener')
+    else if (node.data.kind === 'endpoint' && node.data.link)
+      window.open(node.data.link, '_blank', 'noopener')
   }
   return (
     <ReactFlow
@@ -222,16 +243,27 @@ export default function ClientDetailView({ data, folder, title, dark, onBack, on
         <span className="client-detail-title">{title || folder}</span>
         {counts ? (
           <span className="client-detail-meta">
-            {counts.screens} screens · {counts.endpoints} endpoints · {counts.backends} backends · {counts.components} UI components
+            {counts.screens} screens · {counts.endpoints} endpoints · {counts.backends} backends ·{' '}
+            {counts.components} UI components
             {rep.method === 'folder' ? ' · folder-inferred' : ''}
           </span>
         ) : null}
         {counts ? (
           <div className="seg-toggle" role="tablist" aria-label="Drill-down view">
-            <button className={'seg' + (mode === 'table' ? ' on' : '')} onClick={() => setMode('table')} role="tab" aria-selected={mode === 'table'}>
+            <button
+              className={'seg' + (mode === 'table' ? ' on' : '')}
+              onClick={() => setMode('table')}
+              role="tab"
+              aria-selected={mode === 'table'}
+            >
               Table
             </button>
-            <button className={'seg' + (mode === 'graph' ? ' on' : '')} onClick={() => setMode('graph')} role="tab" aria-selected={mode === 'graph'}>
+            <button
+              className={'seg' + (mode === 'graph' ? ' on' : '')}
+              onClick={() => setMode('graph')}
+              role="tab"
+              aria-selected={mode === 'graph'}
+            >
               Graph
             </button>
           </div>
@@ -243,10 +275,21 @@ export default function ClientDetailView({ data, folder, title, dark, onBack, on
           <span>No screen data extracted for this client yet.</span>
         </div>
       ) : mode === 'table' ? (
-        <ScreensTable rep={rep} onSelectScreen={onSelectScreen} clientTitle={title || folder} backendOf={backendOf} />
+        <ScreensTable
+          rep={rep}
+          onSelectScreen={onSelectScreen}
+          clientTitle={title || folder}
+          backendOf={backendOf}
+        />
       ) : (
         <>
-          <ScreensGraph data={data} folder={folder} dark={dark} onSelectScreen={onSelectScreen} clientTitle={title || folder} />
+          <ScreensGraph
+            data={data}
+            folder={folder}
+            dark={dark}
+            onSelectScreen={onSelectScreen}
+            clientTitle={title || folder}
+          />
           <div className="legend client-legend">
             <div className="legend-cap">This view</div>
             <div className="legend-item">
@@ -258,7 +301,9 @@ export default function ClientDetailView({ data, folder, title, dark, onBack, on
             <div className="legend-item">
               <span className="dot" style={{ background: KIND.backend.color }} /> Backend
             </div>
-            <div className="legend-item legend-note">screen → endpoint → backend. Click an endpoint to open its API docs.</div>
+            <div className="legend-item legend-note">
+              screen → endpoint → backend. Click an endpoint to open its API docs.
+            </div>
           </div>
         </>
       )}

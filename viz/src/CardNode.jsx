@@ -21,7 +21,11 @@ export default function CardNode({ data, selected }) {
     .filter(Boolean)
     .join('\n')
   return (
-    <div className={'node-card' + (selected ? ' selected' : '') + (statusMod ? ' ' + statusMod : '')} style={{ borderTopColor: k.color }} title={cardTip}>
+    <div
+      className={'node-card' + (selected ? ' selected' : '') + (statusMod ? ' ' + statusMod : '')}
+      style={{ borderTopColor: k.color }}
+      title={cardTip}
+    >
       <Handle type="target" position={Position.Left} className="hidden-handle" />
       <Handle type="source" position={Position.Right} className="hidden-handle" />
       {data.status && data.status !== 'Current' ? (
@@ -32,7 +36,12 @@ export default function CardNode({ data, selected }) {
       {data.tags?.length ? (
         <div className="node-tags" title="Application / product tags">
           {data.tags.map((t) => (
-            <span key={t.label} className="tag" style={{ background: t.color }} title={`Application: ${t.label}`}>
+            <span
+              key={t.label}
+              className="tag"
+              style={{ background: t.color }}
+              title={`Application: ${t.label}`}
+            >
               {t.label}
             </span>
           ))}
@@ -82,7 +91,10 @@ export default function CardNode({ data, selected }) {
           ))}
       </div>
       {data.subtitle ? (
-        <div className="node-sub" title={inv?.abbr || inv?.owner ? 'Group (team) · abbreviation' : 'Repository / description'}>
+        <div
+          className="node-sub"
+          title={inv?.abbr || inv?.owner ? 'Group (team) · abbreviation' : 'Repository / description'}
+        >
           {data.subtitle}
         </div>
       ) : null}

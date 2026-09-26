@@ -41,7 +41,14 @@ function getEdgePosition(node, point) {
 function getEdgeParams(source, target) {
   const sp = getNodeIntersection(source, target)
   const tp = getNodeIntersection(target, source)
-  return { sx: sp.x, sy: sp.y, tx: tp.x, ty: tp.y, sourcePos: getEdgePosition(source, sp), targetPos: getEdgePosition(target, tp) }
+  return {
+    sx: sp.x,
+    sy: sp.y,
+    tx: tp.x,
+    ty: tp.y,
+    sourcePos: getEdgePosition(source, sp),
+    targetPos: getEdgePosition(target, tp),
+  }
 }
 
 export function FloatingEdge({ id, source, target, markerEnd, style, label, labelStyle, data }) {
@@ -65,7 +72,13 @@ export function FloatingEdge({ id, source, target, markerEnd, style, label, labe
       {/* `fill: none` must be inline (not only via the .react-flow__edge-path CSS class): html-to-image
           doesn't carry stylesheet rules into the PNG export, so without it every bezier path fills
           solid black in the exported image. */}
-      <path id={id} className="react-flow__edge-path" d={path} markerEnd={markerEnd} style={{ fill: 'none', ...style }} />
+      <path
+        id={id}
+        className="react-flow__edge-path"
+        d={path}
+        markerEnd={markerEnd}
+        style={{ fill: 'none', ...style }}
+      />
       {label && !data?.dim ? (
         <EdgeLabelRenderer>
           <div

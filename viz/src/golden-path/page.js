@@ -1,8 +1,22 @@
 /* Golden Path compliance screen: interface and state only; all evaluation lives in golden-path/lib/*.mjs.
    Runs in a shadow root whose generic class names would collide with the app's CSS — query via `root`, never `document`. */
-import { loadHistory as fetchHistory, loadExceptions as fetchExceptions, loadRules as fetchRules, appendException } from './data.js'
+import {
+  loadHistory as fetchHistory,
+  loadExceptions as fetchExceptions,
+  loadRules as fetchRules,
+  appendException,
+} from './data.js'
 import { replay, auditLine, asOfDate } from '@golden-path/lib/decision-log.mjs'
-import { RULES, CHECKS, COLLECTED, SOURCE, setRules, deriveCollected, cellsOf as evaluate, totalOf } from '@golden-path/lib/rules.mjs'
+import {
+  RULES,
+  CHECKS,
+  COLLECTED,
+  SOURCE,
+  setRules,
+  deriveCollected,
+  cellsOf as evaluate,
+  totalOf,
+} from '@golden-path/lib/rules.mjs'
 import { SEGMENTS, segmentOf as segmentFor, segmentCounts } from '@golden-path/lib/segments.mjs'
 import { expandHistory, statsOn as statsFor } from '@golden-path/lib/history.mjs'
 import { toParams, fromParams, defaultState, PARAM_KEYS } from '@golden-path/lib/url.mjs'
@@ -134,7 +148,9 @@ export function mountPage(hostEl, root) {
   function syncControls() {
     $id('q').value = state.q
     $id('grp').checked = state.group
-    root.querySelectorAll('#seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.f === state.filter)))
+    root
+      .querySelectorAll('#seg button')
+      .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.f === state.filter)))
   }
   // The map is this same app without ?view=golden-path; it deep-links a node with ?sel=<serviceId|folder>.
   const MAP_URL = location.pathname
@@ -180,11 +196,17 @@ export function mountPage(hostEl, root) {
     const s = SOURCE
     if (s?.name) {
       const when = s.version ? ` v${esc(s.version)}` : s.lastModified ? ` · ${esc(s.lastModified)}` : ''
-      parts.push(s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>${when}` : esc(s.name) + when)
+      parts.push(
+        s.url
+          ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>${when}`
+          : esc(s.name) + when,
+      )
     }
     // Without the decision log an approved deviation reads as an open one — say so.
     if (!decisionLogRead)
-      parts.push('<span class="warn-note" title="Approved deviations cannot be shown, so they are counted as open ones.">decisions unavailable</span>')
+      parts.push(
+        '<span class="warn-note" title="Approved deviations cannot be shown, so they are counted as open ones.">decisions unavailable</span>',
+      )
     root.querySelector('.top .sub').innerHTML = parts.join(' · ')
   }
   // `decisionLogRead`: the decisions on screen are real; `canCurate` gates every editing control. Both server-set.
@@ -274,7 +296,8 @@ export function mountPage(hostEl, root) {
     }
   }
   on(document, 'click', (e) => {
-    if (!inside(e).closest('.ms')) root.querySelectorAll('.ms.open').forEach((m) => m.classList.remove('open'))
+    if (!inside(e).closest('.ms'))
+      root.querySelectorAll('.ms.open').forEach((m) => m.classList.remove('open'))
   })
 
   // Same predicate for every night, so the charts show the history of exactly what the table shows.
@@ -285,7 +308,8 @@ export function mountPage(hostEl, root) {
     if (!state.segments.has(segmentOf(u, asOf))) return false
     if (state.type.size && !state.type.has(u.type)) return false
     if (state.owner.size && !state.owner.has(ownerLabel(u))) return false
-    if (state.q && !`${u.repository} ${u.inventoryName || ''}`.toLowerCase().includes(state.q.toLowerCase())) return false
+    if (state.q && !`${u.repository} ${u.inventoryName || ''}`.toLowerCase().includes(state.q.toLowerCase()))
+      return false
     const cs = cellsOf(u, asOf)
     if (state.filter === 'dev' && !cs.some((c) => c.s === 'bad')) return false
     if (state.filter === 'unk' && !cs.some((c) => c.s === 'unk')) return false
@@ -317,7 +341,9 @@ export function mountPage(hostEl, root) {
       .sort((a, b) => {
         const x = totalOf(cellsOf(a)),
           y = totalOf(cellsOf(b))
-        return (x.of ? x.met / x.of : 1) - (y.of ? y.met / y.of : 1) || a.repository.localeCompare(b.repository)
+        return (
+          (x.of ? x.met / x.of : 1) - (y.of ? y.met / y.of : 1) || a.repository.localeCompare(b.repository)
+        )
       })
     const all = rows.map((u) => cellsOf(u))
 
@@ -341,7 +367,8 @@ export function mountPage(hostEl, root) {
       const n = app.length
       const cnt = (s) => app.filter((x) => x.s === s).length
       const good = cnt('ok') + cnt('dev')
-      const seg = (s, col2) => (cnt(s) ? `<i style="width:${(cnt(s) / n) * 100}%;background:${col2}"></i>` : '')
+      const seg = (s, col2) =>
+        cnt(s) ? `<i style="width:${(cnt(s) / n) * 100}%;background:${col2}"></i>` : ''
       const specs = [...new Set(rows.map((u) => (RULES[u.type] || {})[c.k]).filter(Boolean))]
       const rate = !n
         ? `<span class="ck-rate off">not applicable</span><span class="ck-gap"></span>`
@@ -388,7 +415,8 @@ export function mountPage(hostEl, root) {
       body = rows.map(rowHtml).join('')
     }
 
-    $id('tbl').innerHTML = `<colgroup><col class="c-name">${CHECKS.map(() => '<col class="c-check">').join('')}<col class="c-total"></colgroup>
+    $id('tbl').innerHTML =
+      `<colgroup><col class="c-name">${CHECKS.map(() => '<col class="c-check">').join('')}<col class="c-total"></colgroup>
        <thead><tr><th><span class="ck-name">Component</span><span class="ck-spec">${rows.length} shown of ${DATA.length}</span></th>
         ${head}<th><span class="ck-name">Checks met</span><span class="ck-spec">of applicable</span></th></tr></thead>
        <tbody>${body}</tbody>`
@@ -423,7 +451,8 @@ export function mountPage(hostEl, root) {
         n.querySelector('.ms-btn').setAttribute('aria-expanded', 'true')
       }
     }
-    const list = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+    const list = (xs) =>
+      xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`
     const chosen = SEGMENTS.filter((g) => state.segments.has(g.k))
     const left = SEGMENTS.reduce((n, g) => n + (state.segments.has(g.k) ? 0 : segCounts[g.k] || 0), 0)
     $id('hidden-note').textContent =
@@ -431,7 +460,8 @@ export function mountPage(hostEl, root) {
         ? 'No group selected'
         : chosen.length === SEGMENTS.length
           ? 'Every repository in the organisation'
-          : `Showing ${list(chosen.map((g) => g.label.toLowerCase()))}`) + (left ? ` · ${left} not shown` : '')
+          : `Showing ${list(chosen.map((g) => g.label.toLowerCase()))}`) +
+      (left ? ` · ${left} not shown` : '')
   }
 
   // Rebuilt every render: a curated exclusion moves a repository from one group to another.
@@ -445,7 +475,9 @@ export function mountPage(hostEl, root) {
         <span>${label}${hint ? `<small>${hint}</small>` : ''}</span><span class="n">${n}</span></label>`
     $id('segments').innerHTML =
       row('*', ' all', all, 'All repositories', '', DATA.length) +
-      SEGMENTS.map((g) => row(g.k, '', state.segments.has(g.k), g.label, g.hint, segCounts[g.k] || 0)).join('')
+      SEGMENTS.map((g) => row(g.k, '', state.segments.has(g.k), g.label, g.hint, segCounts[g.k] || 0)).join(
+        '',
+      )
 
     const box = root.querySelector('#segments input[data-seg="*"]')
     box.indeterminate = some
@@ -474,7 +506,9 @@ export function mountPage(hostEl, root) {
       hostEl.setAttribute('data-theme', v)
       localStorage.setItem(THEME_KEY, v)
     }
-    root.querySelectorAll('#theme button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === v)))
+    root
+      .querySelectorAll('#theme button')
+      .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === v)))
   }
   setTheme(localStorage.getItem(THEME_KEY) || 'system')
   $id('theme').onclick = (e) => {
@@ -495,7 +529,8 @@ export function mountPage(hostEl, root) {
       n = document.createElement('div')
       n.id = 'live'
       n.setAttribute('aria-live', 'polite')
-      n.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap'
+      n.style.cssText =
+        'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap'
       root.appendChild(n)
     }
     n.textContent = msg
@@ -507,7 +542,16 @@ export function mountPage(hostEl, root) {
     clearTimeout(toast._t)
     toast._t = setTimeout(() => t.classList.remove('on'), 2600)
   }
-  const stateWord = (c) => (c.s === 'dev' ? 'Approved' : c.s === 'ok' ? 'Conforms' : c.s === 'bad' ? 'Deviation' : c.s === 'na' ? 'n/a' : 'Not scanned')
+  const stateWord = (c) =>
+    c.s === 'dev'
+      ? 'Approved'
+      : c.s === 'ok'
+        ? 'Conforms'
+        : c.s === 'bad'
+          ? 'Deviation'
+          : c.s === 'na'
+            ? 'n/a'
+            : 'Not scanned'
 
   // Which decisions a cell can move to; non-curators get none but still see what was decided.
   function movesFor(c) {
@@ -515,11 +559,23 @@ export function mountPage(hostEl, root) {
     if (c.s === 'bad')
       return [
         { v: 'deviation', label: 'Approve deviation', hint: 'Divergence is accepted; counts as met.' },
-        { v: 'not-applicable', label: 'Not applicable', hint: 'The rule does not apply here; leaves the total.' },
+        {
+          v: 'not-applicable',
+          label: 'Not applicable',
+          hint: 'The rule does not apply here; leaves the total.',
+        },
       ]
-    if (c.s === 'unk') return [{ v: 'not-applicable', label: 'Not applicable', hint: 'The rule does not apply here; leaves the total.' }]
+    if (c.s === 'unk')
+      return [
+        {
+          v: 'not-applicable',
+          label: 'Not applicable',
+          hint: 'The rule does not apply here; leaves the total.',
+        },
+      ]
     if (c.s === 'dev') return [{ v: 'revoke', label: 'Remove approval', hint: 'Back to an open deviation.' }]
-    if (c.s === 'na' && c.curated) return [{ v: 'revoke', label: 'Remove exemption', hint: 'Back into the total.' }]
+    if (c.s === 'na' && c.curated)
+      return [{ v: 'revoke', label: 'Remove exemption', hint: 'Back into the total.' }]
     return []
   }
 
@@ -547,7 +603,15 @@ export function mountPage(hostEl, root) {
   }
 
   function checkRow(c, i) {
-    const spec = c.excluded ? 'Not assessed' : !c.spec ? c.reason : c.s === 'ok' ? c.v : c.v ? `${c.v} · expected ${c.spec}` : `Expected ${c.spec}`
+    const spec = c.excluded
+      ? 'Not assessed'
+      : !c.spec
+        ? c.reason
+        : c.s === 'ok'
+          ? c.v
+          : c.v
+            ? `${c.v} · expected ${c.spec}`
+            : `Expected ${c.spec}`
     const trail = auditLine(c.audit)
     const moves = movesFor(c)
     const open = editing === i
@@ -606,7 +670,10 @@ export function mountPage(hostEl, root) {
   }
 
   const FORMS = {
-    exclude: { title: 'Exclude whole component', why: 'Why the Golden Path does not apply to this component at all' },
+    exclude: {
+      title: 'Exclude whole component',
+      why: 'Why the Golden Path does not apply to this component at all',
+    },
     revoke: { title: 'Remove exclusion', why: 'Why this component comes back into scope' },
   }
   function formHtml(kind) {
@@ -720,7 +787,9 @@ export function mountPage(hostEl, root) {
         ? `<span><b style="color:var(--ink)">${t.met} of ${t.of}</b> applicable checks met${unk ? ` · ${unk} not collected` : ''}</span>`
         : '<span>Not assessed</span>') +
       (pos > -1 ? `<span>${pos + 1} of ${list0.length}</span>` : '')
-    $id('d-apps').textContent = u.applications.length ? u.applications.join(' · ') : 'Not linked to an application'
+    $id('d-apps').textContent = u.applications.length
+      ? u.applications.join(' · ')
+      : 'Not linked to an application'
     $id('d-links').innerHTML = `
       ${REPO_URL(u.repository) ? `<a class="iconlink" href="${esc(REPO_URL(u.repository))}" target="_blank" rel="noopener" title="Open ${esc(u.repository)} on GitHub" aria-label="Open ${esc(u.repository)} on GitHub">${GH}</a>` : ''}
       <a class="iconlink" href="${MAP_URL}?sel=${encodeURIComponent(u.repository)}" target="_blank" rel="noopener" title="Show ${esc(u.repository)} in the Architecture Map" aria-label="Show ${esc(u.repository)} in the Architecture Map">${MAPI}</a>`
@@ -757,10 +826,20 @@ export function mountPage(hostEl, root) {
       ed.querySelector('#f-save').onclick = () => {
         const i = +ed.querySelector('#f-save').dataset.i
         const type = ed.querySelector('input[name="f-move"]:checked').value
-        const done = { deviation: 'Deviation approved', 'not-applicable': 'Marked not applicable', revoke: 'Decision removed' }[type]
+        const done = {
+          deviation: 'Deviation approved',
+          'not-applicable': 'Marked not applicable',
+          revoke: 'Decision removed',
+        }[type]
         editing = null
         save(
-          { type, component: u.repository, check: CHECKS[i].k, ref: ed.querySelector('#f-ref').value.trim(), reason: ed.querySelector('#f-why').value.trim() },
+          {
+            type,
+            component: u.repository,
+            check: CHECKS[i].k,
+            ref: ed.querySelector('#f-ref').value.trim(),
+            reason: ed.querySelector('#f-why').value.trim(),
+          },
           done,
           ed,
         )
@@ -769,7 +848,9 @@ export function mountPage(hostEl, root) {
     $id('unexclude')?.addEventListener('click', () => mountForm('revoke'))
     $id('exclude-all')?.addEventListener('click', () => mountForm('exclude'))
 
-    root.querySelectorAll('tbody tr[data-repo]').forEach((tr) => tr.setAttribute('aria-expanded', String(tr.dataset.repo === repo)))
+    root
+      .querySelectorAll('tbody tr[data-repo]')
+      .forEach((tr) => tr.setAttribute('aria-expanded', String(tr.dataset.repo === repo)))
     lastRow = root.querySelector(`tbody tr[data-repo="${CSS.escape(repo)}"]`) || lastRow
 
     const d = $id('drawer')
@@ -891,7 +972,12 @@ export function mountPage(hostEl, root) {
   // ── Analytics ───────────────────────────────────────────────────────────────────────
   // Filters apply to the whole series, so the charts are the history of exactly what the table shows.
   const STATE_COLOR = { ok: 'var(--c-ok)', dev: 'var(--c-dev)', bad: 'var(--c-bad)', unk: 'var(--unk)' }
-  const STATE_LABEL = { ok: 'Conforming', dev: 'Approved deviation', bad: 'Open deviation', unk: 'Not scanned' }
+  const STATE_LABEL = {
+    ok: 'Conforming',
+    dev: 'Approved deviation',
+    bad: 'Open deviation',
+    unk: 'Not scanned',
+  }
 
   // ── the trend chart ─────────────────────────────────────────────────────────────────
   // Both charts read one per-night stat so they can never tell two stories about the same evening.
@@ -912,7 +998,8 @@ export function mountPage(hostEl, root) {
   }
   const hideTip = () => tip.classList.remove('on')
 
-  const svg = (w, h, body, label) => `<svg viewBox="0 0 ${w} ${h}" role="img" style="max-width:${w}px"${label ? ` aria-label="${label}"` : ''}>${body}</svg>`
+  const svg = (w, h, body, label) =>
+    `<svg viewBox="0 0 ${w} ${h}" role="img" style="max-width:${w}px"${label ? ` aria-label="${label}"` : ''}>${body}</svg>`
   const legend = (keys) =>
     `<div class="legend-row">${keys
       .map(
@@ -960,7 +1047,14 @@ export function mountPage(hostEl, root) {
     }
     // The last point is today, not the middle of a half-finished bucket.
     const lastDay = daily[daily.length - 1]
-    Object.assign(out[out.length - 1], { t: lastDay.t, to: lastDay.t, ok: lastDay.ok, dev: lastDay.dev, bad: lastDay.bad, unk: lastDay.unk })
+    Object.assign(out[out.length - 1], {
+      t: lastDay.t,
+      to: lastDay.t,
+      ok: lastDay.ok,
+      dev: lastDay.dev,
+      bad: lastDay.bad,
+      unk: lastDay.unk,
+    })
     return out
   }
 
@@ -970,15 +1064,20 @@ export function mountPage(hostEl, root) {
     const out = []
     const push = (t, label) => out.push({ t, label })
     if (span < 14) {
-      for (let d = from; d <= to; d += DAY) push(d, new Date(d).getUTCDate() + ' ' + MONTHS[new Date(d).getUTCMonth()])
+      for (let d = from; d <= to; d += DAY)
+        push(d, new Date(d).getUTCDate() + ' ' + MONTHS[new Date(d).getUTCMonth()])
     } else if (span <= 100) {
       const first = new Date(from)
       first.setUTCDate(first.getUTCDate() + ((8 - first.getUTCDay()) % 7))
-      for (let d = first.getTime(); d <= to; d += 7 * DAY) push(d, new Date(d).getUTCDate() + ' ' + MONTHS[new Date(d).getUTCMonth()])
+      for (let d = first.getTime(); d <= to; d += 7 * DAY)
+        push(d, new Date(d).getUTCDate() + ' ' + MONTHS[new Date(d).getUTCMonth()])
     } else if (span <= 400) {
       const c = new Date(Date.UTC(new Date(from).getUTCFullYear(), new Date(from).getUTCMonth() + 1, 1))
       while (c.getTime() <= to) {
-        push(c.getTime(), MONTHS[c.getUTCMonth()] + (c.getUTCMonth() === 0 ? ' ’' + String(c.getUTCFullYear()).slice(2) : ''))
+        push(
+          c.getTime(),
+          MONTHS[c.getUTCMonth()] + (c.getUTCMonth() === 0 ? ' ’' + String(c.getUTCFullYear()).slice(2) : ''),
+        )
         c.setUTCMonth(c.getUTCMonth() + 1)
       }
     } else {
@@ -1016,16 +1115,26 @@ export function mountPage(hostEl, root) {
     const y = (v) => H - P.b - (v / top) * (H - P.t - P.b)
 
     const steps = Array.from({ length: top / 25 + 1 }, (_, i) => i * 25)
-    const grid = steps.map((v) => `<line class="gridline" x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/>`).join('')
-    const yLabels = steps.map((v, i) => `<text class="axis" x="0" y="${y(v) + 3.5}">${v}${i === steps.length - 1 ? ' checks' : ''}</text>`).join('')
+    const grid = steps
+      .map((v) => `<line class="gridline" x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/>`)
+      .join('')
+    const yLabels = steps
+      .map(
+        (v, i) =>
+          `<text class="axis" x="0" y="${y(v) + 3.5}">${v}${i === steps.length - 1 ? ' checks' : ''}</text>`,
+      )
+      .join('')
     const ticks = ticksFor(range.from, range.to)
       .map((t) => `<text class="axis" x="${x(t.t)}" y="${H - 6}" text-anchor="middle">${t.label}</text>`)
       .join('')
 
     const line = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')
     const COLOR = { ok: 'var(--c-ok)', dev: 'var(--c-dev)', bad: 'var(--c-bad)', unk: 'var(--unk)' }
-    const ends = series.map((k) => ({ k, yv: y(data[data.length - 1][k]), v: data[data.length - 1][k] })).sort((a, b) => a.yv - b.yv)
-    for (let i = 1; i < ends.length; i++) if (ends[i].yv - ends[i - 1].yv < 13) ends[i].yv = ends[i - 1].yv + 13
+    const ends = series
+      .map((k) => ({ k, yv: y(data[data.length - 1][k]), v: data[data.length - 1][k] }))
+      .sort((a, b) => a.yv - b.yv)
+    for (let i = 1; i < ends.length; i++)
+      if (ends[i].yv - ends[i - 1].yv < 13) ends[i].yv = ends[i - 1].yv + 13
     const paths = series
       .map((k) => {
         const pts = data.map((d) => [x(d.t), y(d[k])])
@@ -1076,7 +1185,12 @@ export function mountPage(hostEl, root) {
           : `${fmt(f)} – ${fmt(l)} ${l.getUTCFullYear()} <span style="opacity:.6">· ${grain === 7 ? 'weekly' : 'monthly'} mean</span>`
       showTip(
         `<b>${head}</b><br>` +
-          series.map((k) => `<i style="background:${COLOR[k]}${k === 'unk' ? ';opacity:.5' : ''}"></i>${STATE_LABEL[k]} <b>${d[k]}</b>`).join('<br>') +
+          series
+            .map(
+              (k) =>
+                `<i style="background:${COLOR[k]}${k === 'unk' ? ';opacity:.5' : ''}"></i>${STATE_LABEL[k]} <b>${d[k]}</b>`,
+            )
+            .join('<br>') +
           `<br><span style="opacity:.7">of ${series.reduce((s, k) => s + d[k], 0)} applicable checks</span>`,
         e.clientX,
         box.top + 60,
@@ -1172,7 +1286,10 @@ export function mountPage(hostEl, root) {
       const now = nights[nights.length - 1].perCheck[i]
       const { applicable, met } = now
       const rate = applicable ? met / applicable : 0
-      const daily = nights.map((n) => ({ t: n.t, v: n.perCheck[i].applicable ? n.perCheck[i].met / n.perCheck[i].applicable : 0 }))
+      const daily = nights.map((n) => ({
+        t: n.t,
+        v: n.perCheck[i].applicable ? n.perCheck[i].met / n.perCheck[i].applicable : 0,
+      }))
       const pts =
         grain === 1
           ? daily
@@ -1180,7 +1297,10 @@ export function mountPage(hostEl, root) {
               const out = []
               for (let k = 0; k < daily.length; k += grain) {
                 const chunk = daily.slice(k, k + grain)
-                out.push({ t: chunk[Math.floor(chunk.length / 2)].t, v: chunk.reduce((a, b) => a + b.v, 0) / chunk.length })
+                out.push({
+                  t: chunk[Math.floor(chunk.length / 2)].t,
+                  v: chunk.reduce((a, b) => a + b.v, 0) / chunk.length,
+                })
               }
               out[out.length - 1] = daily[daily.length - 1]
               return out
@@ -1259,7 +1379,9 @@ export function mountPage(hostEl, root) {
   function setTab(name) {
     const analytics = name === 'analytics'
     state.tab = analytics ? 'analytics' : 'table'
-    root.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)))
+    root
+      .querySelectorAll('#tabs button')
+      .forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)))
     $id('analytics').hidden = !analytics
     root.querySelector('.tablewrap').hidden = analytics
     root.querySelector('.bar').hidden = analytics
@@ -1331,7 +1453,8 @@ export function mountPage(hostEl, root) {
       if (deep && DATA.some((u) => u.repository === deep)) openDetails(deep)
     })
     .catch((err) => {
-      $id('tbl').innerHTML = `<tbody><tr><td style="padding:40px;text-align:center;color:var(--faint)">${esc(err.message)}</td></tr></tbody>`
+      $id('tbl').innerHTML =
+        `<tbody><tr><td style="padding:40px;text-align:center;color:var(--faint)">${esc(err.message)}</td></tr></tbody>`
     })
 
   return () => {

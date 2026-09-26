@@ -33,7 +33,11 @@ import { TOPIC_MAPS, SUBTYPE_PARENTS } from './inventory.mjs'
 //                  token losing topic scope strips dozens of components while every coreRepo
 //                  survives — minRepos alone can't see that collapse.
 const guardConfig = (() => {
-  try { return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')).guard || {} } catch { return {} }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')).guard || {}
+  } catch {
+    return {}
+  }
 })()
 export const CORE = Array.isArray(guardConfig.coreRepos) ? guardConfig.coreRepos : []
 export const MIN_REPOS = Number.isFinite(guardConfig.minRepos) ? guardConfig.minRepos : 0
@@ -50,9 +54,12 @@ export function validate(data, extras = null, opts = {}) {
 
   if (opts.maxAgeHours > 0) {
     const age = Date.now() - new Date(data.generatedAt || 0).getTime()
-    if (!data.generatedAt || Number.isNaN(age)) errors.push('generatedAt is missing/unparsable (freshness check requested)')
+    if (!data.generatedAt || Number.isNaN(age))
+      errors.push('generatedAt is missing/unparsable (freshness check requested)')
     else if (age > opts.maxAgeHours * 3600000) {
-      errors.push(`generatedAt is ${Math.round(age / 3600000)}h old (max ${opts.maxAgeHours}h) — the pipeline did not regenerate fe-architecture.json this run`)
+      errors.push(
+        `generatedAt is ${Math.round(age / 3600000)}h old (max ${opts.maxAgeHours}h) — the pipeline did not regenerate fe-architecture.json this run`,
+      )
     }
   }
 
@@ -60,8 +67,10 @@ export function validate(data, extras = null, opts = {}) {
   // ajv schema test enforces the full contract on every CI run, this guards the nightly path) --
   if (!Array.isArray(data.repos)) errors.push('repos is not an array')
   if (!Array.isArray(data.inventory)) errors.push('inventory is not an array')
-  if ((data.repos || []).some((r) => typeof r.folder !== 'string' || !r.folder)) errors.push('a repo is missing its folder')
-  if ((data.inventory || []).some((c) => typeof c.name !== 'string' || !c.name)) errors.push('an inventory component is missing its name')
+  if ((data.repos || []).some((r) => typeof r.folder !== 'string' || !r.folder))
+    errors.push('a repo is missing its folder')
+  if ((data.inventory || []).some((c) => typeof c.name !== 'string' || !c.name))
+    errors.push('an inventory component is missing its name')
 
   // ---- 1. coverage ------------------------------------------------------------------
   const repoFolders = new Set((data.repos || []).map((r) => r.folder))
@@ -70,10 +79,16 @@ export function validate(data, extras = null, opts = {}) {
   if (missingCore.length) errors.push(`missing core repos: ${missingCore.join(', ')}`)
   if (count < MIN_REPOS) errors.push(`only ${count} repos (min ${MIN_REPOS})`)
   const invCount = data.inventory?.length || 0
-  if (invCount < MIN_INVENTORY) errors.push(`only ${invCount} inventory components (min ${MIN_INVENTORY}) — topics stripped / github-inventory failed?`)
+  if (invCount < MIN_INVENTORY)
+    errors.push(
+      `only ${invCount} inventory components (min ${MIN_INVENTORY}) — topics stripped / github-inventory failed?`,
+    )
   // integrations.csv always carries curated rows and assemble derives more from the backend scan,
   // so an empty list means an input was lost (CSV unreadable AND backend-tooling empty/stale).
-  if (!(data.integrations || []).length) errors.push('integrations is empty — integrations.csv unread or the service-link derivation lost its inputs')
+  if (!(data.integrations || []).length)
+    errors.push(
+      'integrations is empty — integrations.csv unread or the service-link derivation lost its inputs',
+    )
 
   // ---- 2. referential integrity -----------------------------------------------------
   // The node universe the graph can draw: repos (by folder) plus inventory components (by name,
@@ -83,10 +98,13 @@ export function validate(data, extras = null, opts = {}) {
   // Backend nodes (curated overlay) are drawable nodes too, addressable by id / repo / label /
   // inventory alias — integrations.csv rows reference backends by these names (see graph.js beIdByKey).
   const backendKeys = new Set(
-    (data.backendTopology?.backends || []).flatMap((b) => [b.id, b.repo, b.label, b.invAlias].filter(Boolean)),
+    (data.backendTopology?.backends || []).flatMap((b) =>
+      [b.id, b.repo, b.label, b.invAlias].filter(Boolean),
+    ),
   )
   // 'Kafka' is the shared event-bus pseudo-node — a valid endpoint on either side of a link.
-  const isNode = (id) => id === 'Kafka' || repoFolders.has(id) || inventoryNames.has(id) || backendKeys.has(id)
+  const isNode = (id) =>
+    id === 'Kafka' || repoFolders.has(id) || inventoryNames.has(id) || backendKeys.has(id)
   for (const link of data.integrations || []) {
     if (!isNode(link.source)) errors.push(`service link source "${link.source}" is not a known node`)
   }
@@ -101,17 +119,23 @@ export function validate(data, extras = null, opts = {}) {
     }
   }
   for (const c of data.backendTopology?.contentRepos || []) {
-    if (c.parent && !isNode(c.parent)) warnings.push(`contentRepos: parent "${c.parent}" is not a known node (card won't draw)`)
+    if (c.parent && !isNode(c.parent))
+      warnings.push(`contentRepos: parent "${c.parent}" is not a known node (card won't draw)`)
   }
   // Service identity (backlog #16): a non-null serviceRepo names the repo that OWNS a service (e.g. a
   // monorepo linking a repo-less service). It must resolve to a KNOWN repo — a drawn folder OR a repo
   // referenced by an inventory component's repoName (the owning repo can be a real GitHub repo that
   // isn't cloned in this run, so it need not be a drawn node). A truly dangling reference is an error.
   // Optional pre-migration: entries without serviceRepo are skipped, so older data still validates.
-  const knownRepos = new Set([...repoFolders, ...(data.inventory || []).map((e) => e.repoName).filter(Boolean)])
+  const knownRepos = new Set([
+    ...repoFolders,
+    ...(data.inventory || []).map((e) => e.repoName).filter(Boolean),
+  ])
   for (const e of [...(data.repos || []), ...(data.inventory || [])]) {
     if (e.serviceRepo != null && !knownRepos.has(e.serviceRepo)) {
-      errors.push(`serviceRepo "${e.serviceRepo}" (of service "${e.serviceId || e.name || e.folder}") is not a known repo`)
+      errors.push(
+        `serviceRepo "${e.serviceRepo}" (of service "${e.serviceId || e.name || e.folder}") is not a known repo`,
+      )
     }
   }
 
@@ -124,11 +148,15 @@ export function validate(data, extras = null, opts = {}) {
       .replace(/\/.*$/, '')
       .replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}')
       .toLowerCase()
-  const backendHosts = new Set((data.backendTopology?.backends || []).filter((b) => b.host).map((b) => normHost(b.host)))
+  const backendHosts = new Set(
+    (data.backendTopology?.backends || []).filter((b) => b.host).map((b) => normHost(b.host)),
+  )
   if (backendHosts.size) {
     for (const r of data.repos || []) {
       if (r.apiUrl && !backendHosts.has(normHost(r.apiUrl))) {
-        warnings.push(`"${r.folder}": apiUrl host "${r.apiUrl}" has no backend node (FE→backend trace dead-ends; add it to backend-extra.json)`)
+        warnings.push(
+          `"${r.folder}": apiUrl host "${r.apiUrl}" has no backend node (FE→backend trace dead-ends; add it to backend-extra.json)`,
+        )
       }
     }
   }
@@ -140,19 +168,25 @@ export function validate(data, extras = null, opts = {}) {
   const halfCurated = [] // repo-backed components on the map (have a type) but missing owner/status/description
   const KNOWN_SUBTYPE = new Set(Object.keys(TOPIC_MAPS.subtype || {}))
   for (const c of data.inventory || []) {
-    if (c.type && !KNOWN_TYPE.has(c.type)) errors.push(`"${c.name}": unknown type "${c.type}" (bad type-* topic?)`)
+    if (c.type && !KNOWN_TYPE.has(c.type))
+      errors.push(`"${c.name}": unknown type "${c.type}" (bad type-* topic?)`)
     // subtype is a closed enum AND pair-checked against its parent type (SUBTYPE_PARENTS)
     if (c.subtype) {
-      if (!KNOWN_SUBTYPE.has(c.subtype)) errors.push(`"${c.name}": unknown subtype "${c.subtype}" (bad subtype-* topic?)`)
+      if (!KNOWN_SUBTYPE.has(c.subtype))
+        errors.push(`"${c.name}": unknown subtype "${c.subtype}" (bad subtype-* topic?)`)
       else if (c.type && !(SUBTYPE_PARENTS[c.subtype] || []).includes(c.type)) {
-        errors.push(`"${c.name}": subtype "${c.subtype}" is not valid for type "${c.type}" (allowed on: ${(SUBTYPE_PARENTS[c.subtype] || []).join(', ')})`)
+        errors.push(
+          `"${c.name}": subtype "${c.subtype}" is not valid for type "${c.type}" (allowed on: ${(SUBTYPE_PARENTS[c.subtype] || []).join(', ')})`,
+        )
       }
     }
-    if (c.status && !KNOWN_STATUS.has(c.status)) errors.push(`"${c.name}": unknown status "${c.status}" (bad status-* topic?)`)
+    if (c.status && !KNOWN_STATUS.has(c.status))
+      errors.push(`"${c.name}": unknown status "${c.status}" (bad status-* topic?)`)
     // owner/application are open sets — flag-but-don't-block so new teams/apps can be added freely.
     // With no `owners` map in config.json the vocabulary is undeclared, so there's nothing to be
     // off-schema against and the check stays quiet rather than warning on every component.
-    if (KNOWN_OWNER.size && c.owner && !KNOWN_OWNER.has(c.owner)) warnings.push(`"${c.name}": owner "${c.owner}" not in the documented schema`)
+    if (KNOWN_OWNER.size && c.owner && !KNOWN_OWNER.has(c.owner))
+      warnings.push(`"${c.name}": owner "${c.owner}" not in the documented schema`)
     if (c.repoName && c.type) {
       const missing = ['owner', 'status', 'description'].filter((f) => !c[f])
       if (missing.length) halfCurated.push({ name: c.name, missing })
@@ -168,7 +202,9 @@ export function validate(data, extras = null, opts = {}) {
       .filter(([, n]) => n)
       .map(([f, n]) => `${n} missing ${f}`)
       .join(', ')
-    warnings.push(`${halfCurated.length} components half-curated (${breakdown}) — see the weekly curation report / validation.incompleteCuration`)
+    warnings.push(
+      `${halfCurated.length} components half-curated (${breakdown}) — see the weekly curation report / validation.incompleteCuration`,
+    )
   }
 
   // ---- 4. screens (soft; only when extras is provided) ------------------------------
@@ -183,7 +219,9 @@ export function validate(data, extras = null, opts = {}) {
     const clients = (data.repos || []).filter((r) => r.kind === 'client').map((r) => r.folder)
     const withScreens = clients.filter((f) => perRepo[f]?.screens?.length)
     if (clients.length && withScreens.length < Math.ceil(clients.length / 2)) {
-      warnings.push(`screens: only ${withScreens.length}/${clients.length} client repos produced screens (router parser regression?)`)
+      warnings.push(
+        `screens: only ${withScreens.length}/${clients.length} client repos produced screens (router parser regression?)`,
+      )
     }
   }
 
@@ -195,7 +233,9 @@ export function validate(data, extras = null, opts = {}) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const data = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture.json'), 'utf8'))
   let extras = null
-  try { extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8')) } catch {}
+  try {
+    extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8'))
+  } catch {}
   const maxAgeHours = Number(process.env.GUARD_MAX_AGE_HOURS)
   const { errors, warnings, count } = validate(data, extras, maxAgeHours > 0 ? { maxAgeHours } : {})
   for (const w of warnings) console.warn(`⚠ ${w}`)
@@ -204,6 +244,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     for (const e of errors) console.error(`  • ${e}`)
     process.exit(1)
   }
-  console.log(`✓ data guard passed — ${count} repos, all ${CORE.length} core present, edges + topic schema valid` +
-    (warnings.length ? ` (${warnings.length} warning${warnings.length > 1 ? 's' : ''})` : ''))
+  console.log(
+    `✓ data guard passed — ${count} repos, all ${CORE.length} core present, edges + topic schema valid` +
+      (warnings.length ? ` (${warnings.length} warning${warnings.length > 1 ? 's' : ''})` : ''),
+  )
 }

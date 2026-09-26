@@ -1,13 +1,24 @@
 // One night's rows, shared by the backfill (git log replay) and the nightly append —
 // the two must not diverge on what a row is.
-export const TYPE = { service:'Service', client:'Client', library:'Library', tests:'Tests', data:'Data',
-  firmware:'Firmware', hardware:'Hardware', infra:'Infrastructure', assets:'Assets',
-  'third-party-service':'Third-Party Service', config:'Config' }
+export const TYPE = {
+  service: 'Service',
+  client: 'Client',
+  library: 'Library',
+  tests: 'Tests',
+  data: 'Data',
+  firmware: 'Firmware',
+  hardware: 'Hardware',
+  infra: 'Infrastructure',
+  assets: 'Assets',
+  'third-party-service': 'Third-Party Service',
+  config: 'Config',
+}
 export const topic = (t, p) => (t.find((x) => x.startsWith(p)) || '').slice(p.length)
-export const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : ''
+export const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '')
 // An unknown-but-present type-* topic keeps its (capitalised) slug rather than lying "Unclassified".
-export const typeOf = (topics) => TYPE[topic(topics, 'type-')] || cap(topic(topics, 'type-')) || 'Unclassified'
-export const ver = (v) => v ? String(v).replace(/^[\^~>=<\s]+/, '') : v
+export const typeOf = (topics) =>
+  TYPE[topic(topics, 'type-')] || cap(topic(topics, 'type-')) || 'Unclassified'
+export const ver = (v) => (v ? String(v).replace(/^[\^~>=<\s]+/, '') : v)
 
 // meta/fe/be: parsed github-meta.json, fe-architecture.json, backend-tooling.json for one night.
 //
@@ -31,7 +42,9 @@ export function rowsFrom({ meta, fe, be, runtime }) {
   const rows = {}
   for (const [name, m] of Object.entries(meta.repos)) {
     const topics = m.topics || []
-    const i = inv[name], f = feRepo[name], b = be_[name]
+    const i = inv[name],
+      f = feRepo[name],
+      b = be_[name]
     const tv = f?.toolingVersions || {}
     const owner = i?.owner || topic(topics, 'owner-').toUpperCase().split('-').join('.')
     const row = {
@@ -40,7 +53,13 @@ export function rowsFrom({ meta, fe, be, runtime }) {
       owner,
       applications: i?.applications || topics.filter((t) => t.startsWith('app-')).map((t) => t.slice(4)),
       status: i?.status || cap(topic(topics, 'status-')),
-      language: b ? b.java : tv.typescript ? `TypeScript ${ver(tv.typescript)}` : tv.react ? 'JavaScript' : null,
+      language: b
+        ? b.java
+        : tv.typescript
+          ? `TypeScript ${ver(tv.typescript)}`
+          : tv.react
+            ? 'JavaScript'
+            : null,
       framework: b ? b.framework : tv.react ? `React ${ver(tv.react)}` : null,
       buildTool: b ? b.buildTool : null,
     }
@@ -54,7 +73,8 @@ export function rowsFrom({ meta, fe, be, runtime }) {
       const logPlatform = runtime.loggingPlatform || 'Logs received'
       const tracePlatform = runtime.tracingPlatform || 'Traces received'
       row.logging = Array.isArray(runtime.logs) && runtime.logs.includes(name) ? logPlatform : 'No logs found'
-      row.tracing = Array.isArray(runtime.traces) && runtime.traces.includes(name) ? tracePlatform : 'No traces found'
+      row.tracing =
+        Array.isArray(runtime.traces) && runtime.traces.includes(name) ? tracePlatform : 'No traces found'
     }
     if (m.archived) row.archived = true
     if (topics.includes('arch-map-ignore')) row.archMapIgnore = true

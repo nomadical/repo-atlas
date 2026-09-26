@@ -21,13 +21,17 @@ const BASE = process.env.BASE_PATH || '/repo-atlas'
 // Keycloak realm issuer, e.g. https://id.example.com/realms/my-realm. No default: a wrong issuer
 // silently fails every token, so the server refuses to start rather than guess one.
 const ISSUER = process.env.AUTH_ISSUER
-if (!ISSUER) { console.error('server: AUTH_ISSUER is required (your Keycloak realm issuer URL)'); process.exit(1) }
+if (!ISSUER) {
+  console.error('server: AUTH_ISSUER is required (your Keycloak realm issuer URL)')
+  process.exit(1)
+}
 // Origins allowed to fetch /data cross-origin with a bearer token (the viz is hosted on Pages /
 // Front Door, this server is on another host). Override with CORS_ORIGINS (comma-separated).
 // localhost origins only outside production (local viz against a dev-env server); the deployed
 // allowlist shouldn't grant CORS approval to arbitrary pages on a developer's own ports. A prod
 // deployment that genuinely needs it can add them via CORS_ORIGINS.
-const LOCAL_ORIGINS = process.env.NODE_ENV === 'production' ? '' : ',http://localhost:5173,http://localhost:5180'
+const LOCAL_ORIGINS =
+  process.env.NODE_ENV === 'production' ? '' : ',http://localhost:5173,http://localhost:5180'
 // Defaults to same-origin only (empty list): the viz this server itself hosts needs no CORS entry.
 // Add the origins of any *separately* hosted copy — your Pages site, your own domain — to
 // CORS_ORIGINS, comma-separated.
@@ -42,15 +46,23 @@ const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/protocol/openid-connect/certs
 const data = (() => {
   const main = JSON.parse(fs.readFileSync(path.join(DIR, 'fe-architecture.json'), 'utf8'))
   let extras = null
-  try { extras = JSON.parse(fs.readFileSync(path.join(DIR, 'fe-architecture-extras.json'), 'utf8')) } catch {}
+  try {
+    extras = JSON.parse(fs.readFileSync(path.join(DIR, 'fe-architecture-extras.json'), 'utf8'))
+  } catch {}
   let config = null // app config (editable page title) — admin-curated, not pipeline output
-  try { config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8')) } catch {}
+  try {
+    config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8'))
+  } catch {}
   // Raw inventory-extra + service-map so the Admin panel's Documentation and Services tabs work in
   // this read-only deploy (they're merged away / not on a repo). Mirror bundle.mjs's payload shape.
   let inventoryExtra = null
-  try { inventoryExtra = JSON.parse(fs.readFileSync(path.join(DIR, 'inventory-extra.json'), 'utf8')) } catch {}
+  try {
+    inventoryExtra = JSON.parse(fs.readFileSync(path.join(DIR, 'inventory-extra.json'), 'utf8'))
+  } catch {}
   let serviceMap = null
-  try { serviceMap = JSON.parse(fs.readFileSync(path.join(DIR, 'service-map.json'), 'utf8')) } catch {}
+  try {
+    serviceMap = JSON.parse(fs.readFileSync(path.join(DIR, 'service-map.json'), 'utf8'))
+  } catch {}
   return { ...main, extras, config, inventoryExtra, serviceMap }
 })()
 
@@ -71,16 +83,23 @@ const AUDIENCE = (process.env.AUTH_AUDIENCE || '').trim()
 // the caller's token may be perfectly valid, and answering 401 would log every user out and drop
 // the viz to its static fallback during a Keycloak blip. Missing the read role → 403.
 const TOKEN_FAULT_CODES = new Set([
-  'ERR_JWT_EXPIRED', 'ERR_JWT_CLAIM_VALIDATION_FAILED', 'ERR_JWT_INVALID',
-  'ERR_JWS_SIGNATURE_VERIFICATION_FAILED', 'ERR_JWS_INVALID', 'ERR_JWKS_NO_MATCHING_KEY',
+  'ERR_JWT_EXPIRED',
+  'ERR_JWT_CLAIM_VALIDATION_FAILED',
+  'ERR_JWT_INVALID',
+  'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
+  'ERR_JWS_INVALID',
+  'ERR_JWKS_NO_MATCHING_KEY',
 ])
 async function requireAuth(req, res, next) {
   const h = req.headers.authorization || ''
   const token = h.startsWith('Bearer ') ? h.slice(7) : null
   if (!token) return res.status(401).json({ error: 'missing bearer token' })
   try {
-    const { payload } = await jwtVerify(token, JWKS, { issuer: ISSUER, ...(AUDIENCE ? { audience: AUDIENCE } : {}) })
-    req.claims = payload            // the ONLY source of identity downstream; never the body
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: ISSUER,
+      ...(AUDIENCE ? { audience: AUDIENCE } : {}),
+    })
+    req.claims = payload // the ONLY source of identity downstream; never the body
     if (READ_ROLE) {
       const roles = new Set([
         ...(payload.realm_access?.roles || []),
@@ -120,7 +139,11 @@ router.get('/data', requireAuth, (_req, res) => res.json(data))
 
 // Same gate as /data, deliberately NOT static: these list the whole estate's scan results.
 const goldenPath = (file) => {
-  try { return fs.readFileSync(path.join(GP_DIR, file), 'utf8') } catch { return null }
+  try {
+    return fs.readFileSync(path.join(GP_DIR, file), 'utf8')
+  } catch {
+    return null
+  }
 }
 const history = goldenPath('history.json')
 const rules = goldenPath('rules.json')
@@ -131,10 +154,15 @@ router.get('/golden-path/rules', requireAuth, sendJson(rules, 'no rules document
 
 // Empty GP_CURATORS means nobody curates: fail closed. The container filesystem is not durable,
 // so a deployment sets GP_DECISION_LOG; the in-image default only makes the route testable.
-const CURATORS = (process.env.GP_CURATORS || '').split(',').map((s) => s.trim()).filter(Boolean)
+const CURATORS = (process.env.GP_CURATORS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
 // An https:// value is an Azure append-blob URL (auth via managed identity); anything else is a file path.
 const DECISION_LOG = process.env.GP_DECISION_LOG || path.join(GP_DIR, 'exceptions.jsonl')
-const decisionLogStore = DECISION_LOG.startsWith('https://') ? blobStore({ url: DECISION_LOG }) : fileStore({ path: DECISION_LOG })
+const decisionLogStore = DECISION_LOG.startsWith('https://')
+  ? blobStore({ url: DECISION_LOG })
+  : fileStore({ path: DECISION_LOG })
 
 // mayCurate is a courtesy for hiding controls; the gate is on the POST below.
 router.get('/api/exceptions', requireAuth, async (req, res) => {
@@ -152,9 +180,12 @@ router.post('/api/exceptions', requireAuth, express.json({ limit: '64kb' }), asy
   }
   const invalid = validateEntry(req.body)
   if (invalid) return res.status(400).json({ error: invalid })
-  const entry = buildEntry(req.body, authorFrom(req.claims))   // author from the token, never the body
-  try { res.status(201).json(await decisionLogStore.append(entry)) }
-  catch (err) { res.status(500).json({ error: `could not append to the decision log: ${err.message}` }) }
+  const entry = buildEntry(req.body, authorFrom(req.claims)) // author from the token, never the body
+  try {
+    res.status(201).json(await decisionLogStore.append(entry))
+  } catch (err) {
+    res.status(500).json({ error: `could not append to the decision log: ${err.message}` })
+  }
 })
 
 // Health + readiness, under the base path so they're reachable through Traefik (which only routes
@@ -178,13 +209,32 @@ app.use(BASE, router)
 app.get('/health', (_req, res) => res.json({ status: 'ok' })) // also at root for in-container checks
 
 app.listen(PORT, () => {
-  console.log(JSON.stringify({ msg: 'repo-atlas up', port: Number(PORT), base: BASE, issuer: ISSUER, repos: data.repos?.length ?? null, generatedAt: data.generatedAt || null, goldenPath: { history: !!history, rules: !!rules, curators: CURATORS.length, decisionLog: process.env.GP_DECISION_LOG ? 'external' : 'in-image' } }))
+  console.log(
+    JSON.stringify({
+      msg: 'repo-atlas up',
+      port: Number(PORT),
+      base: BASE,
+      issuer: ISSUER,
+      repos: data.repos?.length ?? null,
+      generatedAt: data.generatedAt || null,
+      goldenPath: {
+        history: !!history,
+        rules: !!rules,
+        curators: CURATORS.length,
+        decisionLog: process.env.GP_DECISION_LOG ? 'external' : 'in-image',
+      },
+    }),
+  )
   // Nothing else in the running system says that approvals are about to be lost on restart.
   if (!process.env.GP_DECISION_LOG && CURATORS.length) {
-    console.warn('WARNING: GP_DECISION_LOG is unset — curated decisions are written inside the image and will be lost on restart')
+    console.warn(
+      'WARNING: GP_DECISION_LOG is unset — curated decisions are written inside the image and will be lost on restart',
+    )
   }
   // The wide-open default is documented (infra/keycloak.md) but easy to forget once the role exists.
   if (!READ_ROLE) {
-    console.warn('WARNING: AUTH_READ_ROLE is unset — every valid realm token (any user, any client) can read /data; set it (e.g. ATLAS_READ) once the role is rolled out')
+    console.warn(
+      'WARNING: AUTH_READ_ROLE is unset — every valid realm token (any user, any client) can read /data; set it (e.g. ATLAS_READ) once the role is rolled out',
+    )
   }
 })

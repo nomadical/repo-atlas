@@ -22,14 +22,25 @@ const OUT = path.join(AUDIT, 'azure-resources.json')
 const execFileP = promisify(execFile)
 const MAX_AGE_MS = 60 * 60 * 1000
 
-if (process.env.ATLAS_AZURE === '0') { console.log('azure-gather: disabled (ATLAS_AZURE=0)'); process.exit(0) }
+if (process.env.ATLAS_AZURE === '0') {
+  console.log('azure-gather: disabled (ATLAS_AZURE=0)')
+  process.exit(0)
+}
 if (process.env.ATLAS_AZURE !== 'force' && fs.existsSync(OUT)) {
   const age = Date.now() - fs.statSync(OUT).mtimeMs
-  if (age < MAX_AGE_MS) { console.log(`azure-gather: azure-resources.json is ${Math.round(age / 60000)}min old, skipping (ATLAS_AZURE=force to refresh)`); process.exit(0) }
+  if (age < MAX_AGE_MS) {
+    console.log(
+      `azure-gather: azure-resources.json is ${Math.round(age / 60000)}min old, skipping (ATLAS_AZURE=force to refresh)`,
+    )
+    process.exit(0)
+  }
 }
 
 const az = async (args, { json = true } = {}) => {
-  const { stdout } = await execFileP('az', [...args, ...(json ? ['--output', 'json'] : [])], { maxBuffer: 1024 * 1024 * 64, timeout: 120000 })
+  const { stdout } = await execFileP('az', [...args, ...(json ? ['--output', 'json'] : [])], {
+    maxBuffer: 1024 * 1024 * 64,
+    timeout: 120000,
+  })
   return json ? JSON.parse(stdout || 'null') : stdout
 }
 const graph = async (q) => (await az(['graph', 'query', '-q', q, '--first', '1000'])).data
@@ -38,7 +49,13 @@ const graph = async (q) => (await az(['graph', 'query', '-q', q, '--first', '100
 const pool = async (thunks, limit = 10) => {
   const results = new Array(thunks.length)
   let i = 0
-  const worker = async () => { for (;;) { const n = i++; if (n >= thunks.length) return; results[n] = await thunks[n]() } }
+  const worker = async () => {
+    for (;;) {
+      const n = i++
+      if (n >= thunks.length) return
+      results[n] = await thunks[n]()
+    }
+  }
   await Promise.all(Array.from({ length: Math.min(limit, thunks.length) }, worker))
   return results
 }
@@ -60,16 +77,22 @@ const parseEnvApp = (name, suffixes = ['website', 'storage']) => {
 const ENV_RE = new RegExp(`(?:^|-)(${ENVS.join('|')})(?:-|$)`)
 
 let account
-try { account = await az(['account', 'show']) } catch {
+try {
+  account = await az(['account', 'show'])
+} catch {
   console.log('azure-gather: az CLI not available or not logged in — skipping (run `az login` to enable)')
   process.exit(0)
 }
 
-console.log(`azure-gather: reading tenant ${account.tenantDisplayName || account.tenantId} as ${account.user?.name}`)
+console.log(
+  `azure-gather: reading tenant ${account.tenantDisplayName || account.tenantId} as ${account.user?.name}`,
+)
 const warnings = []
 
 // ---- 1. FE apps: website storage accounts -> app x env grid -------------------------
-const storage = await graph("Resources | where type == 'microsoft.storage/storageaccounts' | project name, resourceGroup, location, tags")
+const storage = await graph(
+  "Resources | where type == 'microsoft.storage/storageaccounts' | project name, resourceGroup, location, tags",
+)
 const apps = {}
 const appEnv = (app, env) => ((apps[app] = apps[app] || { envs: {} }).envs[env] = apps[app].envs[env] || {})
 for (const s of storage) {
@@ -81,74 +104,154 @@ for (const s of storage) {
 // Routes are named like the storage accounts ({env}{app}website) and reference the
 // custom-domain resources, so profile domain maps + per-endpoint route lists give us
 // the authoritative app+env -> public URL mapping.
-const profiles = await graph("Resources | where type == 'microsoft.cdn/profiles' | project name, resourceGroup")
-const endpoints = await graph("Resources | where type == 'microsoft.cdn/profiles/afdendpoints' | project name, id, hostName=tostring(properties.hostName)")
+const profiles = await graph(
+  "Resources | where type == 'microsoft.cdn/profiles' | project name, resourceGroup",
+)
+const endpoints = await graph(
+  "Resources | where type == 'microsoft.cdn/profiles/afdendpoints' | project name, id, hostName=tostring(properties.hostName)",
+)
 const domainHost = {} // custom-domain resource id (lowercase) -> hostname
-await pool(profiles.map((p) => async () => {
-  try {
-    const domains = await az(['afd', 'custom-domain', 'list', '--profile-name', p.name, '--resource-group', p.resourceGroup])
-    for (const d of domains) domainHost[d.id.toLowerCase()] = d.hostName
-  } catch (e) { warnings.push(`custom-domain list failed for ${p.name}: ${String(e.message).slice(0, 120)}`) }
-}))
-const epLoc = (id) => { const m = id.match(/resourcegroups\/([^/]+)\/providers\/microsoft\.cdn\/profiles\/([^/]+)\//i); return m ? { rg: m[1], profile: m[2] } : null }
-await pool(endpoints.map((ep) => async () => {
-  const loc = epLoc(ep.id)
-  if (!loc) return
-  let routes
-  try { routes = await az(['afd', 'route', 'list', '--profile-name', loc.profile, '--resource-group', loc.rg, '--endpoint-name', ep.name]) } catch { return }
-  for (const r of routes) {
-    const p = parseEnvApp(r.name, ['website'])
-    if (!p) continue
-    const hosts = (r.customDomains || []).map((d) => domainHost[d.id.toLowerCase()]).filter(Boolean)
-      .filter((h) => !h.startsWith('www.') && !h.startsWith('old-'))
-    const slot = appEnv(p.app, p.env)
-    slot.domains = [...new Set([...(slot.domains || []), ...hosts])]
-    slot.endpointHost = slot.endpointHost || ep.hostName
-    // path-routed micro-frontends (e.g. billing -> app.example.com/modules/billing/*):
-    // record the path so the app isn't mistaken for the whole domain
-    const patterns = r.patternsToMatch || []
-    if (!patterns.some((x) => x === '/*' || x === '/')) {
-      const pp = patterns.find((x) => x !== '/' && x !== '/*')
-      if (pp) slot.path = pp.replace(/\/\*$/, '')
+await pool(
+  profiles.map((p) => async () => {
+    try {
+      const domains = await az([
+        'afd',
+        'custom-domain',
+        'list',
+        '--profile-name',
+        p.name,
+        '--resource-group',
+        p.resourceGroup,
+      ])
+      for (const d of domains) domainHost[d.id.toLowerCase()] = d.hostName
+    } catch (e) {
+      warnings.push(`custom-domain list failed for ${p.name}: ${String(e.message).slice(0, 120)}`)
     }
-  }
-}))
+  }),
+)
+const epLoc = (id) => {
+  const m = id.match(/resourcegroups\/([^/]+)\/providers\/microsoft\.cdn\/profiles\/([^/]+)\//i)
+  return m ? { rg: m[1], profile: m[2] } : null
+}
+await pool(
+  endpoints.map((ep) => async () => {
+    const loc = epLoc(ep.id)
+    if (!loc) return
+    let routes
+    try {
+      routes = await az([
+        'afd',
+        'route',
+        'list',
+        '--profile-name',
+        loc.profile,
+        '--resource-group',
+        loc.rg,
+        '--endpoint-name',
+        ep.name,
+      ])
+    } catch {
+      return
+    }
+    for (const r of routes) {
+      const p = parseEnvApp(r.name, ['website'])
+      if (!p) continue
+      const hosts = (r.customDomains || [])
+        .map((d) => domainHost[d.id.toLowerCase()])
+        .filter(Boolean)
+        .filter((h) => !h.startsWith('www.') && !h.startsWith('old-'))
+      const slot = appEnv(p.app, p.env)
+      slot.domains = [...new Set([...(slot.domains || []), ...hosts])]
+      slot.endpointHost = slot.endpointHost || ep.hostName
+      // path-routed micro-frontends (e.g. billing -> app.example.com/modules/billing/*):
+      // record the path so the app isn't mistaken for the whole domain
+      const patterns = r.patternsToMatch || []
+      if (!patterns.some((x) => x === '/*' || x === '/')) {
+        const pp = patterns.find((x) => x !== '/' && x !== '/*')
+        if (pp) slot.path = pp.replace(/\/\*$/, '')
+      }
+    }
+  }),
+)
 
 // ---- 3. FE deploy freshness: $web/index.html last-modified --------------------------
-const webAccounts = Object.entries(apps).flatMap(([app, a]) => Object.entries(a.envs).filter(([, e]) => e.storage).map(([env, e]) => ({ app, env, account: e.storage })))
+const webAccounts = Object.entries(apps).flatMap(([app, a]) =>
+  Object.entries(a.envs)
+    .filter(([, e]) => e.storage)
+    .map(([env, e]) => ({ app, env, account: e.storage })),
+)
 let blobDenied = 0
-await pool(webAccounts.map(({ app, env, account: acct }) => async () => {
-  try {
-    const b = await az(['storage', 'blob', 'show', '--account-name', acct, '--container-name', '$web', '--name', 'index.html', '--auth-mode', 'login'])
-    apps[app].envs[env].deployed = b?.properties?.lastModified || null
-  } catch { blobDenied++ }
-}))
-if (blobDenied) warnings.push(`$web/index.html not readable for ${blobDenied}/${webAccounts.length} website accounts (404 or no Storage Blob Data Reader role)`)
+await pool(
+  webAccounts.map(({ app, env, account: acct }) => async () => {
+    try {
+      const b = await az([
+        'storage',
+        'blob',
+        'show',
+        '--account-name',
+        acct,
+        '--container-name',
+        '$web',
+        '--name',
+        'index.html',
+        '--auth-mode',
+        'login',
+      ])
+      apps[app].envs[env].deployed = b?.properties?.lastModified || null
+    } catch {
+      blobDenied++
+    }
+  }),
+)
+if (blobDenied)
+  warnings.push(
+    `$web/index.html not readable for ${blobDenied}/${webAccounts.length} website accounts (404 or no Storage Blob Data Reader role)`,
+  )
 
 // ---- 4. BE deploy freshness: last push per ACR repository ---------------------------
-const registries = await graph("Resources | where type == 'microsoft.containerregistry/registries' | project name, resourceGroup")
+const registries = await graph(
+  "Resources | where type == 'microsoft.containerregistry/registries' | project name, resourceGroup",
+)
 const acr = {}
 for (const reg of registries) {
   let repos
-  try { repos = await az(['acr', 'repository', 'list', '--name', reg.name]) } catch { warnings.push(`ACR ${reg.name}: no data-plane access`); continue }
+  try {
+    repos = await az(['acr', 'repository', 'list', '--name', reg.name])
+  } catch {
+    warnings.push(`ACR ${reg.name}: no data-plane access`)
+    continue
+  }
   acr[reg.name] = {}
-  await pool(repos.map((repo) => async () => {
-    try {
-      const meta = await az(['acr', 'repository', 'show', '--name', reg.name, '--repository', repo])
-      acr[reg.name][repo] = { lastPush: meta.lastUpdateTime || null }
-    } catch { acr[reg.name][repo] = { lastPush: null } }
-  }))
+  await pool(
+    repos.map((repo) => async () => {
+      try {
+        const meta = await az(['acr', 'repository', 'show', '--name', reg.name, '--repository', repo])
+        acr[reg.name][repo] = { lastPush: meta.lastUpdateTime || null }
+      } catch {
+        acr[reg.name][repo] = { lastPush: null }
+      }
+    }),
+  )
 }
 
 // ---- 5. Infra resources, parsed into service + env ----------------------------------
 const INFRA_TYPES = [
-  'microsoft.dbforpostgresql/flexibleservers', 'microsoft.dbformysql/flexibleservers',
-  'microsoft.sql/servers/databases', 'microsoft.documentdb/databaseaccounts',
-  'microsoft.eventhub/namespaces', 'microsoft.servicebus/namespaces',
-  'microsoft.app/containerapps', 'microsoft.web/sites', 'microsoft.streamanalytics/streamingjobs',
-  'microsoft.containerregistry/registries', 'microsoft.cognitiveservices/accounts', 'microsoft.search/searchservices',
+  'microsoft.dbforpostgresql/flexibleservers',
+  'microsoft.dbformysql/flexibleservers',
+  'microsoft.sql/servers/databases',
+  'microsoft.documentdb/databaseaccounts',
+  'microsoft.eventhub/namespaces',
+  'microsoft.servicebus/namespaces',
+  'microsoft.app/containerapps',
+  'microsoft.web/sites',
+  'microsoft.streamanalytics/streamingjobs',
+  'microsoft.containerregistry/registries',
+  'microsoft.cognitiveservices/accounts',
+  'microsoft.search/searchservices',
 ]
-const infraRaw = await graph(`Resources | where type in ('${INFRA_TYPES.join("','")}') | project name, type, resourceGroup, location`)
+const infraRaw = await graph(
+  `Resources | where type in ('${INFRA_TYPES.join("','")}') | project name, type, resourceGroup, location`,
+)
 const infra = infraRaw.map((r) => {
   const m = r.name.match(ENV_RE)
   const env = m ? m[1] : (r.resourceGroup.match(ENV_RE)?.[1] ?? null)
@@ -160,12 +263,14 @@ const infra = infraRaw.map((r) => {
 const out = {
   generatedAt: new Date().toISOString(),
   subscription: { id: account.id, name: account.name, tenant: account.tenantDisplayName || account.tenantId },
-  apps,            // {app}: { envs: {env}: { storage, domains[], endpointHost, deployed } }
-  acr,             // {registry}: {repo}: { lastPush }
-  infra,           // [{ name, type, resourceGroup, location, env, service }]
+  apps, // {app}: { envs: {env}: { storage, domains[], endpointHost, deployed } }
+  acr, // {registry}: {repo}: { lastPush }
+  infra, // [{ name, type, resourceGroup, location, env, service }]
   warnings,
 }
 fs.writeFileSync(OUT, JSON.stringify(out, null, 2))
 const nApps = Object.keys(apps).length
 const nAcr = Object.values(acr).reduce((s, r) => s + Object.keys(r).length, 0)
-console.log(`wrote azure-resources.json; apps: ${nApps}, acr repos: ${nAcr}, infra: ${infra.length}, warnings: ${warnings.length}`)
+console.log(
+  `wrote azure-resources.json; apps: ${nApps}, acr repos: ${nAcr}, infra: ${infra.length}, warnings: ${warnings.length}`,
+)

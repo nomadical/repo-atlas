@@ -5,9 +5,13 @@ import { ROOT, AUDIT } from './_paths.mjs'
 import { repos } from './repos.mjs'
 const REPOS = repos.moduleGraph
 
-const walk = (dir, acc=[]) => {
+const walk = (dir, acc = []) => {
   let ents
-  try { ents = fs.readdirSync(dir, { withFileTypes: true }) } catch { return acc }
+  try {
+    ents = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return acc
+  }
   for (const e of ents) {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
@@ -24,7 +28,7 @@ const DEPTH = 1
 const toFolder = (relFromRepo) => {
   const segs = relFromRepo.split('/')
   if (segs[0] !== 'src') return null
-  const last = segs[segs.length-1]
+  const last = segs[segs.length - 1]
   const segsDir = /\.[a-z]+$/.test(last) ? segs.slice(0, -1) : segs.slice()
   if (segsDir.length <= 1) return 'src'
   return segsDir.slice(0, 1 + DEPTH).join('/')
@@ -36,14 +40,22 @@ const result = {}
 for (const repo of REPOS) {
   const repoDir = path.join(ROOT, repo)
   const srcDir = path.join(repoDir, 'src')
-  if (!fs.existsSync(srcDir)) { result[repo] = { method:'grep', error:'no src', crossFolderEdges:0, edges:[] }; continue }
-  const topFolders = new Set(fs.readdirSync(srcDir, {withFileTypes:true}).filter(d=>d.isDirectory()).map(d=>d.name))
+  if (!fs.existsSync(srcDir)) {
+    result[repo] = { method: 'grep', error: 'no src', crossFolderEdges: 0, edges: [] }
+    continue
+  }
+  const topFolders = new Set(
+    fs
+      .readdirSync(srcDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name),
+  )
   const files = walk(srcDir)
-  const fileSet = new Set(files.map(f => path.relative(repoDir, f)))
+  const fileSet = new Set(files.map((f) => path.relative(repoDir, f)))
   const exists = (relNoExt) => {
-    for (const ext of ['.ts','.tsx','.js','.jsx','.mjs','.cjs']) {
-      if (fileSet.has(relNoExt+ext)) return relNoExt+ext
-      if (fileSet.has(relNoExt+'/index'+ext)) return relNoExt+'/index'+ext
+    for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']) {
+      if (fileSet.has(relNoExt + ext)) return relNoExt + ext
+      if (fileSet.has(relNoExt + '/index' + ext)) return relNoExt + '/index' + ext
     }
     if (fileSet.has(relNoExt)) return relNoExt
     return null
@@ -54,7 +66,11 @@ for (const repo of REPOS) {
     const fromFolder = toFolder(relFile)
     if (!fromFolder) continue
     let txt
-    try { txt = fs.readFileSync(file,'utf8') } catch { continue }
+    try {
+      txt = fs.readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
     let m
     importRe.lastIndex = 0
     while ((m = importRe.exec(txt))) {
@@ -71,7 +87,7 @@ for (const repo of REPOS) {
       } else {
         const first = spec.split('/')[0]
         if (topFolders.has(first)) {
-          const abs = 'src/'+spec
+          const abs = 'src/' + spec
           targetRel = exists(abs) || abs
         } else {
           continue
@@ -83,9 +99,16 @@ for (const repo of REPOS) {
       edgeSet.add(fromFolder + ' -> ' + dest)
     }
   }
-  const edges = [...edgeSet].sort().map(e => e.split(' -> '))
-  result[repo] = { method:'grep', crossFolderEdges: edges.length, srcFiles: files.length, topFolders:[...topFolders].sort(), edges }
+  const edges = [...edgeSet].sort().map((e) => e.split(' -> '))
+  result[repo] = {
+    method: 'grep',
+    crossFolderEdges: edges.length,
+    srcFiles: files.length,
+    topFolders: [...topFolders].sort(),
+    edges,
+  }
 }
 
-fs.writeFileSync(path.join(AUDIT,'scripts/modulegraph-out.json'), JSON.stringify(result,null,2))
-for (const [r,v] of Object.entries(result)) console.log(r, '->', v.crossFolderEdges, 'edges,', v.srcFiles||0,'files')
+fs.writeFileSync(path.join(AUDIT, 'scripts/modulegraph-out.json'), JSON.stringify(result, null, 2))
+for (const [r, v] of Object.entries(result))
+  console.log(r, '->', v.crossFolderEdges, 'edges,', v.srcFiles || 0, 'files')

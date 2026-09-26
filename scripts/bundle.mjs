@@ -15,17 +15,28 @@ if (!fs.existsSync(dist)) {
 
 const main = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture.json'), 'utf8'))
 let extras = null
-try { extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8')) } catch {}
+try {
+  extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8'))
+} catch {}
 let config = null // app config (editable page title) — admin-curated, not pipeline output
-try { config = JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')) } catch {}
+try {
+  config = JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8'))
+} catch {}
 // Raw inventory-extra so the Admin panel can edit Documentation (and other extras) in read-only
 // deploys and download a complete, committable file — the merged inventory alone can't round-trip.
 let inventoryExtra = null
-try { inventoryExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'inventory-extra.json'), 'utf8')) } catch {}
+try {
+  inventoryExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'inventory-extra.json'), 'utf8'))
+} catch {}
 // Raw service-map.json (backlog #16) so the Admin panel's Services tab can edit it in read-only deploys.
 let serviceMap = null
-try { serviceMap = JSON.parse(fs.readFileSync(path.join(AUDIT, 'service-map.json'), 'utf8')) } catch {}
-fs.writeFileSync(path.join(dist, 'data.json'), JSON.stringify({ ...main, extras, config, inventoryExtra, serviceMap }))
+try {
+  serviceMap = JSON.parse(fs.readFileSync(path.join(AUDIT, 'service-map.json'), 'utf8'))
+} catch {}
+fs.writeFileSync(
+  path.join(dist, 'data.json'),
+  JSON.stringify({ ...main, extras, config, inventoryExtra, serviceMap }),
+)
 
 fs.rmSync(published, { recursive: true, force: true })
 fs.cpSync(dist, published, { recursive: true })

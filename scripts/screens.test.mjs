@@ -6,7 +6,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const CONFIG = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config.json'), 'utf8'))
+const CONFIG = JSON.parse(
+  fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config.json'), 'utf8'),
+)
 const UI_PKGS = Array.isArray(CONFIG.uiPackages) ? CONFIG.uiPackages : []
 import { parseRoutes, importMap, extractUiComponents } from './screens-gather.mjs'
 import { extractEndpointsFromText, extractApiCallsFromText, normalizeEndpoint } from './lib/endpoints.mjs'
@@ -67,14 +69,15 @@ test('importMap: default, named (with alias), and lazy dynamic imports', () => {
 })
 
 test('extractEndpointsFromText: use*Endpoints hooks (quotes + interpolation)', () => {
-  const src = "useBackendEndpoints('admin/companies'); useFooEndpoints(`companies/${id}/settings`); useBarEndpoints(\"assets\")"
+  const src =
+    'useBackendEndpoints(\'admin/companies\'); useFooEndpoints(`companies/${id}/settings`); useBarEndpoints("assets")'
   const eps = [...extractEndpointsFromText(src)].sort()
   assert.deepEqual(eps, ['admin/companies', 'assets', 'companies/{id}/settings'])
 })
 
 test('extractApiCallsFromText: axios/fetch/method + template URLs; strips host/version', () => {
   const src = [
-    "axios.post(`${SKYGATE_URL}gateway/000002/installation-confirmation?x=1`)",
+    'axios.post(`${SKYGATE_URL}gateway/000002/installation-confirmation?x=1`)',
     "client.get('/gateways')",
     "fetch('users/preferences')",
     "http.get('https://api.meridian.example/v1')", // bare version → dropped
@@ -88,25 +91,33 @@ test('extractApiCallsFromText: axios/fetch/method + template URLs; strips host/v
 
 // The design-system package list is config.json `uiPackages`, so this drives the parser with
 // whatever is configured — and skips when nothing is, since then there is no import to recognise.
-test('extractUiComponents: named imports from a configured UI package, by export name', { skip: UI_PKGS.length ? false : 'no uiPackages configured' }, () => {
-  const pkg = UI_PKGS[0]
-  const src = `
+test(
+  'extractUiComponents: named imports from a configured UI package, by export name',
+  { skip: UI_PKGS.length ? false : 'no uiPackages configured' },
+  () => {
+    const pkg = UI_PKGS[0]
+    const src = `
     import { Card, DataTable } from '${pkg}'
     import { PageHeader as Header, TOOLTIP_TYPE } from '${pkg}'
     import { Unrelated } from 'some-other-pkg'`
-  const comps = [...extractUiComponents(src)].sort()
-  assert.ok(comps.includes('Card') && comps.includes('DataTable'))
-  assert.ok(comps.includes('PageHeader'), 'uses the exported name, not the local alias') // `as Header`
-  assert.ok(!comps.includes('Unrelated'), 'non-ui packages are ignored')
-})
+    const comps = [...extractUiComponents(src)].sort()
+    assert.ok(comps.includes('Card') && comps.includes('DataTable'))
+    assert.ok(comps.includes('PageHeader'), 'uses the exported name, not the local alias') // `as Header`
+    assert.ok(!comps.includes('Unrelated'), 'non-ui packages are ignored')
+  },
+)
 
-test('extractUiComponents: every configured package name is recognised', { skip: UI_PKGS.length < 2 ? 'only one uiPackage configured' : false }, () => {
-  // A package mid-rename is pinned under both names across the estate; both must collapse onto the
-  // one hub, or the consumers still on the old name silently drop off it.
-  for (const pkg of UI_PKGS) {
-    assert.ok([...extractUiComponents(`import { Thing } from '${pkg}'`)].includes('Thing'), pkg)
-  }
-})
+test(
+  'extractUiComponents: every configured package name is recognised',
+  { skip: UI_PKGS.length < 2 ? 'only one uiPackage configured' : false },
+  () => {
+    // A package mid-rename is pinned under both names across the estate; both must collapse onto the
+    // one hub, or the consumers still on the old name silently drop off it.
+    for (const pkg of UI_PKGS) {
+      assert.ok([...extractUiComponents(`import { Thing } from '${pkg}'`)].includes('Thing'), pkg)
+    }
+  },
+)
 
 test('normalizeEndpoint: interpolation → {id}, slashes trimmed', () => {
   assert.equal(normalizeEndpoint('/companies/${id}/settings/'), 'companies/{id}/settings')

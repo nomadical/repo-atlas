@@ -6,10 +6,17 @@ import { asOfDate } from './decision-log.mjs'
 // listed with no rules, which reads as "out of scope" — the honest answer when the standards
 // document itself is missing. Put your real rules in golden-path/rules.json, not here.
 export let RULES = {
-  Service:{}, Client:{},
-  Library:{}, Firmware:{}, Data:{}, Hardware:{}, Tests:{}, Infrastructure:{}, Assets:{},
+  Service: {},
+  Client: {},
+  Library: {},
+  Firmware: {},
+  Data: {},
+  Hardware: {},
+  Tests: {},
+  Infrastructure: {},
+  Assets: {},
   // No `type-*` topic on GitHub: unclassified, not exempt.
-  Unclassified:{},
+  Unclassified: {},
 }
 
 // Which document the rules came from, so the page can say what it judged against.
@@ -26,16 +33,16 @@ export function setRules(file) {
    missing key = "could not tell" and still counts against the component. Logging/tracing
    deliberately lack it — see docs/goldenpath/todo.md. */
 export const CHECKS = [
-  { k:'lang',  name:'Language',  read:(u) => u.language },
-  { k:'fw',    name:'Framework', read:(u) => u.framework },
-  { k:'db',    name:'Database',  read:(u) => u.database, absent:'this component has no database' },
-  { k:'build', name:'Build',     read:(u) => u.buildTool },
-  { k:'log',   name:'Logging',   read:(u) => u.logging },
-  { k:'trace', name:'Tracing',   read:(u) => u.tracing },
+  { k: 'lang', name: 'Language', read: (u) => u.language },
+  { k: 'fw', name: 'Framework', read: (u) => u.framework },
+  { k: 'db', name: 'Database', read: (u) => u.database, absent: 'this component has no database' },
+  { k: 'build', name: 'Build', read: (u) => u.buildTool },
+  { k: 'log', name: 'Logging', read: (u) => u.logging },
+  { k: 'trace', name: 'Tracing', read: (u) => u.tracing },
 ]
 
 // Derived: a column reads "not collected" until the first night that carries it.
-export let COLLECTED = { lang:true, fw:true, build:true, db:false, log:false, trace:false }
+export let COLLECTED = { lang: true, fw: true, build: true, db: false, log: false, trace: false }
 
 export function deriveCollected(rows) {
   const seen = { ...COLLECTED }
@@ -53,7 +60,10 @@ export const inScope = (u) => Object.keys(RULES[u.type] || {}).length > 0
 // Word boundaries, not substrings — `includes` let "Java" pass on "JavaScript".
 // ' / ' in a rule is a list of alternatives.
 function conforms(value, spec) {
-  const words = String(value).toLowerCase().split(/[^a-z0-9.+#]+/).filter(Boolean)
+  const words = String(value)
+    .toLowerCase()
+    .split(/[^a-z0-9.+#]+/)
+    .filter(Boolean)
   return spec.split(' / ').some((want) => {
     const first = want.toLowerCase().split(' ')[0]
     return words.includes(first)
@@ -65,21 +75,27 @@ function conforms(value, spec) {
 export function cellsOf(u, decisionLog = {}, asOf) {
   const { approved = {}, notApplicable = {}, excluded = {} } = decisionLog
   const ex = asOfDate(excluded[u.repository], asOf)
-  if (ex) return CHECKS.map(() => ({ s:'na', audit:ex, excluded:true }))
+  if (ex) return CHECKS.map(() => ({ s: 'na', audit: ex, excluded: true }))
   return CHECKS.map((c) => {
     const spec = (RULES[u.type] || {})[c.k]
-    if (!spec) return { s:'na', reason: u.type === 'Unclassified'
-      ? 'No type-* topic on the GitHub repository, so nobody has said which rules apply'
-      : `Golden Path defines no ${c.name.toLowerCase()} rule for a ${u.type.toLowerCase()}` }
+    if (!spec)
+      return {
+        s: 'na',
+        reason:
+          u.type === 'Unclassified'
+            ? 'No type-* topic on the GitHub repository, so nobody has said which rules apply'
+            : `Golden Path defines no ${c.name.toLowerCase()} rule for a ${u.type.toLowerCase()}`,
+      }
     const custom = asOfDate((notApplicable[u.repository] || {})[c.k], asOf)
-    if (custom) return { s:'na', spec, audit:custom, curated:true }
-    if (!COLLECTED[c.k]) return { s:'unk', spec }
+    if (custom) return { s: 'na', spec, audit: custom, curated: true }
+    if (!COLLECTED[c.k]) return { s: 'unk', spec }
     const v = c.read(u)
-    if (v === null && c.absent) return { s:'na', spec, reason:`Scanned: ${c.absent}, so the rule has nothing to judge` }
-    if (v == null) return { s:'unk', spec }
-    if (conforms(v, spec)) return { s:'ok', spec, v }
+    if (v === null && c.absent)
+      return { s: 'na', spec, reason: `Scanned: ${c.absent}, so the rule has nothing to judge` }
+    if (v == null) return { s: 'unk', spec }
+    if (conforms(v, spec)) return { s: 'ok', spec, v }
     const appr = asOfDate((approved[u.repository] || {})[c.k], asOf)
-    return appr ? { s:'dev', spec, v, audit:appr } : { s:'bad', spec, v }
+    return appr ? { s: 'dev', spec, v, audit: appr } : { s: 'bad', spec, v }
   })
 }
 

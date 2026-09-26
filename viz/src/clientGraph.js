@@ -38,7 +38,12 @@ export function componentAdoption(extras) {
   }
   return [...map.entries()]
     .map(([component, e]) => ({ component, clients: [...e.clients].sort(), screens: e.screens }))
-    .sort((a, b) => b.clients.length - a.clients.length || b.screens - a.screens || a.component.localeCompare(b.component))
+    .sort(
+      (a, b) =>
+        b.clients.length - a.clients.length ||
+        b.screens - a.screens ||
+        a.component.localeCompare(b.component),
+    )
 }
 
 // Normalize a host for comparison: drop protocol/path, collapse env segments to .{env}, lowercase.
@@ -102,13 +107,19 @@ export function buildClientGraph(data, folder) {
   const edges = []
   const endpointIds = new Map() // endpoint path -> node id
   const backendIds = new Set() // backend id already added
-  const dimOf = (kind) => (kind === 'endpoint' ? [EP_W, EP_H] : kind === 'backend' ? [BE_W, BE_H] : [SCREEN_W, SCREEN_H])
+  const dimOf = (kind) =>
+    kind === 'endpoint' ? [EP_W, EP_H] : kind === 'backend' ? [BE_W, BE_H] : [SCREEN_W, SCREEN_H]
 
   const addBackendNode = (be) => {
     const id = 'be:' + be.id
     if (!backendIds.has(be.id)) {
       backendIds.add(be.id)
-      nodes.push({ id, type: 'card', position: { x: 0, y: 0 }, data: { kind: 'backend', title: be.label, subtitle: be.host || null, backend: be } })
+      nodes.push({
+        id,
+        type: 'card',
+        position: { x: 0, y: 0 },
+        data: { kind: 'backend', title: be.label, subtitle: be.host || null, backend: be },
+      })
       g.setNode(id, { width: BE_W, height: BE_H })
     }
     return id
@@ -122,7 +133,13 @@ export function buildClientGraph(data, folder) {
       id,
       type: 'card',
       position: { x: 0, y: 0 },
-      data: { kind: 'endpoint', title: e, subtitle: links[e] ? 'swagger ↗' : null, endpoint: e, link: links[e] || null },
+      data: {
+        kind: 'endpoint',
+        title: e,
+        subtitle: links[e] ? 'swagger ↗' : null,
+        endpoint: e,
+        link: links[e] || null,
+      },
     })
     g.setNode(id, { width: EP_W, height: EP_H })
     // endpoint → backend (resolved once per endpoint)
@@ -152,7 +169,13 @@ export function buildClientGraph(data, folder) {
       id,
       type: 'card',
       position: { x: 0, y: 0 },
-      data: { kind: 'screen', title: s.name, subtitle: s.path || s.file || null, chips: (s.roles || []).slice(0, 3), screen: s },
+      data: {
+        kind: 'screen',
+        title: s.name,
+        subtitle: s.path || s.file || null,
+        chips: (s.roles || []).slice(0, 3),
+        screen: s,
+      },
     })
     g.setNode(id, { width: SCREEN_W, height: SCREEN_H })
     for (const e of s.endpoints || []) {
@@ -175,5 +198,12 @@ export function buildClientGraph(data, folder) {
     n.position = { x: p.x - w / 2, y: p.y - h / 2 }
   }
 
-  return { nodes, edges, screenCount: rep.screens.length, endpointCount: endpointIds.size, backendCount: backendIds.size, method: rep.method }
+  return {
+    nodes,
+    edges,
+    screenCount: rep.screens.length,
+    endpointCount: endpointIds.size,
+    backendCount: backendIds.size,
+    method: rep.method,
+  }
 }

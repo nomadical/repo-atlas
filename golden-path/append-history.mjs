@@ -22,14 +22,19 @@ const read = (file) => JSON.parse(readFileSync(path.join(REPO, file), 'utf8'))
 // it is broken, so its facts are dropped rather than trusted. Fail closed: a missing or unparsable
 // generatedAt (NaN) must read as stale, not as fresh forever.
 let runtime = null
-try { runtime = JSON.parse(readFileSync(path.join(REPO, 'runtime-facts.json'), 'utf8')) } catch (e) {
+try {
+  runtime = JSON.parse(readFileSync(path.join(REPO, 'runtime-facts.json'), 'utf8'))
+} catch (e) {
   if (e.code !== 'ENOENT') throw e // corruption must fail the night, not silently drop the columns
 }
 if (runtime && !(Date.now() - Date.parse(runtime.generatedAt) <= 14 * 86400_000)) {
   console.warn(`runtime-facts.json is stale (${runtime.generatedAt}) — ignoring it`)
   runtime = null
 }
-if (runtime && !(Array.isArray(runtime.checked) && Array.isArray(runtime.logs) && Array.isArray(runtime.traces))) {
+if (
+  runtime &&
+  !(Array.isArray(runtime.checked) && Array.isArray(runtime.logs) && Array.isArray(runtime.traces))
+) {
   throw new Error('runtime-facts.json is malformed (checked/logs/traces must be arrays)')
 }
 
@@ -57,4 +62,6 @@ else out.history[idx] = entry
 out.generatedAt = new Date().toISOString()
 if (meta.org) out.org = meta.org // the screen's GitHub links resolve against the real org, not a hardcoded one
 writeFileSync(OUT, JSON.stringify(out, null, 2))
-console.log(`${today}: ${Object.keys(changed).length} repositories changed, ${Object.keys(rows).length} total, ${out.history.length} nights`)
+console.log(
+  `${today}: ${Object.keys(changed).length} repositories changed, ${Object.keys(rows).length} total, ${out.history.length} nights`,
+)

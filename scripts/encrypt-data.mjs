@@ -25,13 +25,13 @@ if (!pass || pass.length < 12) {
   if (!publicData) {
     console.error(
       'encrypt-data: refusing to publish.\n' +
-      '  GitHub Pages is public, so the data needs either a passphrase or your explicit consent to go out in the clear.\n' +
-      '  Pick one:\n' +
-      '    • Protect it — set the ARCHMAP_PASSPHRASE repo SECRET (12+ chars). Readers type it once; the data is\n' +
-      '      decrypted in their browser and never served in plaintext.\n' +
-      '    • Publish it openly — set the PAGES_PUBLIC_DATA repo VARIABLE to 1. Right for a demo or a map you\n' +
-      '      intend to be world-readable; wrong for a real internal estate.\n' +
-      '  For real protection (no shared passphrase at all), serve the data from server/server.mjs instead — see infra/hosting.md.',
+        '  GitHub Pages is public, so the data needs either a passphrase or your explicit consent to go out in the clear.\n' +
+        '  Pick one:\n' +
+        '    • Protect it — set the ARCHMAP_PASSPHRASE repo SECRET (12+ chars). Readers type it once; the data is\n' +
+        '      decrypted in their browser and never served in plaintext.\n' +
+        '    • Publish it openly — set the PAGES_PUBLIC_DATA repo VARIABLE to 1. Right for a demo or a map you\n' +
+        '      intend to be world-readable; wrong for a real internal estate.\n' +
+        '  For real protection (no shared passphrase at all), serve the data from server/server.mjs instead — see infra/hosting.md.',
     )
     process.exit(1)
   }
@@ -55,9 +55,16 @@ const key = crypto.pbkdf2Sync(pass, salt, iterations, 32, 'sha256')
 const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
 const ct = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]) // tag appended -> WebCrypto-compatible
 
-fs.writeFileSync(path.join(dir, 'data.enc'), JSON.stringify({
-  v: 1, kdf: 'PBKDF2-SHA256', iterations,
-  salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64'),
-}))
+fs.writeFileSync(
+  path.join(dir, 'data.enc'),
+  JSON.stringify({
+    v: 1,
+    kdf: 'PBKDF2-SHA256',
+    iterations,
+    salt: salt.toString('base64'),
+    iv: iv.toString('base64'),
+    ct: ct.toString('base64'),
+  }),
+)
 fs.unlinkSync(src)
 console.log(`encrypt-data: wrote data.enc (${(ct.length / 1024).toFixed(0)} kB), removed plaintext data.json`)

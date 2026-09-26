@@ -16,7 +16,23 @@ import { Icon } from './icons.jsx'
 // Infrastructure, Data, Config, Firmware, Hardware, Assets) so the two surfaces read the same top-to-
 // bottom; `component` — the inventory catch-all with no Matrix row — trails the shared vocabulary.
 const KIND_GROUPS = [
-  ['Type', ['client', 'service', 'library', 'tests', 'external', 'infrastructure', 'data', 'config', 'firmware', 'hardware', 'assets', 'component']],
+  [
+    'Type',
+    [
+      'client',
+      'service',
+      'library',
+      'tests',
+      'external',
+      'infrastructure',
+      'data',
+      'config',
+      'firmware',
+      'hardware',
+      'assets',
+      'component',
+    ],
+  ],
   ['Diagram context (not inventory components)', ['infra', 'storage', 'bus', 'content', 'package']],
 ]
 
@@ -58,7 +74,11 @@ export function Legend({ kinds, edgeTypesPresent = [], hiddenEdges, config }) {
       {arrows.map((e) => {
         const off = !!hiddenEdges?.has(e.key)
         return (
-          <div key={e.key} className={'legend-item' + (off ? ' off' : '')} title={off ? `${e.label} — hidden (toggle in Filters)` : e.label}>
+          <div
+            key={e.key}
+            className={'legend-item' + (off ? ' off' : '')}
+            title={off ? `${e.label} — hidden (toggle in Filters)` : e.label}
+          >
             <span className="legend-edge" style={{ borderTopColor: e.color, borderTopStyle: e.dash }} />
             {e.label}
           </div>
@@ -89,28 +109,41 @@ export function LegendOverlay({ onClose }) {
           </button>
         </div>
         <div className="legend-help">
-          <p className="lg-note">The colour key — node types, status styles and arrow classes — is always shown in the panel at the top-left of the map.</p>
+          <p className="lg-note">
+            The colour key — node types, status styles and arrow classes — is always shown in the panel at the
+            top-left of the map.
+          </p>
           <section>
             <h4>Reading the map</h4>
             <ul className="lg-tips">
               <li>
-                A card's coloured heading and border are its component type; grey tags are the applications it serves; the small grey code is its abbreviation.
+                A card's coloured heading and border are its component type; grey tags are the applications it
+                serves; the small grey code is its abbreviation.
               </li>
               <li>
-                Cards flag <b>stale</b> repos (no commit in &gt; 120 days), incomplete curation, and open alerts / failing CI.
+                Cards flag <b>stale</b> repos (no commit in &gt; 120 days), incomplete curation, and open
+                alerts / failing CI.
               </li>
-              <li>Hover a card to spotlight its relations; a faint dotted arrow is an inferred, unverified link.</li>
+              <li>
+                Hover a card to spotlight its relations; a faint dotted arrow is an inferred, unverified link.
+              </li>
             </ul>
           </section>
           <section>
             <h4>Interacting</h4>
             <ul className="lg-tips">
-              <li>Hover or select a card to spotlight it and its direct links; click a cluster to focus its members.</li>
               <li>
-                <b>Filters</b> narrows the map (groups, status, health, per-component) and — on the graph — carries the Detail toggles and the Arrows /
-                integrations show-hide.
+                Hover or select a card to spotlight it and its direct links; click a cluster to focus its
+                members.
               </li>
-              <li>Search highlights matching repos; the view is encoded in the URL, so it's shareable and can be saved as a named View.</li>
+              <li>
+                <b>Filters</b> narrows the map (groups, status, health, per-component) and — on the graph —
+                carries the Detail toggles and the Arrows / integrations show-hide.
+              </li>
+              <li>
+                Search highlights matching repos; the view is encoded in the URL, so it's shareable and can be
+                saved as a named View.
+              </li>
               <li>
                 The <Icon name="warning" /> pill lists pipeline / data-accuracy warnings.
               </li>

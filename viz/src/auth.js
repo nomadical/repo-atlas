@@ -41,7 +41,11 @@ export const getToken = () => keycloak?.token ?? null
 export const getUser = () => {
   const t = keycloak?.tokenParsed
   if (!t) return null
-  return { name: t.name || t.preferred_username || t.email || 'Account', username: t.preferred_username, email: t.email }
+  return {
+    name: t.name || t.preferred_username || t.email || 'Account',
+    username: t.preferred_username,
+    email: t.email,
+  }
 }
 
 // End the realm session and return to the app (the post-logout redirect must be allowed on the

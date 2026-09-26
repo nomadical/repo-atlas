@@ -3,7 +3,18 @@ import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState 
 import '@xyflow/react/dist/style.css'
 import CardNode from './CardNode.jsx'
 import RegionNode from './RegionNode.jsx'
-import { buildGraph, KIND, LAYERS, edgeTypesFor, resolveClusters, DEFAULT_CLUSTERS, matchInventory, uiPackagesOf, uiHubFoldersOf, coversAll } from './graph.js'
+import {
+  buildGraph,
+  KIND,
+  LAYERS,
+  edgeTypesFor,
+  resolveClusters,
+  DEFAULT_CLUSTERS,
+  matchInventory,
+  uiPackagesOf,
+  uiHubFoldersOf,
+  coversAll,
+} from './graph.js'
 import { edgeTypes } from './floating.jsx'
 import { getUser, logout, authEnabled, relogin, isAdmin } from './auth.js'
 import { getData, decryptData } from './data.js'
@@ -19,7 +30,9 @@ import ContextMenu from './ContextMenu.jsx'
 // views load when the user switches to them; the Admin panel only for admins who open it.
 const InventoryTable = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.InventoryTable })))
 const MatrixView = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.MatrixView })))
-const IntegrationsTable = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.IntegrationsTable })))
+const IntegrationsTable = lazy(() =>
+  import('./InventoryViews.jsx').then((m) => ({ default: m.IntegrationsTable })),
+)
 const AdminPanel = lazy(() => import('./AdminPanel.jsx'))
 const ClientDetailView = lazy(() => import('./ClientDetailView.jsx'))
 
@@ -66,7 +79,8 @@ const DEFAULT_TITLE = 'Architecture Map'
 
 // Resolve a saved ?sel= id to a card node, aliasing the repo FOLDER (old links / saved views used the
 // folder before the serviceId became the node id) and the serviceId, so both keep resolving.
-const matchSelNode = (n, id) => n.type === 'card' && (n.id === id || n.data.repo?.folder === id || n.data.repo?.serviceId === id)
+const matchSelNode = (n, id) =>
+  n.type === 'card' && (n.id === id || n.data.repo?.folder === id || n.data.repo?.serviceId === id)
 
 // A pipeline-health token. Most are repo names (optionally followed by " — reason" or
 // " (detail)"); link the repo part straight to GitHub so an owner can jump in and curate it.
@@ -78,7 +92,12 @@ function HealthChip({ token, org }) {
   if (!name || /\s/.test(name) || !org) return <span className="mod-chip">{token}</span>
   return (
     <span className="mod-chip">
-      <a href={`https://github.com/${org}/${name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+      <a
+        href={`https://github.com/${org}/${name}`}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+      >
         {name}
       </a>
       {m[2] || ''}
@@ -113,7 +132,13 @@ function EmbedDialog({ onClose, onCopied, title }) {
     else onCopied?.()
   }
   return (
-    <div className="legend-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Embed this view">
+    <div
+      className="legend-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Embed this view"
+    >
       <div className="legend-card embed-card" onClick={(e) => e.stopPropagation()}>
         <div className="legend-head">
           <h3>Embed this view</h3>
@@ -122,8 +147,9 @@ function EmbedDialog({ onClose, onCopied, title }) {
           </button>
         </div>
         <p className="embed-hint">
-          The embed shows <b>exactly the current filters, view &amp; selection</b>. Adjust the filters first to frame a specific part of the map, then copy the
-          snippet below into your wiki's HTML/iframe macro or any web page.
+          The embed shows <b>exactly the current filters, view &amp; selection</b>. Adjust the filters first
+          to frame a specific part of the map, then copy the snippet below into your wiki's HTML/iframe macro
+          or any web page.
         </p>
         <div className="embed-dims">
           <label>
@@ -136,9 +162,21 @@ function EmbedDialog({ onClose, onCopied, title }) {
           </label>
           <span className="embed-dims-note">Plain numbers are pixels; use 100% to fill the container.</span>
         </div>
-        <textarea className="embed-code" readOnly value={snippet} rows={3} onFocus={(e) => e.target.select()} />
+        <textarea
+          className="embed-code"
+          readOnly
+          value={snippet}
+          rows={3}
+          onFocus={(e) => e.target.select()}
+        />
         <div className="embed-actions">
-          <a className="btn ghost" href={src} target="_blank" rel="noreferrer" title="Open the embeddable view in a new tab">
+          <a
+            className="btn ghost"
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            title="Open the embeddable view in a new tab"
+          >
             <Icon name="external" /> Preview
           </a>
           <button className="btn primary" onClick={copy}>
@@ -157,7 +195,9 @@ function EmbedDialog({ onClose, onCopied, title }) {
 export default function App() {
   const [data, setData] = useState(null)
   // Detail layers — additive; one state object driven by the LAYERS registry, seeded from the URL.
-  const [layers, setLayers] = useState(() => Object.fromEntries(LAYERS.map((l) => [l.key, qFlag(l.param, l.default)])))
+  const [layers, setLayers] = useState(() =>
+    Object.fromEntries(LAYERS.map((l) => [l.key, qFlag(l.param, l.default)])),
+  )
   const toggleLayer = useCallback((key, on) => setLayers((ls) => ({ ...ls, [key]: on })), [])
   // Default to the (touch-friendly) Table on small screens unless the URL pins a view. Skip the
   // heuristic in embed mode: a narrow iframe would otherwise flip a framed graph to the table.
@@ -268,7 +308,9 @@ export default function App() {
   // every mutation, mirroring the panelW localStorage pattern. Dragged card positions are NOT saved.
   const [views, setViews] = useState(() => {
     try {
-      const arr = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem('archmap-views')) || '[]')
+      const arr = JSON.parse(
+        (typeof localStorage !== 'undefined' && localStorage.getItem('archmap-views')) || '[]',
+      )
       return Array.isArray(arr) ? arr : []
     } catch {
       return []
@@ -387,14 +429,20 @@ export default function App() {
       const idset = new Set(members || [])
       const cards = nodes.filter((n) => idset.has(n.id))
       if (!cards.length) return
-      const dim = (n, k) => (k === 'w' ? (n.measured?.width ?? n.width ?? 224) : (n.measured?.height ?? n.height ?? 96))
+      const dim = (n, k) =>
+        k === 'w' ? (n.measured?.width ?? n.width ?? 224) : (n.measured?.height ?? n.height ?? 96)
       const xs = cards.map((n) => n.position.x)
       const ys = cards.map((n) => n.position.y)
       const minX = Math.min(...xs) - 34
       const maxX = Math.max(...cards.map((n) => n.position.x + dim(n, 'w'))) + 34
       const minY = Math.min(...ys) - 52
       const maxY = Math.max(...cards.map((n) => n.position.y + dim(n, 'h'))) + 30
-      setRegionGeom(regionId, { x: Math.round(minX), y: Math.round(minY), w: Math.round(maxX - minX), h: Math.round(maxY - minY) })
+      setRegionGeom(regionId, {
+        x: Math.round(minX),
+        y: Math.round(minY),
+        w: Math.round(maxX - minX),
+        h: Math.round(maxY - minY),
+      })
     },
     [setRegionGeom],
   )
@@ -430,11 +478,14 @@ export default function App() {
     const c = data.config
     const smallScreen = typeof window !== 'undefined' && window.innerWidth < 760
     if (!initialParams.has('view') && !smallScreen && VIEW_LABELS[c.defaultView]) setView(c.defaultView)
-    if (!initialParams.has('mode') && (c.defaultMode === 'overview' || c.defaultMode === 'dev')) setMode(c.defaultMode)
-    if (!initialParams.has('dark') && (c.defaultTheme === 'dark' || c.defaultTheme === 'light')) setDark(c.defaultTheme === 'dark')
+    if (!initialParams.has('mode') && (c.defaultMode === 'overview' || c.defaultMode === 'dev'))
+      setMode(c.defaultMode)
+    if (!initialParams.has('dark') && (c.defaultTheme === 'dark' || c.defaultTheme === 'light'))
+      setDark(c.defaultTheme === 'dark')
     // when the config defines its own clusters, seed the default-on groups from them (unless the URL
     // already pinned ?group=), so a fork controls which groups start hidden.
-    if (!initialParams.has('group') && Array.isArray(c.clusters) && c.clusters.length) setFacets((f) => ({ ...f, group: new Set(defaultOnLabels(c.clusters)) }))
+    if (!initialParams.has('group') && Array.isArray(c.clusters) && c.clusters.length)
+      setFacets((f) => ({ ...f, group: new Set(defaultOnLabels(c.clusters)) }))
     if (c.layout && typeof c.layout === 'object') {
       const norm = normalizeLayout(c.layout) // admin-curated card positions (per mode)
       setLayout(norm)
@@ -453,7 +504,10 @@ export default function App() {
     [layers, facets, hiddenEdges, viewMode, layout, groupBy],
   )
   const graph = useMemo(
-    () => (data ? buildGraph(data, buildOpts) : { nodes: [], edges: [], facetOptions: { status: [], components: [] }, edgeTypesPresent: [] }),
+    () =>
+      data
+        ? buildGraph(data, buildOpts)
+        : { nodes: [], edges: [], facetOptions: { status: [], components: [] }, edgeTypesPresent: [] },
     [data, buildOpts],
   )
   const kindsPresent = useMemo(() => new Set(graph.nodes.map((n) => n.data.kind)), [graph])
@@ -471,7 +525,13 @@ export default function App() {
     setRfNodes(
       graph.nodes.map((n) =>
         n.type === 'region'
-          ? { ...n, draggable: admin, selectable: admin, focusable: admin, data: { ...n.data, editable: admin, onResize: (g) => setRegionGeom(n.id, g) } }
+          ? {
+              ...n,
+              draggable: admin,
+              selectable: admin,
+              focusable: admin,
+              data: { ...n.data, editable: admin, onResize: (g) => setRegionGeom(n.id, g) },
+            }
           : n,
       ),
     )
@@ -483,7 +543,11 @@ export default function App() {
   const searchList = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    return graph.nodes.filter((n) => n.type === 'card' && `${n.data.title} ${n.data.subtitle || ''}`.toLowerCase().includes(q)).map((n) => n.id)
+    return graph.nodes
+      .filter(
+        (n) => n.type === 'card' && `${n.data.title} ${n.data.subtitle || ''}`.toLowerCase().includes(q),
+      )
+      .map((n) => n.id)
   }, [query, graph])
   const searchMatches = useMemo(() => (searchList.length ? new Set(searchList) : null), [searchList])
   const [matchIdx, setMatchIdx] = useState(0)
@@ -500,10 +564,16 @@ export default function App() {
     const uniq = (xs) => [...new Set(xs.filter(Boolean))].sort()
     return {
       group: clusterDefs.map((c) => c.label),
-      status: view === 'graph' ? graph.facetOptions?.status || [] : uniq((data?.inventory || []).map((e) => e.status)),
+      status:
+        view === 'graph'
+          ? graph.facetOptions?.status || []
+          : uniq((data?.inventory || []).map((e) => e.status)),
       // graph: the hideable cards on the current map (reported by the build); Table/Matrix: every
       // inventory component (the list can reach ~136 rows, hence the text filter + scroll cap).
-      components: view === 'graph' ? graph.facetOptions?.components || [] : uniq((data?.inventory || []).map((e) => e.name)),
+      components:
+        view === 'graph'
+          ? graph.facetOptions?.components || []
+          : uniq((data?.inventory || []).map((e) => e.name)),
     }
   }, [view, graph, data, clusterDefs])
   // inventory filtered by the same group + status + health facets, for the Table / Matrix views.
@@ -533,7 +603,10 @@ export default function App() {
   // the Integrations table too (hiding "Kafka" drops both the graph's Kafka arrows and the table's
   // Kafka rows). Which arrow types are actually present in the integration data drives the toggles
   // shown while the Integrations view is active.
-  const integrationEdgeTypes = useMemo(() => [...new Set((data?.integrations || []).map((i) => PROTOCOL_EDGE[i.protocol]).filter(Boolean))], [data])
+  const integrationEdgeTypes = useMemo(
+    () => [...new Set((data?.integrations || []).map((i) => PROTOCOL_EDGE[i.protocol]).filter(Boolean))],
+    [data],
+  )
   const visibleIntegrations = useMemo(
     () =>
       (data?.integrations || []).filter((i) => {
@@ -580,7 +653,11 @@ export default function App() {
 
   // apply focus by mutating ONLY className (spreads existing nodes -> keeps measured dims -> no flicker)
   useEffect(() => {
-    setRfNodes((nds) => nds.map((n) => (n.type === 'region' ? n : { ...n, className: !lit ? undefined : lit.ln.has(n.id) ? 'lit' : 'dim' })))
+    setRfNodes((nds) =>
+      nds.map((n) =>
+        n.type === 'region' ? n : { ...n, className: !lit ? undefined : lit.ln.has(n.id) ? 'lit' : 'dim' },
+      ),
+    )
     setRfEdges((eds) =>
       eds.map((e) => {
         const cls = !lit ? undefined : lit.le.has(e.id) ? 'lit' : 'dim'
@@ -616,14 +693,29 @@ export default function App() {
     if (view !== cfgView) p.set('view', view)
     if (groupBy !== 'team') p.set('by', groupBy)
     if (clientId) p.set('client', clientId)
-    if (sel?.repo?.folder || sel?.resource?.id) p.set('sel', sel.repo?.serviceId || sel.repo?.folder || sel.resource.id)
+    if (sel?.repo?.folder || sel?.resource?.id)
+      p.set('sel', sel.repo?.serviceId || sel.repo?.folder || sel.resource.id)
     // catalog cards and the Kafka bus are selectable too — write their node ids so those
     // selections share/restore like any other (matchSelNode resolves them by exact id)
     else if (sel?.inventory?.name) p.set('sel', 'inv:' + sel.inventory.name)
     else if (sel?.kind === 'bus') p.set('sel', 'bus:kafka')
     if (EMBED) p.set('embed', '1') // stay in kiosk mode across in-iframe reloads
     return p
-  }, [groupParam, layers, dark, view, sel, facets, hiddenEdges, clientId, viewMode, cfgDark, cfgMode, cfgView, groupBy])
+  }, [
+    groupParam,
+    layers,
+    dark,
+    view,
+    sel,
+    facets,
+    hiddenEdges,
+    clientId,
+    viewMode,
+    cfgDark,
+    cfgMode,
+    cfgView,
+    groupBy,
+  ])
   useEffect(() => {
     const qs = buildViewParams().toString()
     history.replaceState(null, '', qs ? '?' + qs : location.pathname)
@@ -697,23 +789,57 @@ export default function App() {
     const v = data?.validation || {}
     const unclassified = graph.nodes.find((n) => n.id === 'region-Unclassified')?.data.members || []
     const items = []
-    if (unclassified.length) items.push({ kind: 'Unclassified repos (no cluster assigned)', list: unclassified })
-    if (v.newlyDiscovered?.length) items.push({ kind: 'New repos (created on GitHub recently — double-check curation)', list: v.newlyDiscovered })
-    if (v.unclonedOrgRepos?.length) items.push({ kind: `On ${data?.org || 'the'} org but not cloned locally`, list: v.unclonedOrgRepos })
-    if (v.staleClones?.length) items.push({ kind: 'Clones with no readable git history', list: v.staleClones })
-    if (v.duplicateClones?.length) items.push({ kind: 'Duplicate local clones of one repo (stale pre-rename folder)', list: v.duplicateClones })
-    if (v.repoRenames?.length) items.push({ kind: 'GitHub repos renamed (curated names auto-fixed at runtime)', list: v.repoRenames })
-    if (v.repoMissingOnGitHub?.length) items.push({ kind: 'GitHub repos not found (deleted or no access)', list: v.repoMissingOnGitHub })
-    if (v.uncuratedRepos?.length) items.push({ kind: 'Org repos with no inventory topics (not on the map — curate to include)', list: v.uncuratedRepos })
-    if (v.incompleteCuration?.length) items.push({ kind: 'On the map but half-curated (missing owner/status/description)', list: v.incompleteCuration })
-    if (v.statusMismatch?.length) items.push({ kind: 'Archived on GitHub but status not Removed (to be curated)', list: v.statusMismatch })
-    if (v.azureStaleMappings?.length) items.push({ kind: 'Stale Azure name mappings (repo-extra.json)', list: v.azureStaleMappings })
+    if (unclassified.length)
+      items.push({ kind: 'Unclassified repos (no cluster assigned)', list: unclassified })
+    if (v.newlyDiscovered?.length)
+      items.push({
+        kind: 'New repos (created on GitHub recently — double-check curation)',
+        list: v.newlyDiscovered,
+      })
+    if (v.unclonedOrgRepos?.length)
+      items.push({ kind: `On ${data?.org || 'the'} org but not cloned locally`, list: v.unclonedOrgRepos })
+    if (v.staleClones?.length)
+      items.push({ kind: 'Clones with no readable git history', list: v.staleClones })
+    if (v.duplicateClones?.length)
+      items.push({
+        kind: 'Duplicate local clones of one repo (stale pre-rename folder)',
+        list: v.duplicateClones,
+      })
+    if (v.repoRenames?.length)
+      items.push({ kind: 'GitHub repos renamed (curated names auto-fixed at runtime)', list: v.repoRenames })
+    if (v.repoMissingOnGitHub?.length)
+      items.push({ kind: 'GitHub repos not found (deleted or no access)', list: v.repoMissingOnGitHub })
+    if (v.uncuratedRepos?.length)
+      items.push({
+        kind: 'Org repos with no inventory topics (not on the map — curate to include)',
+        list: v.uncuratedRepos,
+      })
+    if (v.incompleteCuration?.length)
+      items.push({
+        kind: 'On the map but half-curated (missing owner/status/description)',
+        list: v.incompleteCuration,
+      })
+    if (v.statusMismatch?.length)
+      items.push({
+        kind: 'Archived on GitHub but status not Removed (to be curated)',
+        list: v.statusMismatch,
+      })
+    if (v.azureStaleMappings?.length)
+      items.push({ kind: 'Stale Azure name mappings (repo-extra.json)', list: v.azureStaleMappings })
     // Azure drift (assemble.mjs azure overlay) — what's actually deployed vs what's curated
-    if (v.azureUnmappedApps?.length) items.push({ kind: 'Deployed in Azure but not on the map', list: v.azureUnmappedApps })
-    if (v.azureEnvDrift?.length) items.push({ kind: 'Environment drift (Azure vs workflows)', list: v.azureEnvDrift })
-    if (v.azureRemovedButDeployed?.length) items.push({ kind: 'Removed/Sunsetting but recently deployed', list: v.azureRemovedButDeployed })
-    if (v.azureNeedsCuration?.length) items.push({ kind: 'Deployed services awaiting curation (scaffolded into the table)', list: v.azureNeedsCuration })
-    if (v.azureAcrNotInInventory?.length) items.push({ kind: 'In container registry, no matching GitHub repo', list: v.azureAcrNotInInventory })
+    if (v.azureUnmappedApps?.length)
+      items.push({ kind: 'Deployed in Azure but not on the map', list: v.azureUnmappedApps })
+    if (v.azureEnvDrift?.length)
+      items.push({ kind: 'Environment drift (Azure vs workflows)', list: v.azureEnvDrift })
+    if (v.azureRemovedButDeployed?.length)
+      items.push({ kind: 'Removed/Sunsetting but recently deployed', list: v.azureRemovedButDeployed })
+    if (v.azureNeedsCuration?.length)
+      items.push({
+        kind: 'Deployed services awaiting curation (scaffolded into the table)',
+        list: v.azureNeedsCuration,
+      })
+    if (v.azureAcrNotInInventory?.length)
+      items.push({ kind: 'In container registry, no matching GitHub repo', list: v.azureAcrNotInInventory })
     return { items, count: items.reduce((s, i) => s + i.list.length, 0) }
   }, [data, graph])
 
@@ -797,7 +923,14 @@ export default function App() {
           .filter((n) => n.type === 'card' && idset.has(n.id))
           .map((n) => ({ id: n.id, title: String(n.data.title).replace('\n', ' '), kind: n.data.kind }))
         setBlockFocus(new Set(ids))
-        setSel({ region: { label: node.data.label, color: node.data.color, members, note: config.regionNotes?.[node.data.label] || '' } })
+        setSel({
+          region: {
+            label: node.data.label,
+            color: node.data.color,
+            members,
+            note: config.regionNotes?.[node.data.label] || '',
+          },
+        })
       } else {
         setSel(node.data)
         setBlockFocus(null)
@@ -809,7 +942,11 @@ export default function App() {
   const onNodeDoubleClick = useCallback(
     (_, node) => {
       const folder = node.data?.repo?.folder
-      if (node.type === 'card' && node.data?.kind === 'client' && data?.extras?.screens?.perRepo?.[folder]?.screens?.length) {
+      if (
+        node.type === 'card' &&
+        node.data?.kind === 'client' &&
+        data?.extras?.screens?.perRepo?.[folder]?.screens?.length
+      ) {
         setClientId(folder)
       }
     },
@@ -875,7 +1012,13 @@ export default function App() {
         return
       }
       pushUndo()
-      setLayout((l) => ({ ...l, [viewMode]: { ...l[viewMode], [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) } } }))
+      setLayout((l) => ({
+        ...l,
+        [viewMode]: {
+          ...l[viewMode],
+          [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+        },
+      }))
     },
     [pushUndo, viewMode, setRegionGeom, layout],
   )
@@ -971,7 +1114,13 @@ export default function App() {
   // hidden value is picked, no arrow class is hidden, and (in Graph) the detail layers are at their
   // defaults. Anything else is a deviation the "Reset filters" button returns from — including a
   // clear-everything (empty group).
-  const isDefaultFilters = groupParam == null && !facets.status.size && !facets.health.size && !facets.hidden.size && !layerDeviations && !hiddenEdges.size
+  const isDefaultFilters =
+    groupParam == null &&
+    !facets.status.size &&
+    !facets.health.size &&
+    !facets.hidden.size &&
+    !layerDeviations &&
+    !hiddenEdges.size
   // "Reset filters" returns to the default view — the default-on groups (ISS/IoT hidden), no status,
   // no at-risk, no hidden components, every arrow class shown, and the default detail layers.
   const resetFilters = useCallback(() => {
@@ -1021,8 +1170,17 @@ export default function App() {
       return [
         { heading: label + ' group' },
         { label: 'Select group', icon: 'box', onClick: () => onNodeClick(null, node) },
-        { label: 'Resize to fit members', icon: 'integrations', onClick: () => resizeRegionToFit(node.id, node.data.members) },
-        { label: 'Reset box to auto', icon: 'dot', onClick: () => clearRegionGeom(node.id), disabled: !(layout[viewMode] || {})[node.id] },
+        {
+          label: 'Resize to fit members',
+          icon: 'integrations',
+          onClick: () => resizeRegionToFit(node.id, node.data.members),
+        },
+        {
+          label: 'Reset box to auto',
+          icon: 'dot',
+          onClick: () => clearRegionGeom(node.id),
+          disabled: !(layout[viewMode] || {})[node.id],
+        },
         { separator: true },
         { label: 'Edit group descriptions…', icon: 'edit', onClick: () => setShowAdmin(true) },
       ]
@@ -1031,15 +1189,28 @@ export default function App() {
       const d = node.data
       const repoUrl = d.inventory?.repo || d.repo?.remote?.replace(/\.git$/, '') || null
       const dh = docHref(d.inventory?.doc, d.inventory?.docUrl, config?.docSearchUrl)
-      const canDrill = d.kind === 'client' && data?.extras?.screens?.perRepo?.[d.repo?.folder]?.screens?.length
+      const canDrill =
+        d.kind === 'client' && data?.extras?.screens?.perRepo?.[d.repo?.folder]?.screens?.length
       return [
         { heading: String(d.title || '').replace('\n', ' ') },
         { label: 'Details', icon: 'more', onClick: () => onNodeClick(null, node) },
         { label: 'Focus / frame', icon: 'search', onClick: () => frameNodes([node.id]) },
-        canDrill ? { label: 'View screens →', icon: 'integrations', onClick: () => setClientId(d.repo.folder) } : null,
+        canDrill
+          ? { label: 'View screens →', icon: 'integrations', onClick: () => setClientId(d.repo.folder) }
+          : null,
         { separator: true },
-        { label: 'Open repo on GitHub', icon: 'github', onClick: () => window.open(repoUrl, '_blank', 'noopener'), disabled: !repoUrl },
-        { label: 'Open documentation', icon: 'book', onClick: () => window.open(dh, '_blank', 'noopener'), disabled: !dh },
+        {
+          label: 'Open repo on GitHub',
+          icon: 'github',
+          onClick: () => window.open(repoUrl, '_blank', 'noopener'),
+          disabled: !repoUrl,
+        },
+        {
+          label: 'Open documentation',
+          icon: 'book',
+          onClick: () => window.open(dh, '_blank', 'noopener'),
+          disabled: !dh,
+        },
       ]
     }
     return [
@@ -1063,7 +1234,10 @@ export default function App() {
                 const days = Math.floor((Date.now() - new Date(data.generatedAt).getTime()) / 86400000)
                 const ago = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`
                 return (
-                  <span className={'gen' + (days > dataStaleDays ? ' old' : '')} title={new Date(data.generatedAt).toLocaleString()}>
+                  <span
+                    className={'gen' + (days > dataStaleDays ? ' old' : '')}
+                    title={new Date(data.generatedAt).toLocaleString()}
+                  >
                     data {ago}
                   </span>
                 )
@@ -1117,7 +1291,11 @@ export default function App() {
             </Dropdown>
             {admin ? (
               <label className="switch" title="Show extra detail (tooling/test chips + the richer layout)">
-                <input type="checkbox" checked={mode === 'dev'} onChange={(e) => setMode(e.target.checked ? 'dev' : 'overview')} />
+                <input
+                  type="checkbox"
+                  checked={mode === 'dev'}
+                  onChange={(e) => setMode(e.target.checked ? 'dev' : 'overview')}
+                />
                 <span className="switch-track">
                   <span className="switch-thumb" />
                 </span>
@@ -1150,9 +1328,16 @@ export default function App() {
             ) : null}
             {/* Filters — one control: faceted narrowing (group/status/health, subtractive) plus the graph
                 detail layers (additive), folded in here so there's a single menu instead of two. */}
-            <Dropdown className="filters-dd" label="Filters" badge={filterCount || null} title="Narrow or detail the map — groups, status, health, layers">
+            <Dropdown
+              className="filters-dd"
+              label="Filters"
+              badge={filterCount || null}
+              title="Narrow or detail the map — groups, status, health, layers"
+            >
               {isDefaultFilters ? (
-                <div className="dd-hint">Default view. Tick a group or status to narrow, or untick every group to show all.</div>
+                <div className="dd-hint">
+                  Default view. Tick a group or status to narrow, or untick every group to show all.
+                </div>
               ) : (
                 <button className="dd-item dd-clear" onClick={resetFilters}>
                   <Icon name="close" /> Reset filters (default view)
@@ -1162,7 +1347,11 @@ export default function App() {
               {facetOptions.group.map((label) => {
                 const def = clusterDefs.find((c) => c.label === label)
                 return (
-                  <FilterRow key={'g:' + label} checked={facets.group.has(label)} onChange={() => toggleFacet('group', label)}>
+                  <FilterRow
+                    key={'g:' + label}
+                    checked={facets.group.has(label)}
+                    onChange={() => toggleFacet('group', label)}
+                  >
                     {def?.color ? <span className="tagdot" style={{ background: def.color }} /> : null}
                     {label}
                   </FilterRow>
@@ -1172,14 +1361,21 @@ export default function App() {
                 <>
                   <div className="dd-group">Status</div>
                   {facetOptions.status.map((s) => (
-                    <FilterRow key={'s:' + s} checked={facets.status.has(s)} onChange={() => toggleFacet('status', s)}>
+                    <FilterRow
+                      key={'s:' + s}
+                      checked={facets.status.has(s)}
+                      onChange={() => toggleFacet('status', s)}
+                    >
                       {s}
                     </FilterRow>
                   ))}
                 </>
               ) : null}
               <div className="dd-group">Health</div>
-              <FilterRow checked={facets.health.has('at-risk')} onChange={() => toggleFacet('health', 'at-risk')}>
+              <FilterRow
+                checked={facets.health.has('at-risk')}
+                onChange={() => toggleFacet('health', 'at-risk')}
+              >
                 <span className="tagdot" style={{ background: '#b3261e' }} />
                 At-risk only (alerts / failing CI)
               </FilterRow>
@@ -1189,9 +1385,15 @@ export default function App() {
               {view === 'graph' ? (
                 <>
                   <div className="dd-group">Detail (graph only)</div>
-                  <div className="dd-subhint">Each adds a class of nodes on top of the base map. Untick all to return to the base map.</div>
+                  <div className="dd-subhint">
+                    Each adds a class of nodes on top of the base map. Untick all to return to the base map.
+                  </div>
                   {LAYERS.map((l) => (
-                    <FilterRow key={'l:' + l.key} checked={layers[l.key]} onChange={(on) => toggleLayer(l.key, on)}>
+                    <FilterRow
+                      key={'l:' + l.key}
+                      checked={layers[l.key]}
+                      onChange={(on) => toggleLayer(l.key, on)}
+                    >
                       {l.label}
                     </FilterRow>
                   ))}
@@ -1205,7 +1407,12 @@ export default function App() {
                 // Which arrow types the toggles cover in the current view: on the graph, every class
                 // drawn; in the Integrations table, just the protocols present there. Other views have
                 // no arrows, so the section is hidden.
-                const arrowKeys = view === 'graph' ? graph.edgeTypesPresent || [] : view === 'integrations' ? integrationEdgeTypes : []
+                const arrowKeys =
+                  view === 'graph'
+                    ? graph.edgeTypesPresent || []
+                    : view === 'integrations'
+                      ? integrationEdgeTypes
+                      : []
                 if (!arrowKeys.length) return null
                 return (
                   <>
@@ -1213,8 +1420,15 @@ export default function App() {
                     {edgeTypesFor(config)
                       .filter((e) => arrowKeys.includes(e.key))
                       .map((e) => (
-                        <FilterRow key={'e:' + e.key} checked={!hiddenEdges.has(e.key)} onChange={() => toggleEdge(e.key)}>
-                          <span className="legend-edge" style={{ borderTopColor: e.color, borderTopStyle: e.dash }} />
+                        <FilterRow
+                          key={'e:' + e.key}
+                          checked={!hiddenEdges.has(e.key)}
+                          onChange={() => toggleEdge(e.key)}
+                        >
+                          <span
+                            className="legend-edge"
+                            style={{ borderTopColor: e.color, borderTopStyle: e.dash }}
+                          />
                           {e.label}
                         </FilterRow>
                       ))}
@@ -1226,7 +1440,9 @@ export default function App() {
                   Keyed by lowercased inventory name (matches matchInventory + buildGraph). */}
               {facetOptions.components.length
                 ? (() => {
-                    const shown = facetOptions.components.filter((name) => name.toLowerCase().includes(compFilter.trim().toLowerCase()))
+                    const shown = facetOptions.components.filter((name) =>
+                      name.toLowerCase().includes(compFilter.trim().toLowerCase()),
+                    )
                     return (
                       <>
                         <div className="dd-group">
@@ -1236,7 +1452,10 @@ export default function App() {
                               (both show all — see graph.js), so a hide-all button would be a no-op. */}
                           {facets.hidden.size ? (
                             <span className="dd-group-actions">
-                              <button className="dd-linkbtn" onClick={() => setComponentsHidden([...facets.hidden], false)}>
+                              <button
+                                className="dd-linkbtn"
+                                onClick={() => setComponentsHidden([...facets.hidden], false)}
+                              >
                                 Show all
                               </button>
                             </span>
@@ -1271,7 +1490,13 @@ export default function App() {
                 className="search"
                 type="search"
                 value={query}
-                placeholder={view === 'table' ? 'Filter inventory…' : view === 'integrations' ? 'Filter integrations…' : 'Search repos…'}
+                placeholder={
+                  view === 'table'
+                    ? 'Filter inventory…'
+                    : view === 'integrations'
+                      ? 'Filter integrations…'
+                      : 'Search repos…'
+                }
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && view === 'graph') {
@@ -1284,13 +1509,25 @@ export default function App() {
               />
               {query && view === 'graph' ? (
                 <span className="search-nav">
-                  <span className="search-count">{searchList.length ? `${matchIdx + 1}/${searchList.length}` : '0'}</span>
+                  <span className="search-count">
+                    {searchList.length ? `${matchIdx + 1}/${searchList.length}` : '0'}
+                  </span>
                   {searchList.length ? (
                     <>
-                      <button className="search-step" onClick={() => stepMatch(-1)} title="Previous match (Shift+Enter)" aria-label="Previous match">
+                      <button
+                        className="search-step"
+                        onClick={() => stepMatch(-1)}
+                        title="Previous match (Shift+Enter)"
+                        aria-label="Previous match"
+                      >
                         <Icon name="prev" />
                       </button>
-                      <button className="search-step" onClick={() => stepMatch(1)} title="Next match (Enter)" aria-label="Next match">
+                      <button
+                        className="search-step"
+                        onClick={() => stepMatch(1)}
+                        title="Next match (Enter)"
+                        aria-label="Next match"
+                      >
                         <Icon name="next" />
                       </button>
                     </>
@@ -1328,7 +1565,12 @@ export default function App() {
               </div>
             ) : null}
             <span className="tb-sep" />
-            <Dropdown className="views-dd" label="Views" badge={views.length || null} title="Save, apply or share named views">
+            <Dropdown
+              className="views-dd"
+              label="Views"
+              badge={views.length || null}
+              title="Save, apply or share named views"
+            >
               {(close) => (
                 <>
                   <button
@@ -1336,7 +1578,10 @@ export default function App() {
                     onClick={() => {
                       const name = window.prompt('Save current view as:')?.trim()
                       if (name) {
-                        persistViews([...views.filter((v) => v.name !== name), { name, q: buildViewParams().toString() }])
+                        persistViews([
+                          ...views.filter((v) => v.name !== name),
+                          { name, q: buildViewParams().toString() },
+                        ])
                         setToast('Saved view “' + name + '”')
                       }
                       close()
@@ -1379,7 +1624,12 @@ export default function App() {
                 </>
               )}
             </Dropdown>
-            <button className="btn ghost" onClick={copyLink} title="Copy a shareable link to this exact view" aria-label="Copy shareable link">
+            <button
+              className="btn ghost"
+              onClick={copyLink}
+              title="Copy a shareable link to this exact view"
+              aria-label="Copy shareable link"
+            >
               <Icon name="link" />
             </button>
             <button
@@ -1394,11 +1644,21 @@ export default function App() {
                 main.jsx). A plain href, so it lands on that route with no map state in the URL.
                 Hidden when there is no backend to serve its data (the static Pages build). */}
             {(import.meta.env.DEV || import.meta.env.VITE_DATA_URL) && (
-              <a className="btn ghost" href="?view=golden-path" title="Golden Path compliance" aria-label="Golden Path compliance">
+              <a
+                className="btn ghost"
+                href="?view=golden-path"
+                title="Golden Path compliance"
+                aria-label="Golden Path compliance"
+              >
                 <Icon name="compliance" />
               </a>
             )}
-            <button className="btn ghost" onClick={() => setShowLegend(true)} title="Legend / help" aria-label="Legend and help">
+            <button
+              className="btn ghost"
+              onClick={() => setShowLegend(true)}
+              title="Legend / help"
+              aria-label="Legend and help"
+            >
               <Icon name="help" />
             </button>
             <button
@@ -1411,7 +1671,12 @@ export default function App() {
               <Icon name="download" />
             </button>
             {admin ? (
-              <button className="btn ghost" onClick={() => setShowAdmin(true)} title="Settings & curate the model (Admin)" aria-label="Settings — admin">
+              <button
+                className="btn ghost"
+                onClick={() => setShowAdmin(true)}
+                title="Settings & curate the model (Admin)"
+                aria-label="Settings — admin"
+              >
                 <Icon name="gear" />
               </button>
             ) : null}
@@ -1436,23 +1701,42 @@ export default function App() {
               ) : null
             })()}
             <div className="actions">
-              <button className="btn" disabled={!!busy} onClick={exportPng} title="Export current view to PNG">
+              <button
+                className="btn"
+                disabled={!!busy}
+                onClick={exportPng}
+                title="Export current view to PNG"
+              >
                 Export
               </button>
               {/* Regenerate/Publish hit the Vite dev-server API (vite.config.mjs); they don't exist in
               built deploys, so only show them under `npm run dev`. */}
               {import.meta.env.DEV && admin ? (
                 <>
-                  <button className="btn" disabled={!!busy} onClick={() => post('/api/regenerate', 'Regenerate')}>
+                  <button
+                    className="btn"
+                    disabled={!!busy}
+                    onClick={() => post('/api/regenerate', 'Regenerate')}
+                  >
                     {busy === 'Regenerate' ? 'Regenerating…' : 'Regenerate data'}
                   </button>
-                  <button className="btn primary" disabled={!!busy} onClick={() => post('/api/publish', 'Publish')}>
+                  <button
+                    className="btn primary"
+                    disabled={!!busy}
+                    onClick={() => post('/api/publish', 'Publish')}
+                  >
                     {busy === 'Publish' ? 'Publishing…' : 'Publish diagram'}
                   </button>
                 </>
               ) : null}
             </div>
-            <Dropdown className="more-dd" label={<Icon name="more" />} caret={false} align="right" title="More actions">
+            <Dropdown
+              className="more-dd"
+              label={<Icon name="more" />}
+              caret={false}
+              align="right"
+              title="More actions"
+            >
               {(close) => (
                 <>
                   <button
@@ -1515,11 +1799,25 @@ export default function App() {
       </header>
 
       {showLegend ? <LegendOverlay onClose={() => setShowLegend(false)} /> : null}
-      {showEmbed ? <EmbedDialog title={title} onClose={() => setShowEmbed(false)} onCopied={() => setToast('Embed code copied to clipboard')} /> : null}
-      {ctx && admin ? <ContextMenu x={ctx.x} y={ctx.y} items={buildCtxItems()} onClose={() => setCtx(null)} /> : null}
+      {showEmbed ? (
+        <EmbedDialog
+          title={title}
+          onClose={() => setShowEmbed(false)}
+          onCopied={() => setToast('Embed code copied to clipboard')}
+        />
+      ) : null}
+      {ctx && admin ? (
+        <ContextMenu x={ctx.x} y={ctx.y} items={buildCtxItems()} onClose={() => setCtx(null)} />
+      ) : null}
       {showAdmin && data && admin ? (
         <Suspense fallback={null}>
-          <AdminPanel data={data} layout={layout} onResetLayout={resetLayout} onSaved={() => setSavedLayout(layout)} onClose={() => setShowAdmin(false)} />
+          <AdminPanel
+            data={data}
+            layout={layout}
+            onResetLayout={resetLayout}
+            onSaved={() => setSavedLayout(layout)}
+            onClose={() => setShowAdmin(false)}
+          />
         </Suspense>
       ) : null}
 
@@ -1571,7 +1869,12 @@ export default function App() {
                 {view === 'matrix' ? (
                   <MatrixView inventory={facetInventory} query={query} onSelect={onSelect} config={config} />
                 ) : view === 'integrations' ? (
-                  <IntegrationsTable integrations={visibleIntegrations} inventory={data?.inventory || []} query={query} onSelect={onSelect} />
+                  <IntegrationsTable
+                    integrations={visibleIntegrations}
+                    inventory={data?.inventory || []}
+                    query={query}
+                    onSelect={onSelect}
+                  />
                 ) : (
                   <InventoryTable
                     inventory={facetInventory}
@@ -1612,27 +1915,47 @@ export default function App() {
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={18} color={dark ? '#223052' : '#e6e8ee'} />
-              {admin ? <Background id="grid" variant="lines" gap={GRID} color={dark ? '#18233c' : '#eceef3'} /> : null}
+              {admin ? (
+                <Background id="grid" variant="lines" gap={GRID} color={dark ? '#18233c' : '#eceef3'} />
+              ) : null}
               {admin ? <HelperLines horizontal={helper.h} vertical={helper.v} color={helper.color} /> : null}
-              {EMBED ? null : <MiniMap pannable zoomable nodeColor={(n) => KIND[n.data?.kind]?.color || '#bbb'} />}
+              {EMBED ? null : (
+                <MiniMap pannable zoomable nodeColor={(n) => KIND[n.data?.kind]?.color || '#bbb'} />
+              )}
               <Controls />
             </ReactFlow>
             {admin && (layoutDirty || modeLayoutCount > 0) ? (
               <div className="layout-pill">
                 <span className="layout-pill-txt">
-                  {layoutDirty ? <Icon name="dot" className="pill-dot" /> : null} {layoutDirty ? 'Layout changed' : 'Custom layout'}
+                  {layoutDirty ? <Icon name="dot" className="pill-dot" /> : null}{' '}
+                  {layoutDirty ? 'Layout changed' : 'Custom layout'}
                 </span>
-                <button className="btn ghost" onClick={autoArrange} title="Re-flow this view to the automatic layout">
+                <button
+                  className="btn ghost"
+                  onClick={autoArrange}
+                  title="Re-flow this view to the automatic layout"
+                >
                   Auto-arrange
                 </button>
                 {layoutDirty ? (
-                  <button className="btn primary" onClick={() => setShowAdmin(true)} title="Open Admin to save the layout to config.json">
+                  <button
+                    className="btn primary"
+                    onClick={() => setShowAdmin(true)}
+                    title="Open Admin to save the layout to config.json"
+                  >
                     Save…
                   </button>
                 ) : null}
               </div>
             ) : null}
-            {EMBED ? null : <Legend kinds={kindsPresent} edgeTypesPresent={graph.edgeTypesPresent} hiddenEdges={hiddenEdges} config={config} />}
+            {EMBED ? null : (
+              <Legend
+                kinds={kindsPresent}
+                edgeTypesPresent={graph.edgeTypesPresent}
+                hiddenEdges={hiddenEdges}
+                config={config}
+              />
+            )}
           </div>
         )}
 
@@ -1653,7 +1976,9 @@ export default function App() {
       </div>
 
       {busy || toast ? (
-        <div className={'toast' + (toast && /fail/i.test(toast) ? ' err' : '')}>{busy ? busy + ' in progress… (the pipeline can take a minute)' : toast}</div>
+        <div className={'toast' + (toast && /fail/i.test(toast) ? ' err' : '')}>
+          {busy ? busy + ' in progress… (the pipeline can take a minute)' : toast}
+        </div>
       ) : null}
     </div>
   )

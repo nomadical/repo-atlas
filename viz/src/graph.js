@@ -6,10 +6,12 @@ import { MarkerType } from '@xyflow/react'
 // its old and new name, and both should collapse onto the one hub. Empty => no hub card is drawn.
 // Kept in sync with UI_PACKAGES in scripts/assemble.mjs.
 export const DEFAULT_UI_PACKAGES = []
-export const uiPackagesOf = (config) => new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
+export const uiPackagesOf = (config) =>
+  new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
 
 // Repo folder(s) the design-system hub card can appear under (config.json `uiHubFolders`).
-export const uiHubFoldersOf = (config) => (Array.isArray(config?.uiHubFolders) && config.uiHubFolders.length ? config.uiHubFolders : ['ui'])
+export const uiHubFoldersOf = (config) =>
+  Array.isArray(config?.uiHubFolders) && config.uiHubFolders.length ? config.uiHubFolders : ['ui']
 
 // Component node identity: the inventory serviceId (stable across repo-folder renames), falling
 // back to the repo folder when the pipeline hasn't emitted a serviceId yet — so the graph is
@@ -78,7 +80,10 @@ const DEFAULT_DEPLOY_TARGETS = [
   { id: 'inf-acr', label: 'Azure Container Registry\n+ docker-compose', match: 'container' },
   { id: 'inf-ci', label: 'GitHub Actions\n(CI)', testsFallback: true },
 ]
-const deployTargetsOf = (config) => (Array.isArray(config?.deployTargets) && config.deployTargets.length ? config.deployTargets : DEFAULT_DEPLOY_TARGETS)
+const deployTargetsOf = (config) =>
+  Array.isArray(config?.deployTargets) && config.deployTargets.length
+    ? config.deployTargets
+    : DEFAULT_DEPLOY_TARGETS
 
 // Detail-layer registry — the single definition the toolbar, the URL codec and buildGraph share.
 // Layers are ADDITIVE: each one draws an extra class of node. `param` is the URL query key
@@ -125,7 +130,13 @@ export const EDGE_TYPES = [
 export const edgeTypesFor = (config) => {
   const pkg = [...uiPackagesOf(config)][0]
   if (!pkg) return EDGE_TYPES
-  return EDGE_TYPES.map((e) => (e.key === 'dependency' ? { ...e, label: `${pkg} dependency` } : e.key === 'drift' ? { ...e, label: `${pkg} version lag` } : e))
+  return EDGE_TYPES.map((e) =>
+    e.key === 'dependency'
+      ? { ...e, label: `${pkg} dependency` }
+      : e.key === 'drift'
+        ? { ...e, label: `${pkg} version lag` }
+        : e,
+  )
 }
 
 // Classify a built edge by its id prefix (see the push sites in buildGraph). NOTE: backend↔backend
@@ -167,15 +178,19 @@ function chipsFor(r) {
 //              centre) or `anchor: 'after:Backend'` (just past that lane), `dir: -1|1` for which way
 //              it grows. Omit them and lanes auto-distribute left→right in list order — a good
 //              starting point; add hints only once you want a specific arrangement (clusterLayout).
-export const DEFAULT_CLUSTERS = [{ label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true }]
-export const resolveClusters = (config) => (Array.isArray(config?.clusters) && config.clusters.length ? config.clusters : DEFAULT_CLUSTERS)
+export const DEFAULT_CLUSTERS = [
+  { label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true },
+]
+export const resolveClusters = (config) =>
+  Array.isArray(config?.clusters) && config.clusters.length ? config.clusters : DEFAULT_CLUSTERS
 const fallbackLabelOf = (clusters) => clusters.find((c) => c.fallback)?.label ?? null
 
 // Cluster of an inventory entry: an explicit `cluster-*` topic wins — resolved against the cluster
 // list by label or `match` (so a fork remapping `cluster-CSS` → "Frontend" still routes correctly),
 // with the fallback cluster mapping to null (the centre bucket, preserving legacy "Shared =
 // unassigned"). Otherwise the first cluster whose `match` prefixes the owner team; otherwise null.
-const clusterMatching = (clusters, value) => clusters.find((c) => c.label === value || (c.match || []).some((p) => value.startsWith(p)))
+const clusterMatching = (clusters, value) =>
+  clusters.find((c) => c.label === value || (c.match || []).some((p) => value.startsWith(p)))
 export const clusterOfInv = (inv, clusters = DEFAULT_CLUSTERS) => {
   const override = inv?.cluster
   if (override) {
@@ -192,7 +207,9 @@ const clusterOf = (r, clusters = DEFAULT_CLUSTERS) => clusterOfInv(r.inventory, 
 // A repo is "at risk" if it has open high/critical Dependabot alerts or a non-green latest CI run.
 // Shared by the card badge (CardNode), the Details/table columns, and the At-risk filter.
 export const isAtRisk = (health) =>
-  !!health && ((health.alerts?.high || 0) + (health.alerts?.critical || 0) > 0 || (!!health.ci?.conclusion && health.ci.conclusion !== 'success'))
+  !!health &&
+  ((health.alerts?.high || 0) + (health.alerts?.critical || 0) > 0 ||
+    (!!health.ci?.conclusion && health.ci.conclusion !== 'success'))
 
 // Faceted filters. Each dimension is a Set of allowed values: an empty (or absent) Set imposes no
 // constraint. Within a dimension the values OR together; across dimensions they AND. Dimensions:
@@ -202,12 +219,14 @@ export const isAtRisk = (health) =>
 // The graph applies `group` per-repo inside buildGraph (so cluster lanes and region boxes wrap the
 // survivors) and `status`/`health` as a post-build node filter; the Table / Matrix apply ALL of
 // them to inventory rows via matchInventory, so every view narrows by the same rules.
-export const facetsActive = (f) => !!(f && (f.group?.size || f.status?.size || f.health?.size || f.hidden?.size))
+export const facetsActive = (f) =>
+  !!(f && (f.group?.size || f.status?.size || f.health?.size || f.hidden?.size))
 // A multi-select facet whose selection covers EVERY available option imposes no constraint — so
 // "select all" behaves identically to "select none" (both = show everything). Without this, ticking
 // every status drops status-less nodes (the event bus, deploy targets, external services) that an
 // empty selection keeps, so all-selected ≠ none-selected. Keeps each filter kind symmetric.
-export const coversAll = (set, options) => !!(set && set.size) && options.length > 0 && options.every((o) => set.has(o))
+export const coversAll = (set, options) =>
+  !!(set && set.size) && options.length > 0 && options.every((o) => set.has(o))
 // status-only match for the graph's post-build node filter (group is already applied per-repo).
 export const matchStatus = (inv, f) => !f?.status?.size || (!!inv && f.status.has(inv.status))
 // full row match (group + status + health) for the Table / Matrix, which filter inventory entries.
@@ -235,7 +254,18 @@ export const matchInventory = (inv, f, clusters = DEFAULT_CLUSTERS) => {
 //            options to the current view without a second build.
 // Lane colors for DERIVED groupings (Group by: Application / Platform) — the team clusters carry
 // their own curated colors, but application/platform lanes are data-derived, so they cycle this.
-const GROUP_PALETTE = ['#3949ab', '#00838f', '#558b2f', '#6a1b9a', '#c62828', '#ef6c00', '#00897b', '#5e35b1', '#827717', '#ad1457']
+const GROUP_PALETTE = [
+  '#3949ab',
+  '#00838f',
+  '#558b2f',
+  '#6a1b9a',
+  '#c62828',
+  '#ef6c00',
+  '#00897b',
+  '#5e35b1',
+  '#827717',
+  '#ad1457',
+]
 
 // Alternate lane grouping (Group by: Team | Application | Platform). Grouping only changes which
 // LANE a card is laid out in — the team clusters stay the filtering taxonomy (facets.group), so
@@ -284,12 +314,17 @@ export function buildGraph(data, opts = {}) {
   const groupSel = facets?.group
   // ...unless every cluster is ticked, which (like an empty set) means "no group constraint".
   const groupOptions = clusters.map((c) => c.label)
-  const activeSet = groupSel && (groupSel.size ?? groupSel.length) && !coversAll(groupSel, groupOptions) ? new Set(groupSel) : null
+  const activeSet =
+    groupSel && (groupSel.size ?? groupSel.length) && !coversAll(groupSel, groupOptions)
+      ? new Set(groupSel)
+      : null
   // Product tag chips shown on the cards (AT / CI); no longer a filter dimension — a repo's tags are
   // the unique product tags across the applications its inventory entry serves.
   const productTags = { ...PRODUCT_TAGS, ...data.config?.productTags }
   const tagColor = { ...TAG_COLOR, ...data.config?.tagColors } // chip color per tag; unknowns → grey
-  const tagsFor = (r) => [...new Set((r.inventory?.applications || []).map((a) => productTags[a]).filter(Boolean))]
+  const tagsFor = (r) => [
+    ...new Set((r.inventory?.applications || []).map((a) => productTags[a]).filter(Boolean)),
+  ]
   const tagObjs = (r) => tagsFor(r).map((label) => ({ label, color: tagColor[label] || '#888' }))
   // Group filter (team cluster): applied per-repo before node build so cluster lanes and region boxes
   // wrap exactly the survivors. Status is a separate post-build facet (see below).
@@ -300,7 +335,9 @@ export function buildGraph(data, opts = {}) {
       if (!activeSet.has(g)) hidden.add(r.folder)
     }
   // in-org repos only — repos outside the configured org are out of scope; honor the group filter
-  const repos = (data.repos || []).filter((r) => r.kind !== 'personal' && r.inOrg !== false && !hidden.has(r.folder))
+  const repos = (data.repos || []).filter(
+    (r) => r.kind !== 'personal' && r.inOrg !== false && !hidden.has(r.folder),
+  )
   // folder -> card node id, for aliasing curated references authored by repo FOLDER (serviceEdges,
   // assetConsumers, contentRepos.parent, the isScd hub target) to the card's real node id once it
   // is a serviceId. Byte-invariant: without a serviceId nodeIdOf(r)===r.folder, so resolveRef is the
@@ -371,7 +408,9 @@ export function buildGraph(data, opts = {}) {
   const beIdByKey = {}
   for (const be of BE_NODES) {
     const inv = invForBackend(be)
-    for (const k of [be.id, be.repo, be.repoName, be.canonicalName, be.label, be.invAlias, inv?.name].filter(Boolean))
+    for (const k of [be.id, be.repo, be.repoName, be.canonicalName, be.label, be.invAlias, inv?.name].filter(
+      Boolean,
+    ))
       beIdByKey[String(k).toLowerCase()] = be.id
   }
   const beId = (name) => beIdByKey[String(name).toLowerCase()] || null
@@ -383,11 +422,13 @@ export function buildGraph(data, opts = {}) {
   // "Used by" chip for one would be a dead click
   for (const r of data.repos || [])
     if (r.kind !== 'personal' && r.inOrg !== false && !hidden.has(r.folder))
-      for (const id of feBe[r.folder] || []) (beConsumers[id] = beConsumers[id] || []).push({ id: nodeIdOf(r), label: r.displayName || r.folder })
+      for (const id of feBe[r.folder] || [])
+        (beConsumers[id] = beConsumers[id] || []).push({ id: nodeIdOf(r), label: r.displayName || r.folder })
   const bePartners = {} // beId -> [{ id, name, channel }]
   const addPartner = (host, partnerId, name, channel) => {
     const list = (bePartners[host] = bePartners[host] || [])
-    if (name && !list.some((p) => p.id === partnerId)) list.push({ id: partnerId, name, channel: channel || null })
+    if (name && !list.some((p) => p.id === partnerId))
+      list.push({ id: partnerId, name, channel: channel || null })
   }
   for (const it of data.integrations || []) {
     const s = beId(it.source),
@@ -443,7 +484,8 @@ export function buildGraph(data, opts = {}) {
   // Configurable via config.json `staleDays`; defaults to 120.
   const asOf = data.generatedAt ? new Date(data.generatedAt).getTime() : Date.now()
   const STALE_DAYS = Number(data.config?.staleDays) > 0 ? Number(data.config.staleDays) : 120
-  const staleDays = (r) => (r.lastCommit ? Math.round((asOf - new Date(r.lastCommit).getTime()) / 86400000) : null)
+  const staleDays = (r) =>
+    r.lastCommit ? Math.round((asOf - new Date(r.lastCommit).getTime()) / 86400000) : null
   const isStale = (r) => {
     const d = staleDays(r)
     return d != null && d > STALE_DAYS
@@ -453,7 +495,10 @@ export function buildGraph(data, opts = {}) {
   // newly-discovered repos (not yet curated) and half-curated repos (missing owner/status/desc).
   const v = data.validation || {}
   const newSet = new Set(v.newlyDiscovered || [])
-  const incompleteSet = new Set([...(v.uncuratedRepos || []), ...(v.incompleteCuration || []).map((s) => String(s).split(' — ')[0])])
+  const incompleteSet = new Set([
+    ...(v.uncuratedRepos || []),
+    ...(v.incompleteCuration || []).map((s) => String(s).split(' — ')[0]),
+  ])
   const flagsFor = (folder) => {
     const f = {}
     if (newSet.has(folder)) f.isNew = true
@@ -504,7 +549,9 @@ export function buildGraph(data, opts = {}) {
   // remaining drift edges.
   const scdVersions = (data.repos || [])
     .filter((r) => r.kind !== 'personal' && r.inOrg !== false)
-    .flatMap((r) => (isUiPkg(r.name) ? [] : (r.internalDeps || []).filter((d) => isUiPkg(d.name)).map((d) => d.version)))
+    .flatMap((r) =>
+      isUiPkg(r.name) ? [] : (r.internalDeps || []).filter((d) => isUiPkg(d.name)).map((d) => d.version),
+    )
   const scdLatest = scdVersions.sort(cmpVer).slice(-1)[0] || null
 
   // map an internal package name -> its curated repo card, so an internal-dep edge points at the
@@ -561,7 +608,11 @@ export function buildGraph(data, opts = {}) {
           label: behind ? `${d.version} ⚠` : d.version,
           animated: isScd,
           data: { drift: !!behind, scdLatest },
-          style: { stroke: behind ? '#e53935' : '#7c4dff', strokeWidth: isScd ? 2 : 1, strokeDasharray: behind ? '6 3' : undefined },
+          style: {
+            stroke: behind ? '#e53935' : '#7c4dff',
+            strokeWidth: isScd ? 2 : 1,
+            strokeDasharray: behind ? '6 3' : undefined,
+          },
           labelStyle: { fontSize: 10, fill: behind ? '#c62828' : '#5e35b1' },
           labelBgStyle: { fill: behind ? '#ffebee' : '#ede7f6' },
         })
@@ -608,7 +659,12 @@ export function buildGraph(data, opts = {}) {
         target: t,
         label: it.channel || undefined,
         data: it.channelFull ? { channelFull: it.channelFull } : undefined,
-        style: { stroke: '#6d4c41', strokeDasharray: unverified ? '1 4' : '2 3', strokeWidth: 1, opacity: unverified ? 0.4 : 0.55 },
+        style: {
+          stroke: '#6d4c41',
+          strokeDasharray: unverified ? '1 4' : '2 3',
+          strokeWidth: 1,
+          opacity: unverified ? 0.4 : 0.55,
+        },
         labelStyle: { fontSize: 9, fill: '#4e342e' },
         labelBgStyle: { fill: '#efebe9' },
       })
@@ -618,13 +674,24 @@ export function buildGraph(data, opts = {}) {
   if (layers.deploy) {
     const deployTargets = deployTargetsOf(data.config)
     for (const inf of deployTargets)
-      add({ id: inf.id, type: 'card', position: { x: 0, y: 0 }, data: { title: inf.label, subtitle: 'deploy target', kind: 'infra' } })
+      add({
+        id: inf.id,
+        type: 'card',
+        position: { x: 0, y: 0 },
+        data: { title: inf.label, subtitle: 'deploy target', kind: 'infra' },
+      })
     // backends flagged deployArtifact are deployment artifacts, but they're still backend nodes:
     // the Resources layer is authoritative for whether they render, so don't resurrect one here
     // while Resources is off (that left pharma-backend visible inside a hidden Resources cluster).
-    if (layers.backends) for (const be of BE_NODES) if (be.deployArtifact && !ids.has(be.id)) addBackend(be.id)
+    if (layers.backends)
+      for (const be of BE_NODES) if (be.deployArtifact && !ids.has(be.id)) addBackend(be.id)
     const dpl = (id, target) =>
-      edges.push({ id: `dpl-${target}-${id}`, source: id, target, style: { stroke: '#ef5350', strokeDasharray: '2 2', strokeWidth: 1, opacity: 0.4 } })
+      edges.push({
+        id: `dpl-${target}-${id}`,
+        source: id,
+        target,
+        style: { stroke: '#ef5350', strokeDasharray: '2 2', strokeWidth: 1, opacity: 0.4 },
+      })
     // repo deploy edges from real workflow targets (descriptor `match` regexes); test harnesses
     // with no deploy target link to the CI node.
     const matchers = deployTargets.filter((t) => t.match).map((t) => [new RegExp(t.match, 'i'), t.id])
@@ -645,12 +712,22 @@ export function buildGraph(data, opts = {}) {
   if (layers.integrations) {
     const addExt = (name) => {
       const id = 'ext:' + name
-      add({ id, type: 'card', position: { x: 0, y: 0 }, data: { title: name, subtitle: 'external service', kind: 'external' } })
+      add({
+        id,
+        type: 'card',
+        position: { x: 0, y: 0 },
+        data: { title: name, subtitle: 'external service', kind: 'external' },
+      })
       return id
     }
     const extEdge = (src, name) => {
       const id = addExt(name)
-      edges.push({ id: `ext-${src}-${name}`, source: src, target: id, style: { stroke: '#5e35b1', strokeDasharray: '4 3', strokeWidth: 1, opacity: 0.5 } })
+      edges.push({
+        id: `ext-${src}-${name}`,
+        source: src,
+        target: id,
+        style: { stroke: '#5e35b1', strokeDasharray: '4 3', strokeWidth: 1, opacity: 0.5 },
+      })
     }
     for (const r of repos) for (const e of r.externals || []) extEdge(nodeIdOf(r), e.name)
     // backend integrations (pharma-backend -> OpenAI, GoComet); ensure the backend node exists so the edge shows
@@ -676,7 +753,9 @@ export function buildGraph(data, opts = {}) {
       source: s,
       target: t,
       label: label || undefined,
-      style: touchesBackend ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 } : { stroke: '#0097a7', strokeWidth: 1.6 },
+      style: touchesBackend
+        ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 }
+        : { stroke: '#0097a7', strokeWidth: 1.6 },
       labelStyle: touchesBackend ? { fontSize: 10, fill: '#4e342e' } : { fontSize: 10, fill: '#00838f' },
       labelBgStyle: { fill: touchesBackend ? '#efebe9' : '#e0f7fa' },
     })
@@ -727,7 +806,14 @@ export function buildGraph(data, opts = {}) {
         id: 'inv:' + e.name,
         type: 'card',
         position: { x: 0, y: 0 },
-        data: { title: e.name, subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''), kind, inventory: e, status: e.status, chips: [] },
+        data: {
+          title: e.name,
+          subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''),
+          kind,
+          inventory: e,
+          status: e.status,
+          chips: [],
+        },
       })
     }
   }
@@ -744,13 +830,19 @@ export function buildGraph(data, opts = {}) {
     let kafka = false
     const addBus = () => {
       if (!kafka) {
-        add({ id: 'bus:kafka', type: 'card', position: { x: 0, y: 0 }, data: { title: 'Kafka', subtitle: 'event bus', kind: 'bus' } })
+        add({
+          id: 'bus:kafka',
+          type: 'card',
+          position: { x: 0, y: 0 },
+          data: { title: 'Kafka', subtitle: 'event bus', kind: 'bus' },
+        })
         kafka = true
       }
       return 'bus:kafka'
     }
     // Can this endpoint name resolve at all (bus / drawn node / known inventory component)?
-    const resolvable = (name) => name === 'Kafka' || !!idByInv[name] || !!invByName[String(name).toLowerCase()]
+    const resolvable = (name) =>
+      name === 'Kafka' || !!idByInv[name] || !!invByName[String(name).toLowerCase()]
     const resolve = (name) => {
       if (name === 'Kafka') return addBus()
       if (idByInv[name]) return idByInv[name]
@@ -763,7 +855,14 @@ export function buildGraph(data, opts = {}) {
         id,
         type: 'card',
         position: { x: 0, y: 0 },
-        data: { title: e.name, subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''), kind, inventory: e, status: e.status, chips: [] },
+        data: {
+          title: e.name,
+          subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''),
+          kind,
+          inventory: e,
+          status: e.status,
+          chips: [],
+        },
       })
       idByInv[e.name] = id
       return id
@@ -791,7 +890,12 @@ export function buildGraph(data, opts = {}) {
         label: (unverified ? '⚠ ' : '') + text || undefined,
         data: it.channelFull ? { channelFull: it.channelFull } : undefined,
         style: unverified
-          ? { stroke: kafkaEdge ? '#fb8c00' : '#00838f', strokeDasharray: '1 4', strokeWidth: 1.2, opacity: 0.45 }
+          ? {
+              stroke: kafkaEdge ? '#fb8c00' : '#00838f',
+              strokeDasharray: '1 4',
+              strokeWidth: 1.2,
+              opacity: 0.45,
+            }
           : kafkaEdge
             ? { stroke: '#fb8c00', strokeDasharray: '5 3', strokeWidth: 1.6 }
             : { stroke: '#00838f', strokeWidth: 1.6 },
@@ -838,14 +942,18 @@ export function buildGraph(data, opts = {}) {
     edges = edges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target))
   }
   // Health facet first: keep only cards whose repo has alerts/failing CI (+ the bus node).
-  if (facets?.health?.size) dropNodes((n) => n.data.kind === 'bus' || isAtRisk(n.data.inventory?.health || n.data.repo?.inventory?.health))
+  if (facets?.health?.size)
+    dropNodes(
+      (n) => n.data.kind === 'bus' || isAtRisk(n.data.inventory?.health || n.data.repo?.inventory?.health),
+    )
   // Status options for the Filters menu = the statuses actually present on the (health- and
   // group-filtered, status-UNfiltered) map, so ticking one always narrows a visible set and a live
   // selection never blanks the whole canvas.
   const statusOptions = [...new Set(nodes.map((n) => n.data?.inventory?.status).filter(Boolean))].sort()
   // Status facet: nodes without inventory (e.g. the Kafka bus) carry no status, so an active
   // status filter removes them.
-  if (facets?.status?.size && !coversAll(facets.status, statusOptions)) dropNodes((n) => matchStatus(n.data?.inventory, facets))
+  if (facets?.status?.size && !coversAll(facets.status, statusOptions))
+    dropNodes((n) => matchStatus(n.data?.inventory, facets))
 
   // Component toggle-list — EVERY card drawn on the map is listable & hideable, keyed by its
   // lowercased display name (the inventory name when inventory-backed, else the card title with any
@@ -853,7 +961,8 @@ export function buildGraph(data, opts = {}) {
   // deploy targets, the event bus, storage, external services — filterable too, so "shown on the
   // map" and "in the Components list" stay in lockstep. Options are captured BEFORE the drop so a
   // hidden card stays listed (re-checkable) in the Filters menu.
-  const filterName = (n) => (n.data?.inventory?.name || n.data?.title || '').replace(/\s+/g, ' ').trim() || null
+  const filterName = (n) =>
+    (n.data?.inventory?.name || n.data?.title || '').replace(/\s+/g, ' ').trim() || null
   const componentOptions = [...new Set(nodes.map(filterName).filter(Boolean))].sort()
   // Symmetry (see coversAll): unchecking every card must behave like checking every card — both
   // impose no constraint (show all). Without this, clearing the whole list would blank the canvas.
@@ -876,9 +985,13 @@ export function buildGraph(data, opts = {}) {
   // Arrow classes offered as Legend/Filters toggles: classes whose edges survive the facet passes
   // (both endpoints still drawn), taken from the PRE-hide list so a hidden class stays listed.
   const finalIds = new Set(nodes.map((n) => n.id))
-  const edgeTypesPresent = [...new Set(edgesPreHide.filter((e) => finalIds.has(e.source) && finalIds.has(e.target)).map((e) => edgeTypeOf(e.id, e)))].filter(
-    (t) => t !== 'other',
-  )
+  const edgeTypesPresent = [
+    ...new Set(
+      edgesPreHide
+        .filter((e) => finalIds.has(e.source) && finalIds.has(e.target))
+        .map((e) => edgeTypeOf(e.id, e)),
+    ),
+  ].filter((t) => t !== 'other')
   return {
     ...clusterLayout(nodes, edges, layout, data.config, filtered, grouping),
     facetOptions: { status: statusOptions, components: componentOptions },
@@ -946,7 +1059,9 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
   const hasHub = uiPackagesOf(config).size > 0
   const hub = nodes.find((n) => hubFolders.includes(n.id) || hubFolders.includes(n.data?.repo?.folder))
   if (hasHub && !hub && !filtered) {
-    console.warn(`clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`)
+    console.warn(
+      `clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`,
+    )
     return dagreLayout(nodes, edges, layout)
   }
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
@@ -1013,21 +1128,30 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
       const inRow = Math.min(cols, ordered.length - row * cols)
       const rowW = (inRow - 1) * gapX
       const col = i % cols
-      n.position = { x: cx0 - rowW / 2 + col * gapX - NODE_W / 2, y: bottomY - (rows - 1 - row) * gapY - NODE_H / 2 }
+      n.position = {
+        x: cx0 - rowW / 2 + col * gapX - NODE_W / 2,
+        y: bottomY - (rows - 1 - row) * gapY - NODE_H / 2,
+      }
     })
   }
 
   // Lane app columns: membership derived from the owning team (clusterOf), ordered by a curated
   // hint so a hand-tuned vertical order is preserved and unknown repos append below (config.json
   // `layoutOrder`; unset, everything sorts equal and falls back to data order).
-  const layoutOrder = Array.isArray(config?.layoutOrder) && config.layoutOrder.length ? config.layoutOrder : DEFAULT_LAYOUT_ORDER
+  const layoutOrder =
+    Array.isArray(config?.layoutOrder) && config.layoutOrder.length
+      ? config.layoutOrder
+      : DEFAULT_LAYOUT_ORDER
   const orderHint = (n) => {
     // layoutOrder is keyed by repo FOLDER (DEFAULT_LAYOUT_ORDER / config.layoutOrder), so resolve a
     // node's order by its repo folder — the node id is now the serviceId, which needn't match.
     const i = layoutOrder.indexOf(n.data.repo?.folder ?? n.id)
     return i < 0 ? 999 : i
   }
-  const clusterApps = (label) => nodes.filter((n) => n.data.repo && laneOf(n.data.repo) === label).sort((a, b) => orderHint(a) - orderHint(b))
+  const clusterApps = (label) =>
+    nodes
+      .filter((n) => n.data.repo && laneOf(n.data.repo) === label)
+      .sort((a, b) => orderHint(a) - orderHint(b))
 
   // Team-cluster lanes, driven by the cluster descriptors. Each non-fallback cluster is a vertical
   // lane of its apps (+ packages routed to it). Anchors: a number is an absolute x; 'after:<label>'
@@ -1050,19 +1174,31 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
     const apps = clusterApps(c.label)
     const lanePkgs = allPkgs.filter((p) => pkgClusterOf(p) === c.label)
     // content-repo nodes (backend-extra.json `contentRepos`) follow their parent card's lane
-    const laneContent = nodes.filter((n) => n.data.kind === 'content' && n.data.parentId && laneOf(byId[n.data.parentId]?.data?.repo || {}) === c.label)
+    const laneContent = nodes.filter(
+      (n) =>
+        n.data.kind === 'content' &&
+        n.data.parentId &&
+        laneOf(byId[n.data.parentId]?.data?.repo || {}) === c.label,
+    )
     const members = [...apps, ...laneContent, ...lanePkgs]
     memberByLabel[c.label] = members
     colsByLabel[c.label] = stackCols(members, anchorByLabel[c.label], { dir: c.dir ?? 1 })
   }
   // loose packages (no cluster) sit just left of the leftmost lane, in their own column
-  const leftmostLabel = laneClusters.length ? laneClusters.reduce((a, c) => (anchorByLabel[c.label] < anchorByLabel[a.label] ? c : a)).label : null
-  const leftmostX = leftmostLabel ? anchorByLabel[leftmostLabel] - (colsByLabel[leftmostLabel] || 0) * COL_GAP - 40 : -690
+  const leftmostLabel = laneClusters.length
+    ? laneClusters.reduce((a, c) => (anchorByLabel[c.label] < anchorByLabel[a.label] ? c : a)).label
+    : null
+  const leftmostX = leftmostLabel
+    ? anchorByLabel[leftmostLabel] - (colsByLabel[leftmostLabel] || 0) * COL_GAP - 40
+    : -690
   stack(loosePkgs, leftmostX)
 
   // Fallback cluster (centre): genuinely suite-wide repos (inventory cluster = fallback) + fallback
   // packages, in a centre column. When nothing is suite-wide it's empty and no box renders.
-  const sharedExtras = [...nodes.filter((n) => n.data.repo?.inventory?.cluster === fallbackLabel), ...centerPkgs]
+  const sharedExtras = [
+    ...nodes.filter((n) => n.data.repo?.inventory?.cluster === fallbackLabel),
+    ...centerPkgs,
+  ]
   sharedExtras.forEach((n, i) => {
     n.position = { x: -40 - NODE_W / 2, y: -160 + i * 104 - NODE_H / 2 }
   })
@@ -1095,7 +1231,11 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
   if (kafka) kafka.position = { x: -NODE_W / 2, y: 850 - NODE_H / 2 } //  center, just above the catalog band
   const components = nodes.filter((n) => n.id.startsWith('inv:'))
   if (components.length) {
-    const ordered = [...components].sort((a, b) => (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') || a.id.localeCompare(b.id))
+    const ordered = [...components].sort(
+      (a, b) =>
+        (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') ||
+        a.id.localeCompare(b.id),
+    )
     const cols = 7,
       gapX = NODE_W + 30,
       gapY = 104,
@@ -1104,7 +1244,10 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
       const row = Math.floor(i / cols),
         col = i % cols
       const inRow = Math.min(cols, ordered.length - row * cols)
-      n.position = { x: -((inRow - 1) * gapX) / 2 + col * gapX - NODE_W / 2, y: top + row * gapY - NODE_H / 2 }
+      n.position = {
+        x: -((inRow - 1) * gapX) / 2 + col * gapX - NODE_W / 2,
+        y: top + row * gapY - NODE_H / 2,
+      }
     })
   }
 
@@ -1129,7 +1272,9 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
     if (!ms.length) return
     const [xlo, xhi] = fence(ms.map((m) => m.position.x))
     const [ylo, yhi] = fence(ms.map((m) => m.position.y))
-    let core = ms.filter((m) => m.position.x >= xlo && m.position.x <= xhi && m.position.y >= ylo && m.position.y <= yhi)
+    let core = ms.filter(
+      (m) => m.position.x >= xlo && m.position.x <= xhi && m.position.y >= ylo && m.position.y <= yhi,
+    )
     if (!core.length) core = ms
     const xs = core.map((m) => m.position.x)
     const ys = core.map((m) => m.position.y)
@@ -1158,7 +1303,8 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
   }
   // one outline per team-cluster lane (the leftmost lane's box also wraps the loose pkg column),
   // plus the fallback/centre cluster
-  for (const c of laneClusters) box(c.label, [...(c.label === leftmostLabel ? loosePkgs : []), ...(memberByLabel[c.label] || [])])
+  for (const c of laneClusters)
+    box(c.label, [...(c.label === leftmostLabel ? loosePkgs : []), ...(memberByLabel[c.label] || [])])
   box(fallbackLabel, sharedNodes)
   if (externals.length) box('Integrations', externals)
   if (unclassified.length) box('Unclassified', unclassified)

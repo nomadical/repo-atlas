@@ -9,7 +9,12 @@ import { KIND } from './graph.js'
 const dimsOf = (n) => ({ w: n.measured?.width ?? n.width ?? 224, h: n.measured?.height ?? n.height ?? 96 })
 
 export function getHelperLines(change, nodes, distance = 8) {
-  const result = { horizontal: undefined, vertical: undefined, color: undefined, snapPosition: { x: undefined, y: undefined } }
+  const result = {
+    horizontal: undefined,
+    vertical: undefined,
+    color: undefined,
+    snapPosition: { x: undefined, y: undefined },
+  }
   const nodeA = nodes.find((n) => n.id === change.id)
   if (!nodeA) return result
   const a = dimsOf(nodeA)

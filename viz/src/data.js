@@ -46,7 +46,13 @@ export async function getData() {
 
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
 export async function decryptData(enc, passphrase) {
-  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
   const key = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iterations, hash: 'SHA-256' },
     keyMaterial,

@@ -22,19 +22,37 @@ import { repos } from './repos.mjs'
 import { extractEndpointsFromText, extractApiCallsFromText } from './lib/endpoints.mjs'
 
 const EXTS = ['.tsx', '.ts', '.jsx', '.js']
-const SKIP_COMPONENTS = new Set(['Navigate', 'Outlet', 'Fragment', 'Suspense', 'Routes', 'Route', 'RouterProvider'])
+const SKIP_COMPONENTS = new Set([
+  'Navigate',
+  'Outlet',
+  'Fragment',
+  'Suspense',
+  'Routes',
+  'Route',
+  'RouterProvider',
+])
 const MAX_BFS_FILES = 600 // per-screen import-graph walk cap
 const MAX_BFS_DEPTH = 8
 const PATH_FWD = 600 // chars after an `element` to look for its path
 const PATH_BACK = 200 // chars before an `element` to look for its path (path-first JSX)
 
-const readFile = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
+const readFile = (p) => {
+  try {
+    return fs.readFileSync(p, 'utf8')
+  } catch {
+    return ''
+  }
+}
 const rel = (repoDir, abs) => path.relative(repoDir, abs).split(path.sep).join('/')
 
 // Walk a repo's src/ tree, returning every source file (skips node_modules, dist, tests dirs).
 const walkSrc = (dir, acc = []) => {
   let entries = []
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return acc }
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return acc
+  }
   for (const e of entries) {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
@@ -60,7 +78,9 @@ const readTsPaths = (repoDir) => {
       const j = JSON.parse(cleaned)
       const co = j.compilerOptions || {}
       return { baseUrl: co.baseUrl || '.', paths: co.paths || {} }
-    } catch { /* try next */ }
+    } catch {
+      /* try next */
+    }
   }
   return { baseUrl: '.', paths: {} }
 }
@@ -70,7 +90,10 @@ const readTsPaths = (repoDir) => {
 const makeResolver = (repoDir, ts) => {
   const tryFile = (base) => {
     for (const ext of EXTS) if (fs.existsSync(base + ext)) return base + ext
-    for (const ext of EXTS) { const idx = path.join(base, 'index' + ext); if (fs.existsSync(idx)) return idx }
+    for (const ext of EXTS) {
+      const idx = path.join(base, 'index' + ext)
+      if (fs.existsSync(idx)) return idx
+    }
     if (fs.existsSync(base) && fs.statSync(base).isFile()) return base
     return null
   }
@@ -80,7 +103,10 @@ const makeResolver = (repoDir, ts) => {
     const out = []
     for (const [pattern, targets] of Object.entries(ts.paths)) {
       const star = pattern.indexOf('*')
-      if (star < 0) { if (pattern === spec) for (const t of targets) out.push(path.join(baseDir, t)); continue }
+      if (star < 0) {
+        if (pattern === spec) for (const t of targets) out.push(path.join(baseDir, t))
+        continue
+      }
       const pre = pattern.slice(0, star)
       const post = pattern.slice(star + 1)
       if (spec.startsWith(pre) && spec.endsWith(post)) {
@@ -94,7 +120,10 @@ const makeResolver = (repoDir, ts) => {
     if (!spec || spec.startsWith('node:')) return null
     if (spec.startsWith('.')) return tryFile(path.resolve(path.dirname(fromFile), spec))
     // bare specifier: try tsconfig aliases, then baseUrl-relative (covers "*":["./src/*"])
-    for (const cand of aliasCandidates(spec)) { const f = tryFile(cand); if (f) return f }
+    for (const cand of aliasCandidates(spec)) {
+      const f = tryFile(cand)
+      if (f) return f
+    }
     const f = tryFile(path.join(baseDir, spec))
     if (f && f.startsWith(repoDir)) return f
     return null // external package
@@ -109,7 +138,10 @@ const importSpecs = (text) => {
     /import\s*['"]([^'"]+)['"]/g, // side-effect import
     /import\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import
   ]
-  for (const re of res) { let m; while ((m = re.exec(text))) out.add(m[1]) }
+  for (const re of res) {
+    let m
+    while ((m = re.exec(text))) out.add(m[1])
+  }
   return [...out]
 }
 
@@ -124,7 +156,11 @@ export const importMap = (text) => {
   const named = /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s*['"]([^'"]+)['"]/g
   while ((m = named.exec(text))) {
     for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim()
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim()
       if (name) map[name] = m[2]
     }
   }
@@ -154,7 +190,11 @@ export const parseRoutes = (text) => {
     const backMatches = [...back.matchAll(/path\s*[:=]\s*['"]([^'"]+)['"]/g)]
     const pm = fwdMatch || (backMatches.length ? backMatches[backMatches.length - 1] : null)
     const rolesRaw = /(?:necessary|sufficient)Roles\s*[:=]\s*\[([^\]]*)\]/.exec(fwd)
-    const roles = rolesRaw ? [...rolesRaw[1].matchAll(/\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g)].map((x) => x[1] || x[2]).filter(Boolean) : []
+    const roles = rolesRaw
+      ? [...rolesRaw[1].matchAll(/\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g)]
+          .map((x) => x[1] || x[2])
+          .filter(Boolean)
+      : []
     routes.push({ component, path: pm ? pm[1] : null, roles })
   }
   return routes
@@ -163,11 +203,20 @@ export const parseRoutes = (text) => {
 // Named imports a file pulls from the shared design system — the components/hooks/tokens a screen
 // uses from it. Captures the *exported* name (before any `as` alias). The package list is
 // config.json `uiPackages`, same as isUiPkg in graph.js; with none configured nothing matches.
-const appConfig = (() => { try { return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')) } catch { return {} } })()
+const appConfig = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8'))
+  } catch {
+    return {}
+  }
+})()
 const UI_PACKAGES = Array.isArray(appConfig.uiPackages) ? appConfig.uiPackages : []
 const escapeRe = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const UI_IMPORT_RE = UI_PACKAGES.length
-  ? new RegExp(`import\\s+(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]*)\\}\\s+from\\s*['"](?:${UI_PACKAGES.map(escapeRe).join('|')})['"]`, 'g')
+  ? new RegExp(
+      `import\\s+(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]*)\\}\\s+from\\s*['"](?:${UI_PACKAGES.map(escapeRe).join('|')})['"]`,
+      'g',
+    )
   : null
 export const extractUiComponents = (text, set = new Set()) => {
   if (!UI_IMPORT_RE) return set
@@ -175,7 +224,10 @@ export const extractUiComponents = (text, set = new Set()) => {
   let m
   while ((m = UI_IMPORT_RE.exec(text))) {
     for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0].trim()
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)[0]
+        .trim()
       if (name && /^[A-Za-z]/.test(name)) set.add(name)
     }
   }
@@ -201,7 +253,10 @@ const traceEndpoints = (startFile, resolve) => {
       extractUiComponents(text, components) // design-system named imports
       for (const spec of importSpecs(text)) {
         const target = resolve(file, spec)
-        if (target && !seen.has(target)) { seen.add(target); next.push(target) }
+        if (target && !seen.has(target)) {
+          seen.add(target)
+          next.push(target)
+        }
       }
     }
     frontier = next
@@ -228,7 +283,8 @@ const traceDir = (dir) => {
 }
 
 // Humanize a path/component into a screen label.
-const screenName = (component, routePath) => component || (routePath || '').replace(/^\//, '').split('/')[0] || 'screen'
+const screenName = (component, routePath) =>
+  component || (routePath || '').replace(/^\//, '').split('/')[0] || 'screen'
 
 const gatherRepo = (folder) => {
   const repoDir = path.join(ROOT, folder)
@@ -260,7 +316,12 @@ const gatherRepo = (folder) => {
         for (const role of r.roles) if (!existing.roles.includes(role)) existing.roles.push(role)
         if (!existing.file && file) existing.file = file
       } else {
-        byComponent.set(key, { component: r.component, paths: r.path ? [r.path] : [], roles: [...r.roles], file })
+        byComponent.set(key, {
+          component: r.component,
+          paths: r.path ? [r.path] : [],
+          roles: [...r.roles],
+          file,
+        })
       }
     }
   }
@@ -279,9 +340,15 @@ const gatherRepo = (folder) => {
       const anchor = path.join(base, 'index.tsx')
       for (const e of fs.readdirSync(base, { withFileTypes: true })) {
         const stem = path.basename(e.name, path.extname(e.name))
-        if (e.isDirectory()) { const f = resolve(anchor, './' + e.name); screens.push({ component: e.name, paths: [], roles: [], file: f, dir: path.join(base, e.name) }) }
+        if (e.isDirectory()) {
+          const f = resolve(anchor, './' + e.name)
+          screens.push({ component: e.name, paths: [], roles: [], file: f, dir: path.join(base, e.name) })
+        }
         // loose component files only: PascalCase .tsx/.jsx (skip utils/constants/index)
-        else if (/\.[jt]sx$/.test(e.name) && /^[A-Z]/.test(stem)) { const f = resolve(anchor, './' + e.name); screens.push({ component: stem, paths: [], roles: [], file: f }) }
+        else if (/\.[jt]sx$/.test(e.name) && /^[A-Z]/.test(stem)) {
+          const f = resolve(anchor, './' + e.name)
+          screens.push({ component: stem, paths: [], roles: [], file: f })
+        }
       }
     }
   }
@@ -290,7 +357,11 @@ const gatherRepo = (folder) => {
   // screens BFS the resolved component's import graph.
   const out = []
   for (const s of screens) {
-    const trace = s.dir ? traceDir(s.dir) : s.file ? traceEndpoints(s.file, resolve) : { endpoints: [], components: [], filesScanned: 0 }
+    const trace = s.dir
+      ? traceDir(s.dir)
+      : s.file
+        ? traceEndpoints(s.file, resolve)
+        : { endpoints: [], components: [], filesScanned: 0 }
     out.push({
       name: screenName(s.component, s.paths[0]),
       component: s.component,

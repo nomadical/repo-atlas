@@ -20,11 +20,14 @@ const authed = (init) => {
 // through, which is a reload, not a bug report.
 export async function loadHistory() {
   const r = await fetch(HISTORY_URL, authed())
-  if (r.status === 401 || r.status === 403) throw new Error('Not signed in — reload the page to sign in again.')
+  if (r.status === 401 || r.status === 403)
+    throw new Error('Not signed in — reload the page to sign in again.')
   if (!r.ok) throw new Error(`The nightly history could not be loaded (${r.status}).`)
   // A server without this route answers 200 with the SPA's index.html (the static fallback).
   if (!(r.headers.get('content-type') || '').toLowerCase().includes('json')) {
-    throw new Error('This deployment does not serve the Golden Path data yet — it predates the screen. Redeploy the service and reload.')
+    throw new Error(
+      'This deployment does not serve the Golden Path data yet — it predates the screen. Redeploy the service and reload.',
+    )
   }
   return r.json()
 }
@@ -55,7 +58,10 @@ export async function loadExceptions() {
 
 // The single write, and the only place a curated decision leaves the browser.
 export async function appendException(entry) {
-  const r = await fetch(DECISION_LOG_URL, authed({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }))
+  const r = await fetch(
+    DECISION_LOG_URL,
+    authed({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(entry) }),
+  )
   if (!r.ok) {
     const body = await r.json().catch(() => ({}))
     throw new Error(body.error || `save failed (${r.status})`)

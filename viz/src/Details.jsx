@@ -38,12 +38,41 @@ function Resizer({ onResize }) {
   return <div className="panel-resizer" onMouseDown={start} title="Drag to resize" />
 }
 
-export default function Details({ data, extras, mode, width, onResize, onClose, onNavigate, onDrillIn, config, frameworkConsumers }) {
+export default function Details({
+  data,
+  extras,
+  mode,
+  width,
+  onResize,
+  onClose,
+  onNavigate,
+  onDrillIn,
+  config,
+  frameworkConsumers,
+}) {
   const dev = mode === 'dev'
   const nav = onNavigate || (() => {})
   const docSearchUrl = config?.docSearchUrl
-  if (data.region) return <RegionDetails region={data.region} width={width} onResize={onResize} onClose={onClose} onNavigate={nav} />
-  if (data.screen) return <ScreenDetails screen={data.screen} clientTitle={data.clientTitle} width={width} onResize={onResize} onClose={onClose} />
+  if (data.region)
+    return (
+      <RegionDetails
+        region={data.region}
+        width={width}
+        onResize={onResize}
+        onClose={onClose}
+        onNavigate={nav}
+      />
+    )
+  if (data.screen)
+    return (
+      <ScreenDetails
+        screen={data.screen}
+        clientTitle={data.clientTitle}
+        width={width}
+        onResize={onResize}
+        onClose={onClose}
+      />
+    )
   const r = data.repo
   if (!r) {
     const res = data.resource
@@ -61,7 +90,9 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
           </span>
           <h2>{String(data.title).replace('\n', ' ')}</h2>
         </div>
-        {data.inventory?.description || data.subtitle ? <p className="purpose">{data.inventory?.description || data.subtitle}</p> : null}
+        {data.inventory?.description || data.subtitle ? (
+          <p className="purpose">{data.inventory?.description || data.subtitle}</p>
+        ) : null}
         {res?.host ? (
           <div className="liveurl">
             <Icon name="api" /> API <b>{res.host}</b>
@@ -69,7 +100,8 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
         ) : null}
         {res?.lastCommit ? (
           <div className="liveurl">
-            <Icon name="clock" /> last commit {new Date(res.lastCommit).toLocaleDateString()} · {agoLabel(daysAgo(res.lastCommit))}
+            <Icon name="clock" /> last commit {new Date(res.lastCommit).toLocaleDateString()} ·{' '}
+            {agoLabel(daysAgo(res.lastCommit))}
           </div>
         ) : null}
         {res?.consumers?.length ? (
@@ -119,7 +151,11 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
         ) : null}
         <InventorySection inv={data.inventory} docSearchUrl={docSearchUrl} />
         {data.inventory?.name ? (
-          <FrameworkAdoptionSection name={data.inventory.name} consumers={frameworkConsumers?.[data.inventory.name]} onNavigate={nav} />
+          <FrameworkAdoptionSection
+            name={data.inventory.name}
+            consumers={frameworkConsumers?.[data.inventory.name]}
+            onNavigate={nav}
+          />
         ) : null}
         <HealthSection health={data.inventory?.health} pushedAt={data.inventory?.pushedAt} />
         <AzureServiceSection inv={data.inventory} />
@@ -133,7 +169,9 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
   const purpose = extras?.purposes?.[r.folder]
   // the folder name(s) the graph accepts for the design-system hub (graph.js `uiHubFoldersOf`)
   const isUiHub = uiHubFoldersOf(config).includes(r.folder)
-  const components = isUiHub ? extras?.designSystem?.componentCatalog?.publiclyExportedComponents || null : null
+  const components = isUiHub
+    ? extras?.designSystem?.componentCatalog?.publiclyExportedComponents || null
+    : null
   const kc = KIND[r.kind]?.color || '#888'
   return (
     <aside className="panel" style={{ width, '--kind': kc }}>
@@ -171,13 +209,20 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
       ) : null}
       {r.azure?.lastDeploy ? (
         <div className="liveurl">
-          <Icon name="rocket" /> last deploy {new Date(r.azure.lastDeploy).toLocaleDateString()} · {agoLabel(daysAgo(r.azure.lastDeploy))}
+          <Icon name="rocket" /> last deploy {new Date(r.azure.lastDeploy).toLocaleDateString()} ·{' '}
+          {agoLabel(daysAgo(r.azure.lastDeploy))}
         </div>
       ) : null}
-      {purpose?.text || data.inventory?.description ? <p className="purpose">{purpose?.text || data.inventory?.description}</p> : null}
+      {purpose?.text || data.inventory?.description ? (
+        <p className="purpose">{purpose?.text || data.inventory?.description}</p>
+      ) : null}
       <InventorySection inv={data.inventory} docSearchUrl={docSearchUrl} />
       {data.inventory?.name ? (
-        <FrameworkAdoptionSection name={data.inventory.name} consumers={frameworkConsumers?.[data.inventory.name]} onNavigate={nav} />
+        <FrameworkAdoptionSection
+          name={data.inventory.name}
+          consumers={frameworkConsumers?.[data.inventory.name]}
+          onNavigate={nav}
+        />
       ) : null}
       <HealthSection health={data.inventory?.health} pushedAt={data.inventory?.pushedAt} />
       <AzureServiceSection inv={data.inventory} />
@@ -194,7 +239,11 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
         </div>
       ) : null}
       {onDrillIn && extras?.screens?.perRepo?.[r.folder]?.screens?.length ? (
-        <button className="btn primary drill-btn" onClick={() => onDrillIn(r.folder)} title="Show this app's screens and the endpoints each one calls">
+        <button
+          className="btn primary drill-btn"
+          onClick={() => onDrillIn(r.folder)}
+          title="Show this app's screens and the endpoints each one calls"
+        >
           <Icon name="integrations" /> View {extras.screens.perRepo[r.folder].screens.length} screens →
         </button>
       ) : null}
@@ -239,7 +288,12 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
       {r.internalDeps?.length ? (
         <Section title="Internal deps">
           {r.internalDeps.map((d) => (
-            <button key={d.name} className="kv kv-nav" onClick={() => nav(d.name)} title={`Go to ${d.name.replace(/^@[^/]+\//, '')}`}>
+            <button
+              key={d.name}
+              className="kv kv-nav"
+              onClick={() => nav(d.name)}
+              title={`Go to ${d.name.replace(/^@[^/]+\//, '')}`}
+            >
               <span>{d.name.replace(/^@[^/]+\//, '')}</span>
               <b>{d.version + (d.dev ? ' (dev)' : '')}</b>
             </button>
@@ -291,7 +345,9 @@ export default function Details({ data, extras, mode, width, onResize, onClose, 
               <li key={b}>{b}</li>
             ))}
           </ul>
-          <div className="sec-note">inferred from env vars{r.feToBe.method ? ` (${r.feToBe.method})` : ''} — may be incomplete</div>
+          <div className="sec-note">
+            inferred from env vars{r.feToBe.method ? ` (${r.feToBe.method})` : ''} — may be incomplete
+          </div>
         </Section>
       ) : null}
 
@@ -374,7 +430,12 @@ function RegionDetails({ region, width, onResize, onClose, onNavigate }) {
         <Section title={`Members (${members.length})`}>
           <div className="chiprow">
             {members.map((m) => (
-              <button key={m.id} className="nav-chip" onClick={() => onNavigate(m.id)} title={`Go to ${m.title}`}>
+              <button
+                key={m.id}
+                className="nav-chip"
+                onClick={() => onNavigate(m.id)}
+                title={`Go to ${m.title}`}
+              >
                 {m.title}
               </button>
             ))}
@@ -466,7 +527,9 @@ function HealthSection({ health, pushedAt }) {
       {a ? (
         <div className="kv">
           <span>Dependabot</span>
-          <span className={a.total ? 'alerts-bad' : ''}>{a.total ? `${a.total} open (${sev})` : 'no open alerts'}</span>
+          <span className={a.total ? 'alerts-bad' : ''}>
+            {a.total ? `${a.total} open (${sev})` : 'no open alerts'}
+          </span>
         </div>
       ) : null}
       {pushedAt ? <KV k="Last push" v={new Date(pushedAt).toLocaleDateString()} /> : null}
@@ -521,7 +584,8 @@ function FrameworkAdoptionSection({ name, consumers, onNavigate }) {
   const cmp = (a, b) => {
     const A = vp(a),
       B = vp(b)
-    for (let i = 0; i < Math.max(A.length, B.length); i++) if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0)
+    for (let i = 0; i < Math.max(A.length, B.length); i++)
+      if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0)
     return 0
   }
   const latest =
@@ -536,7 +600,12 @@ function FrameworkAdoptionSection({ name, consumers, onNavigate }) {
         {consumers.map((c) => {
           const lag = latest && c.version && cmp(c.version, latest) < 0
           return (
-            <button key={c.name} className="nav-chip" onClick={() => onNavigate(c.name)} title={(c.artifacts || []).join(', ')}>
+            <button
+              key={c.name}
+              className="nav-chip"
+              onClick={() => onNavigate(c.name)}
+              title={(c.artifacts || []).join(', ')}
+            >
               {c.name}
               {c.version ? <span style={lag ? { color: '#c62828' } : undefined}> · {c.version}</span> : null}
             </button>
@@ -608,7 +677,9 @@ const daysAgo = (iso) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()
 const agoLabel = (d) => (d == null ? null : d <= 0 ? 'today' : `${d}d ago`)
 function AzureEnvSection({ azure }) {
   if (!azure?.envs || !Object.keys(azure.envs).length) return null
-  const envs = Object.keys(azure.envs).sort((a, b) => (ENV_ORDER.indexOf(a) + 1 || 99) - (ENV_ORDER.indexOf(b) + 1 || 99))
+  const envs = Object.keys(azure.envs).sort(
+    (a, b) => (ENV_ORDER.indexOf(a) + 1 || 99) - (ENV_ORDER.indexOf(b) + 1 || 99),
+  )
   return (
     <Section title="Environments (Azure)">
       {envs.map((env) => {
@@ -626,7 +697,9 @@ function AzureEnvSection({ azure }) {
                 ) : (
                   <span className="muted">no domain</span>
                 )}
-                {d != null ? <span className={'env-age' + (d > 60 ? ' old' : '')}> · {agoLabel(d)}</span> : null}
+                {d != null ? (
+                  <span className={'env-age' + (d > 60 ? ' old' : '')}> · {agoLabel(d)}</span>
+                ) : null}
               </b>
             </div>
             {(e.modules || []).map((m) => (
@@ -649,7 +722,9 @@ function AzureServiceSection({ inv }) {
   if (!az || (!az.lastPush && !az.infra?.length)) return null
   return (
     <Section title="Azure">
-      {az.lastPush ? <KV k="Last image push" v={`${az.lastPush.slice(0, 10)} · ${agoLabel(daysAgo(az.lastPush))}`} /> : null}
+      {az.lastPush ? (
+        <KV k="Last image push" v={`${az.lastPush.slice(0, 10)} · ${agoLabel(daysAgo(az.lastPush))}`} />
+      ) : null}
       {az.image ? (
         <div className="liveurl">
           <Icon name="box" /> <span className="mono">{az.image}</span>

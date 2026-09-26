@@ -53,7 +53,8 @@ const apiPathFrom = (raw) => {
 }
 
 // template URL built off a *Url/Api/Base/Host variable: `${SKYGATE_URL}gateway/{id}`
-const TEMPLATE_URL_RE = /`\s*\$\{[A-Za-z0-9_]*(?:URL|Url|API|Api|BASE|Base|HOST|Host|ENDPOINT|Endpoint)[A-Za-z0-9_]*\}([^`]+)`/g
+const TEMPLATE_URL_RE =
+  /`\s*\$\{[A-Za-z0-9_]*(?:URL|Url|API|Api|BASE|Base|HOST|Host|ENDPOINT|Endpoint)[A-Za-z0-9_]*\}([^`]+)`/g
 
 const API_CALL_RES = [
   // fetch('…') / axios('…')
@@ -96,9 +97,14 @@ export const extractUrlEndpointsFromText = (text, set = new Set()) => {
   for (let l of text.split('\n')) {
     l = l.trim()
     if (!l) continue
-    if (/atlassian|sharepoint|stoplight|webhook\.office|\/wiki|\/terms|\.(svg|png|pdf|jpe?g|gif|ico)/.test(l)) continue
+    if (/atlassian|sharepoint|stoplight|webhook\.office|\/wiki|\/terms|\.(svg|png|pdf|jpe?g|gif|ico)/.test(l))
+      continue
     // same env-token list as backend-scan.mjs / assemble.mjs / guard-data.mjs normHost
-    set.add(l.replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}').replace(/["')\\,;]+$/, ''))
+    set.add(
+      l
+        .replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}')
+        .replace(/["')\\,;]+$/, ''),
+    )
   }
   return set
 }

@@ -27,5 +27,7 @@ export const inOrg = (url) => (url ? (ORG_RE ? ORG_RE.test(url) : true) : false)
 // fetch only touches .git refs, never the working tree, so it is safe on dirty checkouts.
 export const maybeFetch = (repoDir) => {
   if (process.env.ATLAS_FETCH !== '1') return
-  try { execSync('git fetch --quiet --tags', { cwd: repoDir, stdio: 'ignore', timeout: 60000 }) } catch {}
+  try {
+    execSync('git fetch --quiet --tags', { cwd: repoDir, stdio: 'ignore', timeout: 60000 })
+  } catch {}
 }

@@ -16,7 +16,8 @@ const DEFAULT_TITLE = 'Architecture Map'
 const clone = (x) => JSON.parse(JSON.stringify(x ?? null))
 // backend-extra.json keys the panel edits directly; everything else passes through a save untouched
 const BE_EDITED_KEYS = ['_comment', 'backends', 'feBe', 'backendExternals', 'assetConsumers']
-const beRestOf = (o) => clone(Object.fromEntries(Object.entries(o || {}).filter(([k]) => !BE_EDITED_KEYS.includes(k))))
+const beRestOf = (o) =>
+  clone(Object.fromEntries(Object.entries(o || {}).filter(([k]) => !BE_EDITED_KEYS.includes(k))))
 
 const csvCell = (v) => {
   const s = String(v ?? '')
@@ -25,7 +26,9 @@ const csvCell = (v) => {
 const rowsToCsv = (rows) =>
   [
     'Source,Target,Protocol,Channel,Note',
-    ...rows.map((r) => [r.source, r.target, r.protocol || 'REST', r.channel || '', r.note || ''].map(csvCell).join(',')),
+    ...rows.map((r) =>
+      [r.source, r.target, r.protocol || 'REST', r.channel || '', r.note || ''].map(csvCell).join(','),
+    ),
   ].join('\n') + '\n'
 const isVerified = (note) => !/verify/i.test(note || '')
 // curated integration rows, in the shape the panel edits. A curated row that code CONFIRMED
@@ -78,22 +81,34 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
   // from props, so this initial snapshot is their permanent baseline.
   const [baseRows] = useState(() => seedRows(data.integrations))
   const [baseFeBe, setBaseFeBe] = useState(() => clone(data.backendTopology?.feBe) || {})
-  const [baseExternals, setBaseExternals] = useState(() => clone(data.backendTopology?.backendExternals) || {})
-  const codeDerivedCount = useMemo(() => (data.integrations || []).filter((r) => r.via === 'code').length, [data])
+  const [baseExternals, setBaseExternals] = useState(
+    () => clone(data.backendTopology?.backendExternals) || {},
+  )
+  const codeDerivedCount = useMemo(
+    () => (data.integrations || []).filter((r) => r.via === 'code').length,
+    [data],
+  )
   const [regionNotes, setRegionNotes] = useState(() => clone(data.config?.regionNotes) || {})
   // Region boxes that can carry a curated description: the team clusters (from the config taxonomy)
   // plus the fixed structural bands. Derived, not hardcoded, so a fork's clusters show up here too.
-  const regionLabels = useMemo(() => [...resolveClusters(data.config).map((c) => c.label), ...STRUCTURAL_REGIONS], [data.config])
+  const regionLabels = useMemo(
+    () => [...resolveClusters(data.config).map((c) => c.label), ...STRUCTURAL_REGIONS],
+    [data.config],
+  )
   // Raw inventory-extra.json. In dev the /api/curation fetch below replaces this with the on-disk
   // file; in read-only deploys it seeds from the bundled copy so Documentation stays editable.
   const [invExtra, setInvExtra] = useState(() => clone(data.inventoryExtra))
   // Service<->repo overrides (#16 service-map.json), edited as rows; empty repo = repo-less service.
-  const [svcRows, setSvcRows] = useState(() => Object.entries(data.serviceMap?.services || {}).map(([name, v]) => ({ name, repo: v?.repo ?? '' })))
+  const [svcRows, setSvcRows] = useState(() =>
+    Object.entries(data.serviceMap?.services || {}).map(([name, v]) => ({ name, repo: v?.repo ?? '' })),
+  )
   const setSvcRow = (i, patch) => setSvcRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const addSvcRow = () => setSvcRows((rs) => [...rs, { name: '', repo: '' }])
   const removeSvcRow = (i) => setSvcRows((rs) => rs.filter((_, j) => j !== i))
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(DEV ? null : 'Read-only deploy — edits can be copied/downloaded, then committed to the repo.')
+  const [msg, setMsg] = useState(
+    DEV ? null : 'Read-only deploy — edits can be copied/downloaded, then committed to the repo.',
+  )
 
   // In dev, prefer the raw committed files (carry the _comment + the full inventory-extra.json,
   // which is merged away in the served data). Falls back silently to the seeded data otherwise.
@@ -119,7 +134,10 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           setBeRest(beRestOf(c.backendExtra))
         }
         if (c.inventoryExtra) setInvExtra(c.inventoryExtra)
-        if (c.serviceMap?.services) setSvcRows(Object.entries(c.serviceMap.services).map(([name, v]) => ({ name, repo: v?.repo ?? '' })))
+        if (c.serviceMap?.services)
+          setSvcRows(
+            Object.entries(c.serviceMap.services).map(([name, v]) => ({ name, repo: v?.repo ?? '' })),
+          )
         if (c.config) {
           setCfg({
             title: c.config.title || '',
@@ -152,7 +170,12 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
   // Options offered for an integration Target: backends + external SaaS + the event bus + any
   // component the map already knows, so the field is a pure pick-list (no free typing).
   const targetNames = useMemo(
-    () => [...new Set([...beIds, ...saasNames, 'Kafka', ...(data.inventory || []).map((e) => e.name)].filter(Boolean))].sort(),
+    () =>
+      [
+        ...new Set(
+          [...beIds, ...saasNames, 'Kafka', ...(data.inventory || []).map((e) => e.name)].filter(Boolean),
+        ),
+      ].sort(),
     [beIds, saasNames, data],
   )
   const repoFolders = useMemo(() => (data.repos || []).map((r) => r.folder).sort(), [data])
@@ -163,7 +186,9 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
       $comment:
         data.serviceMap?.$comment ||
         'Service<->repo identity map (#16). Default is identity; only overrides listed. Keys are the inventory service name; repo = owning repo folder (or null for repo-less).',
-      services: Object.fromEntries(svcRows.filter((r) => r.name.trim()).map((r) => [r.name.trim(), { repo: r.repo.trim() || null }])),
+      services: Object.fromEntries(
+        svcRows.filter((r) => r.name.trim()).map((r) => [r.name.trim(), { repo: r.repo.trim() || null }]),
+      ),
     }),
     [svcRows, data],
   )
@@ -174,7 +199,14 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
   }, [feBe, externals, beIds])
 
   const backendExtra = useMemo(
-    () => ({ ...(comment ? { _comment: comment } : {}), backends, feBe, backendExternals: externals, assetConsumers: assetConsumers, ...beRest }),
+    () => ({
+      ...(comment ? { _comment: comment } : {}),
+      backends,
+      feBe,
+      backendExternals: externals,
+      assetConsumers: assetConsumers,
+      ...beRest,
+    }),
     [comment, backends, feBe, externals, assetConsumers, beRest],
   )
   const csv = useMemo(() => rowsToCsv(rows), [rows])
@@ -218,7 +250,8 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
       else delete next[client]
       return next
     })
-  const toggleAssetConsumer = (client) => setCssAssets((xs) => (xs.includes(client) ? xs.filter((x) => x !== client) : [...xs, client]))
+  const toggleAssetConsumer = (client) =>
+    setCssAssets((xs) => (xs.includes(client) ? xs.filter((x) => x !== client) : [...xs, client]))
   // Per-item edits for the dropdown-based External SaaS editor: add one, remove one by index.
   // De-duped per backend; removing the last one drops the backend key entirely (same shape as CSV).
   const addExternal = (id, val) =>
@@ -248,7 +281,8 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           ? rows[i].note
           : (rows[i].note ? rows[i].note + ' — ' : '') + 'VERIFY',
     })
-  const addRow = () => setRows((rs) => [...rs, { source: '', target: '', protocol: 'REST', channel: '', note: '' }])
+  const addRow = () =>
+    setRows((rs) => [...rs, { source: '', target: '', protocol: 'REST', channel: '', note: '' }])
   const removeRow = (i) => setRows((rs) => rs.filter((_, j) => j !== i))
   // manual-edit highlighting — true when a field diverges from its seeded baseline
   const rowChanged = (i, field) => (baseRows[i]?.[field] ?? '') !== (rows[i]?.[field] ?? '')
@@ -261,7 +295,10 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
     const half = (v.incompleteCuration || []).map((s) => String(s).split(' — ')[0])
     return [...new Set([...(v.uncuratedRepos || []), ...half])].sort()
   }, [data])
-  const invByName = useMemo(() => Object.fromEntries((data.inventory || []).map((e) => [e.repoName || e.name, e])), [data])
+  const invByName = useMemo(
+    () => Object.fromEntries((data.inventory || []).map((e) => [e.repoName || e.name, e])),
+    [data],
+  )
   const setGap = (repo, field, value) =>
     setInvExtra((ix) => {
       const next = clone(ix) || { repoExtras: {}, nonRepo: [] }
@@ -284,7 +321,10 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
   // Documentation link/label are no longer edited here — they live on each repo as the
   // `doc-url` / `doc-label` org custom properties (github-inventory.mjs → inventory.mjs),
   // maintained on GitHub like technical-contact/abbreviation. See docs/repo-maintenance.md.
-  const invExtraJson = useMemo(() => JSON.stringify(invExtra ?? { repoExtras: {}, nonRepo: [] }, null, 2) + '\n', [invExtra])
+  const invExtraJson = useMemo(
+    () => JSON.stringify(invExtra ?? { repoExtras: {}, nonRepo: [] }, null, 2) + '\n',
+    [invExtra],
+  )
 
   async function save() {
     setBusy(true)
@@ -292,10 +332,16 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
     try {
       const body = { backendExtra, integrationsCsv: csv, config, serviceMap: serviceMapOut }
       if (invExtra) body.inventoryExtra = invExtra
-      const r = await fetch('/api/save-curation', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const r = await fetch('/api/save-curation', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       const out = await r.json()
       if (!r.ok || out.ok === false) throw new Error(JSON.stringify(out))
-      setMsg(`Saved ${out.written.join(', ')}. Run “Regenerate data” to apply, or it lands on the next nightly.`)
+      setMsg(
+        `Saved ${out.written.join(', ')}. Run “Regenerate data” to apply, or it lands on the next nightly.`,
+      )
       onSaved?.()
     } catch (e) {
       setMsg('Save failed (is the dev server running?) — ' + String(e.message || e).slice(0, 200))
@@ -311,7 +357,13 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
   )
 
   return (
-    <div className="legend-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Admin — curation editor">
+    <div
+      className="legend-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Admin — curation editor"
+    >
       <div className="legend-card adm-card" onClick={(e) => e.stopPropagation()}>
         <div className="legend-head">
           <h3>Admin · curate the model</h3>
@@ -340,12 +392,18 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
             <>
               <p className="adm-hint">
                 App-wide appearance & defaults (config.json). Applies for everyone after you save and
-                {DEV ? ' hit “Regenerate data” / publish' : ' republish'} (or on the next nightly). Leave a field blank to use the built-in default.
+                {DEV ? ' hit “Regenerate data” / publish' : ' republish'} (or on the next nightly). Leave a
+                field blank to use the built-in default.
               </p>
               <h4 className="adm-sub">Branding</h4>
               <label className="adm-field">
                 <span>Page title</span>
-                <input className="adm-in adm-wide" value={cfg.title} onChange={(e) => setCfgField('title', e.target.value)} placeholder={DEFAULT_TITLE} />
+                <input
+                  className="adm-in adm-wide"
+                  value={cfg.title}
+                  onChange={(e) => setCfgField('title', e.target.value)}
+                  placeholder={DEFAULT_TITLE}
+                />
               </label>
               <label className="adm-field">
                 <span>Subtitle</span>
@@ -369,7 +427,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
               <div className="adm-be-row">
                 <label className="adm-field">
                   <span>View</span>
-                  <select className="adm-in" value={cfg.defaultView} onChange={(e) => setCfgField('defaultView', e.target.value)}>
+                  <select
+                    className="adm-in"
+                    value={cfg.defaultView}
+                    onChange={(e) => setCfgField('defaultView', e.target.value)}
+                  >
                     <option value="">Built-in (Graph)</option>
                     <option value="graph">Graph</option>
                     <option value="matrix">Matrix</option>
@@ -379,7 +441,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                 </label>
                 <label className="adm-field">
                   <span>Mode</span>
-                  <select className="adm-in" value={cfg.defaultMode} onChange={(e) => setCfgField('defaultMode', e.target.value)}>
+                  <select
+                    className="adm-in"
+                    value={cfg.defaultMode}
+                    onChange={(e) => setCfgField('defaultMode', e.target.value)}
+                  >
                     <option value="">Built-in (Dev)</option>
                     <option value="dev">Dev</option>
                     <option value="overview">Overview</option>
@@ -387,7 +453,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                 </label>
                 <label className="adm-field">
                   <span>Theme</span>
-                  <select className="adm-in" value={cfg.defaultTheme} onChange={(e) => setCfgField('defaultTheme', e.target.value)}>
+                  <select
+                    className="adm-in"
+                    value={cfg.defaultTheme}
+                    onChange={(e) => setCfgField('defaultTheme', e.target.value)}
+                  >
                     <option value="">Built-in (Light)</option>
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
@@ -406,25 +476,35 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                 </label>
               </div>
               <p className="adm-hint">
-                Defaults seed first-load state only; a shared ?-link or an in-session change always wins. Small screens still open the Table.
+                Defaults seed first-load state only; a shared ?-link or an in-session change always wins.
+                Small screens still open the Table.
               </p>
               <h4 className="adm-sub">Card layout</h4>
               <p className="adm-hint">
-                Drag any card on the graph to reposition it (admin only). Positions are saved with the config below and apply for everyone after
+                Drag any card on the graph to reposition it (admin only). Positions are saved with the config
+                below and apply for everyone after
                 {DEV ? ' regenerate / publish' : ' republish'}.
               </p>
               <div className="adm-be-row">
                 <span className="adm-wire-name">
-                  {layoutCount ? `${layoutCount} custom card position${layoutCount === 1 ? '' : 's'}` : 'No custom positions — using auto-layout'}
+                  {layoutCount
+                    ? `${layoutCount} custom card position${layoutCount === 1 ? '' : 's'}`
+                    : 'No custom positions — using auto-layout'}
                 </span>
                 {layoutCount ? (
-                  <button className="btn ghost" onClick={onResetLayout} title="Clear all dragged positions and revert to the auto-layout">
+                  <button
+                    className="btn ghost"
+                    onClick={onResetLayout}
+                    title="Clear all dragged positions and revert to the auto-layout"
+                  >
                     Reset layout
                   </button>
                 ) : null}
               </div>
               <h4 className="adm-sub">Group descriptions</h4>
-              <p className="adm-hint">Shown in the sidebar when a cluster box is clicked. Leave blank to hide.</p>
+              <p className="adm-hint">
+                Shown in the sidebar when a cluster box is clicked. Leave blank to hide.
+              </p>
               {regionLabels.map((label) => (
                 <label className="adm-field" key={label}>
                   <span>{label}</span>
@@ -440,11 +520,18 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                 <div className="adm-add">
                   <button
                     className="btn ghost"
-                    onClick={() => navigator.clipboard?.writeText(JSON.stringify(config, null, 2)).then(() => setMsg('Copied config.json'))}
+                    onClick={() =>
+                      navigator.clipboard
+                        ?.writeText(JSON.stringify(config, null, 2))
+                        .then(() => setMsg('Copied config.json'))
+                    }
                   >
                     Copy config.json
                   </button>
-                  <button className="btn ghost" onClick={() => download('config.json', JSON.stringify(config, null, 2))}>
+                  <button
+                    className="btn ghost"
+                    onClick={() => download('config.json', JSON.stringify(config, null, 2))}
+                  >
                     <Icon name="download" /> config
                   </button>
                 </div>
@@ -454,7 +541,9 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
 
           {tab === 'wiring' ? (
             <>
-              <p className="adm-hint">Which frontend calls which backend (FE_BE). Toggle the backends each client talks to.</p>
+              <p className="adm-hint">
+                Which frontend calls which backend (FE_BE). Toggle the backends each client talks to.
+              </p>
               {clients.map((c) => (
                 <div className="adm-wire" key={c}>
                   <span className="adm-wire-name mono">{c}</span>
@@ -464,13 +553,22 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                       const changed = feBeChanged(c, id)
                       // Color encodes provenance (not a border): blue = system-defined (from the
                       // committed data), green = hand-added this session, red strike = hand-removed.
-                      const cls = 'adm-chip' + (on ? ' on' : '') + (changed ? (on ? ' added' : ' removed') : '')
+                      const cls =
+                        'adm-chip' + (on ? ' on' : '') + (changed ? (on ? ' added' : ' removed') : '')
                       return (
                         <button
                           key={id}
                           className={cls}
                           onClick={() => toggleFeBe(c, id)}
-                          title={changed ? (on ? 'Added this session' : 'Removed this session') : on ? 'System-defined wiring' : ''}
+                          title={
+                            changed
+                              ? on
+                                ? 'Added this session'
+                                : 'Removed this session'
+                              : on
+                                ? 'System-defined wiring'
+                                : ''
+                          }
                         >
                           {id}
                         </button>
@@ -482,7 +580,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
               <h4 className="adm-sub">Apps that consume the shared asset repo</h4>
               <div className="adm-chips">
                 {clients.map((c) => (
-                  <button key={c} className={'adm-chip' + (assetConsumers.includes(c) ? ' on' : '')} onClick={() => toggleAssetConsumer(c)}>
+                  <button
+                    key={c}
+                    className={'adm-chip' + (assetConsumers.includes(c) ? ' on' : '')}
+                    onClick={() => toggleAssetConsumer(c)}
+                  >
                     {c}
                   </button>
                 ))}
@@ -493,8 +595,8 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           {tab === 'saas' ? (
             <>
               <p className="adm-hint">
-                Which external SaaS each backend talks to (backendExternals). Pick from the dropdown, or choose “+ new SaaS…” to add one not yet listed. A
-                backend row is highlighted when hand-edited.
+                Which external SaaS each backend talks to (backendExternals). Pick from the dropdown, or
+                choose “+ new SaaS…” to add one not yet listed. A backend row is highlighted when hand-edited.
               </p>
               {beIds.map((id) => (
                 <div className={'adm-wire' + (extChanged(id) ? ' changed' : '')} key={id}>
@@ -503,7 +605,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                     {(externals[id] || []).map((name, idx) => (
                       <span className="adm-saas-chip" key={name + idx}>
                         {name}
-                        <button className="adm-x" onClick={() => removeExternal(id, idx)} title={`remove ${name}`}>
+                        <button
+                          className="adm-x"
+                          onClick={() => removeExternal(id, idx)}
+                          title={`remove ${name}`}
+                        >
                           <Icon name="close" />
                         </button>
                       </span>
@@ -560,8 +666,9 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           {tab === 'services' ? (
             <>
               <p className="adm-hint">
-                Service ↔ repo identity (#16). By default a component's service is its inventory name and its repo is the one it's scanned from — add an
-                override only to link a repo-less service (e.g. a monorepo sibling like device-data-access) to its owning repo, or leave the repo blank for a
+                Service ↔ repo identity (#16). By default a component's service is its inventory name and its
+                repo is the one it's scanned from — add an override only to link a repo-less service (e.g. a
+                monorepo sibling like device-data-access) to its owning repo, or leave the repo blank for a
                 genuinely repo-less service. Applied on the next “Regenerate data”.
               </p>
               {svcRows.map((r, i) => (
@@ -573,7 +680,11 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                     onChange={(e) => setSvcRow(i, { name: e.target.value })}
                     placeholder="inventory service name"
                   />
-                  <select className="adm-in mono" value={r.repo} onChange={(e) => setSvcRow(i, { repo: e.target.value })}>
+                  <select
+                    className="adm-in mono"
+                    value={r.repo}
+                    onChange={(e) => setSvcRow(i, { repo: e.target.value })}
+                  >
                     <option value="">— (repo-less)</option>
                     {[...new Set([r.repo, ...repoFolders].filter(Boolean))].map((f) => (
                       <option key={f} value={f}>
@@ -602,8 +713,8 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           {tab === 'integrations' ? (
             <>
               <p className="adm-hint">
-                Service-to-service edges (integrations.csv). Both-backend rows render in the Resources layer; the rest as service links. Uncheck “verified” for
-                inferred edges (renders dotted + dimmed).
+                Service-to-service edges (integrations.csv). Both-backend rows render in the Resources layer;
+                the rest as service links. Uncheck “verified” for inferred edges (renders dotted + dimmed).
                 {codeDerivedCount
                   ? ` ${codeDerivedCount} further edges are derived from the backend code (Kafka topics via backend-scan) — they regenerate on every run and aren't edited here.`
                   : ''}
@@ -668,7 +779,12 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
                         />
                       </td>
                       <td className="adm-ctr">
-                        <input type="checkbox" checked={isVerified(r.note)} onChange={(e) => setRowVerified(i, e.target.checked)} title={r.note || ''} />
+                        <input
+                          type="checkbox"
+                          checked={isVerified(r.note)}
+                          onChange={(e) => setRowVerified(i, e.target.checked)}
+                          title={r.note || ''}
+                        />
                       </td>
                       <td>
                         <button className="adm-x" onClick={() => removeRow(i)} title="remove row">
@@ -695,19 +811,27 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           {tab === 'inventory' ? (
             <>
               <p className="adm-hint">
-                Repos with no/partial inventory topics. Best fixed by setting topics on the GitHub repo; this writes inventory-extra.json fallbacks for what
-                can’t go on a repo. The Documentation link/label live on the repo too, as the <code>doc-url</code> / <code>doc-label</code> custom properties.
+                Repos with no/partial inventory topics. Best fixed by setting topics on the GitHub repo; this
+                writes inventory-extra.json fallbacks for what can’t go on a repo. The Documentation
+                link/label live on the repo too, as the <code>doc-url</code> / <code>doc-label</code> custom
+                properties.
                 {!invExtra && DEV ? ' (loading inventory-extra.json…)' : ''}
                 {!DEV ? ' Editing requires the dev server; the gaps are listed read-only here.' : ''}
               </p>
-              {gapRepos.length === 0 ? <p className="adm-hint">No gaps — every component is curated. 🎉</p> : null}
+              {gapRepos.length === 0 ? (
+                <p className="adm-hint">No gaps — every component is curated. 🎉</p>
+              ) : null}
               {gapRepos.map((repo) => {
                 const inv = invByName[repo]
                 return (
                   <div className="adm-be" key={repo}>
                     <div className="adm-be-row">
                       <span className="adm-wire-name mono">{repo}</span>
-                      {inv ? <span className="adm-tag">{inv.type || 'no type'}</span> : <span className="adm-tag warn">uncurated</span>}
+                      {inv ? (
+                        <span className="adm-tag">{inv.type || 'no type'}</span>
+                      ) : (
+                        <span className="adm-tag warn">uncurated</span>
+                      )}
                     </div>
                     {DEV ? (
                       <>
@@ -750,19 +874,33 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
           {msg ? (
             <span className={'adm-msg' + (/fail/i.test(msg) ? ' err' : '')}>{msg}</span>
           ) : (
-            <span className="adm-msg muted">Source of truth is git-committed; changes apply on regenerate / nightly.</span>
+            <span className="adm-msg muted">
+              Source of truth is git-committed; changes apply on regenerate / nightly.
+            </span>
           )}
           <div className="adm-foot-btns">
             <button
               className="btn ghost"
-              onClick={() => navigator.clipboard?.writeText(JSON.stringify(backendExtra, null, 2)).then(() => setMsg('Copied backend-extra.json'))}
+              onClick={() =>
+                navigator.clipboard
+                  ?.writeText(JSON.stringify(backendExtra, null, 2))
+                  .then(() => setMsg('Copied backend-extra.json'))
+              }
             >
               Copy backend JSON
             </button>
-            <button className="btn ghost" onClick={() => download('backend-extra.json', JSON.stringify(backendExtra, null, 2))}>
+            <button
+              className="btn ghost"
+              onClick={() => download('backend-extra.json', JSON.stringify(backendExtra, null, 2))}
+            >
               <Icon name="download" /> backend
             </button>
-            <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(csv).then(() => setMsg('Copied integrations.csv'))}>
+            <button
+              className="btn ghost"
+              onClick={() =>
+                navigator.clipboard?.writeText(csv).then(() => setMsg('Copied integrations.csv'))
+              }
+            >
               Copy CSV
             </button>
             <button className="btn ghost" onClick={() => download('integrations.csv', csv, 'text/csv')}>
@@ -770,7 +908,14 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
             </button>
             {tab === 'inventory' ? (
               <>
-                <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(invExtraJson).then(() => setMsg('Copied inventory-extra.json'))}>
+                <button
+                  className="btn ghost"
+                  onClick={() =>
+                    navigator.clipboard
+                      ?.writeText(invExtraJson)
+                      .then(() => setMsg('Copied inventory-extra.json'))
+                  }
+                >
                   Copy inventory JSON
                 </button>
                 <button className="btn ghost" onClick={() => download('inventory-extra.json', invExtraJson)}>

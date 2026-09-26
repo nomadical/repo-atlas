@@ -8,7 +8,12 @@ export function parseLines(text) {
     .split('\n')
     .filter(Boolean)
     .map((l, i) => {
-      try { return JSON.parse(l) } catch { console.warn(`skipping malformed line ${i + 1}`); return null }
+      try {
+        return JSON.parse(l)
+      } catch {
+        console.warn(`skipping malformed line ${i + 1}`)
+        return null
+      }
     })
     .filter(Boolean)
 }

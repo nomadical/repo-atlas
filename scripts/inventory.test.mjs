@@ -8,7 +8,10 @@ import { parseCsv, parseTopics, loadIntegrations, TOPIC_MAPS } from './inventory
 // ---- parseCsv (RFC-4180) --------------------------------------------------------------
 
 test('parseCsv: plain rows', () => {
-  assert.deepEqual(parseCsv('a,b,c\nd,e,f\n'), [['a', 'b', 'c'], ['d', 'e', 'f']])
+  assert.deepEqual(parseCsv('a,b,c\nd,e,f\n'), [
+    ['a', 'b', 'c'],
+    ['d', 'e', 'f'],
+  ])
 })
 
 test('parseCsv: quoted field with embedded comma', () => {
@@ -24,11 +27,17 @@ test('parseCsv: embedded newline inside quotes', () => {
 })
 
 test('parseCsv: CRLF line endings', () => {
-  assert.deepEqual(parseCsv('a,b\r\nc,d\r\n'), [['a', 'b'], ['c', 'd']])
+  assert.deepEqual(parseCsv('a,b\r\nc,d\r\n'), [
+    ['a', 'b'],
+    ['c', 'd'],
+  ])
 })
 
 test('parseCsv: blank rows are dropped, missing trailing newline kept', () => {
-  assert.deepEqual(parseCsv('a,b\n\n,\nc,d'), [['a', 'b'], ['c', 'd']])
+  assert.deepEqual(parseCsv('a,b\n\n,\nc,d'), [
+    ['a', 'b'],
+    ['c', 'd'],
+  ])
 })
 
 // ---- parseTopics ----------------------------------------------------------------------
@@ -73,7 +82,14 @@ test('parseTopics: cluster override — a configured label keeps its casing, unk
 
 test('parseTopics: unrelated topics are ignored', () => {
   const t = parseTopics(['react', 'arch-map-ignore'])
-  assert.deepEqual(t, { type: null, subtype: null, status: null, owner: null, applications: [], cluster: null })
+  assert.deepEqual(t, {
+    type: null,
+    subtype: null,
+    status: null,
+    owner: null,
+    applications: [],
+    cluster: null,
+  })
 })
 
 // ---- loadIntegrations (reads the repo's real integrations.csv) --------------------------

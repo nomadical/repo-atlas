@@ -14,11 +14,20 @@ import path from 'node:path'
 import { AUDIT } from './_paths.mjs'
 import { parseTopics, TOPIC_MAPS } from './inventory.mjs'
 
-const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
+const readJson = (f) => {
+  try {
+    return JSON.parse(fs.readFileSync(f, 'utf8'))
+  } catch {
+    return null
+  }
+}
 const meta = readJson(path.join(AUDIT, 'github-meta.json'))
 const extra = readJson(path.join(AUDIT, 'inventory-extra.json')) || { repoExtras: {} }
 
-if (!meta?.repos) { console.error('curation-report: no github-meta.json — run `npm run regenerate` first'); process.exit(1) }
+if (!meta?.repos) {
+  console.error('curation-report: no github-meta.json — run `npm run regenerate` first')
+  process.exit(1)
+}
 
 // owner-* value (as parseTopics produces it) -> a readable label for the report's grouping.
 // Your team vocabulary lives in config.json `owners`, so read it from there; an owner with no
@@ -35,7 +44,10 @@ for (const [name, r] of Object.entries(meta.repos)) {
   const ex = extra.repoExtras?.[name]
   const fb = ex?.fallback || {}
   const hasInvTopics = t.type || t.status || t.owner || t.applications.length || t.cluster
-  if (!hasInvTopics && !ex && !r.props) { uncurated.push({ name }); continue }
+  if (!hasInvTopics && !ex && !r.props) {
+    uncurated.push({ name })
+    continue
+  }
   // on the map (has a type, possibly via fallback) but half-curated?
   const type = t.type || fb.type
   if (!type) continue // owner/app/cluster only, no type — still effectively uncurated for the map
@@ -49,37 +61,53 @@ for (const [name, r] of Object.entries(meta.repos)) {
   if (missing.length) incomplete.push({ name, owner, missing })
 }
 
-const total = Object.values(meta.repos).filter((r) => !r.archived && !(r.topics || []).includes('arch-map-ignore')).length
+const total = Object.values(meta.repos).filter(
+  (r) => !r.archived && !(r.topics || []).includes('arch-map-ignore'),
+).length
 const curated = total - uncurated.length
 
 const lines = []
 lines.push('# Curation backlog', '')
-lines.push(`Snapshot from \`github-meta.json\` (${meta.generatedAt?.slice(0, 10) || 'n/a'}). `
-  + `**${curated}/${total}** active repos carry inventory topics; **${uncurated.length}** are invisible to the map `
-  + `and **${incomplete.length}** are half-curated.`, '')
+lines.push(
+  `Snapshot from \`github-meta.json\` (${meta.generatedAt?.slice(0, 10) || 'n/a'}). ` +
+    `**${curated}/${total}** active repos carry inventory topics; **${uncurated.length}** are invisible to the map ` +
+    `and **${incomplete.length}** are half-curated.`,
+  '',
+)
 lines.push('See [`docs/repo-maintenance.md`](docs/repo-maintenance.md) for how to curate a repo.', '')
 
 if (incomplete.length) {
-  lines.push('## On the map but half-curated', '', 'Already have a `type-*` so they render — finish the rest.', '')
+  lines.push(
+    '## On the map but half-curated',
+    '',
+    'Already have a `type-*` so they render — finish the rest.',
+    '',
+  )
   const byOwner = {}
   for (const c of incomplete) (byOwner[ownerLabel(c.owner)] ||= []).push(c)
   for (const owner of Object.keys(byOwner).sort()) {
     lines.push(`### ${owner}`, '')
-    for (const c of byOwner[owner].sort((a, b) => a.name.localeCompare(b.name))) lines.push(`- [ ] \`${c.name}\` — add ${c.missing.join(', ')}`)
+    for (const c of byOwner[owner].sort((a, b) => a.name.localeCompare(b.name)))
+      lines.push(`- [ ] \`${c.name}\` — add ${c.missing.join(', ')}`)
     lines.push('')
   }
 }
 
 if (uncurated.length) {
-  lines.push('## Uncurated — not on the map', '',
-    'No inventory topics. Add at minimum a one-line description + a `type-*` topic '
-    + '(`type-client`/`service`/`library`/`firmware`/`infra`/`hardware`/`data`/`config`/…), '
-    + 'plus `owner-*`, `status-*`, `app-*`. Genuine non-components (PoCs, demos, dev tooling) '
-    + 'should be archived or tagged `arch-map-ignore`.', '')
+  lines.push(
+    '## Uncurated — not on the map',
+    '',
+    'No inventory topics. Add at minimum a one-line description + a `type-*` topic ' +
+      '(`type-client`/`service`/`library`/`firmware`/`infra`/`hardware`/`data`/`config`/…), ' +
+      'plus `owner-*`, `status-*`, `app-*`. Genuine non-components (PoCs, demos, dev tooling) ' +
+      'should be archived or tagged `arch-map-ignore`.',
+    '',
+  )
   for (const c of uncurated.sort((a, b) => a.name.localeCompare(b.name))) lines.push(`- [ ] \`${c.name}\``)
   lines.push('')
 }
 
-if (!incomplete.length && !uncurated.length) lines.push('🎉 Every active repo is fully curated. Nothing to do.', '')
+if (!incomplete.length && !uncurated.length)
+  lines.push('🎉 Every active repo is fully curated. Nothing to do.', '')
 
 process.stdout.write(lines.join('\n'))

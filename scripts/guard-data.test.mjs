@@ -14,11 +14,18 @@ const EXTRA_REPOS = Array.from({ length: REPO_COUNT - CORE.length }, (_, i) => `
 // padded past MIN_INVENTORY with fully-curated synthetic components, clean edges + topics.
 const healthy = () => ({
   generatedAt: new Date().toISOString(),
-  repos: [...CORE, CORE_SAMPLE, ...EXTRA_REPOS].filter((f, i, a) => a.indexOf(f) === i).map((folder) => ({ folder })),
+  repos: [...CORE, CORE_SAMPLE, ...EXTRA_REPOS]
+    .filter((f, i, a) => a.indexOf(f) === i)
+    .map((folder) => ({ folder })),
   inventory: [
     { name: 'ui', type: 'Library', status: 'Current', owner: 'Platform' },
     { name: 'Payments', type: 'Third-Party Service', status: 'Current', owner: 'Storefront' },
-    ...Array.from({ length: MIN_INVENTORY }, (_, i) => ({ name: `component-${i}`, type: 'Service', status: 'Current', owner: 'Platform' })),
+    ...Array.from({ length: MIN_INVENTORY }, (_, i) => ({
+      name: `component-${i}`,
+      type: 'Service',
+      status: 'Current',
+      owner: 'Platform',
+    })),
   ],
   integrations: [{ source: 'ui', target: 'Kafka', protocol: 'Kafka' }],
   uiConsumers: [{ repo: EXTRA_REPOS[0] || CORE_SAMPLE, version: '1.0.0' }],
@@ -88,13 +95,31 @@ test('a design-system consumer that is not a present repo is an error', () => {
 
 test('a valid (type, subtype) pair passes; unknown or mismatched subtype is an error', () => {
   const ok = healthy()
-  ok.inventory.push({ name: 'conn', type: 'Service', subtype: 'Connector', status: 'Current', owner: 'Platform' })
+  ok.inventory.push({
+    name: 'conn',
+    type: 'Service',
+    subtype: 'Connector',
+    status: 'Current',
+    owner: 'Platform',
+  })
   assert.deepEqual(validate(ok).errors, [])
   const typo = healthy()
-  typo.inventory.push({ name: 'x', type: 'Service', subtype: 'Connecter', status: 'Current', owner: 'Platform' })
+  typo.inventory.push({
+    name: 'x',
+    type: 'Service',
+    subtype: 'Connecter',
+    status: 'Current',
+    owner: 'Platform',
+  })
   assert.ok(validate(typo).errors.some((e) => e.includes('unknown subtype') && e.includes('Connecter')))
   const mismatch = healthy()
-  mismatch.inventory.push({ name: 'y', type: 'Library', subtype: 'Worker', status: 'Current', owner: 'Platform' })
+  mismatch.inventory.push({
+    name: 'y',
+    type: 'Library',
+    subtype: 'Worker',
+    status: 'Current',
+    owner: 'Platform',
+  })
   assert.ok(validate(mismatch).errors.some((e) => e.includes('not valid for type "Library"')))
 })
 
