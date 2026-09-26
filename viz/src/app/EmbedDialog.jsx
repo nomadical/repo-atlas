@@ -5,7 +5,7 @@ import { embedUrl } from './urlState.js'
 // Plain numbers get a px unit; "100%" and other CSS values pass through.
 function cssSize(value) {
   const trimmed = String(value).trim()
-  if (/^\d+$/.test(trimmed)) return value + 'px'
+  if (/^\d+$/.test(trimmed)) return trimmed + 'px'
   return trimmed || 'auto'
 }
 
