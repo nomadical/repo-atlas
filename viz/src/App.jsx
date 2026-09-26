@@ -1238,6 +1238,7 @@ export default function App() {
           <div className="canvas" key={flowKey} onKeyDown={onCanvasKeyDown}>
             <ReactFlow
               onInit={(instance) => (rfRef.current = instance)}
+              colorMode={dark ? 'dark' : 'light'}
               nodes={rfNodes}
               edges={rfEdges}
               onNodesChange={onNodesChangeAdmin}
