@@ -8,6 +8,7 @@ const PANEL_MIN_WIDTH = 280
 const PANEL_MAX_WIDTH = 720
 const PANEL_WIDTH_STORAGE_KEY = 'panelW'
 const UNKNOWN_KIND_COLOR = '#888'
+const OTHER_KIND = 'Other'
 const LAGGING_VERSION_COLOR = '#c62828'
 const MS_PER_DAY = 86400000
 // A deploy older than this many days is flagged as old.
@@ -467,12 +468,13 @@ function TestsSection({ testFootprint }) {
   )
 }
 
-// backend -> service, extsvc -> external, so there are no duplicate type buckets.
+// backend -> service, extsvc -> external, so there are no duplicate type buckets. Members without
+// a kind share one "Other" bucket.
 function countByCanonicalKind(members) {
-  const counts = {}
+  const counts = new Map()
   for (const member of members) {
-    const kind = canonKind(member.kind)
-    counts[kind] = (counts[kind] || 0) + 1
+    const kind = canonKind(member.kind) || OTHER_KIND
+    counts.set(kind, (counts.get(kind) || 0) + 1)
   }
   return counts
 }
@@ -481,7 +483,7 @@ function countByCanonicalKind(members) {
 function RegionDetails({ region, width, onResize, onClose, onNavigate }) {
   const regionColor = region.color || UNKNOWN_KIND_COLOR
   const members = region.members || []
-  const breakdown = Object.entries(countByCanonicalKind(members)).sort((a, b) => b[1] - a[1])
+  const breakdown = [...countByCanonicalKind(members)].sort((a, b) => b[1] - a[1])
   return (
     <Panel width={width} kindColor={regionColor} onResize={onResize} onClose={onClose}>
       <div className="panel-head">
