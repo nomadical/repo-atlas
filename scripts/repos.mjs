@@ -10,7 +10,7 @@ import { ROOT, AUDIT, ORG, inOrg } from './_paths.mjs'
 
 const REMOTE_TIMEOUT_MS = 5000
 const GH_LIST_TIMEOUT_MS = 20000
-// Same cap as github-inventory.mjs and regenerate.yml.
+// Same cap as github-inventory.mjs.
 const ORG_REPO_LIMIT = 400
 const FRONTEND_LANGUAGES = ['JavaScript', 'TypeScript']
 const JAVA_BUILD_FILES = ['pom.xml', 'build.gradle', 'build.gradle.kts']
