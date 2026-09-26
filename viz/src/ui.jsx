@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useId } from 'react'
 import { Icon } from './icons.jsx'
 
 const ABSOLUTE_URL = /^https?:\/\//i
 
 // Toolbar dropdown that closes on outside click or Escape. `children` may be a function that gets
-// close(), so menu items can dismiss the menu on selection.
+// close(), so menu items can dismiss the menu on selection. It is a disclosure (aria-expanded +
+// aria-controls), not an ARIA menu: panels mix checkboxes, inputs and buttons, and there is no
+// arrow-key roving focus that role="menu" would promise.
 export function Dropdown({ label, badge, caret = true, align = 'left', className, title, children }) {
   const [open, setOpen] = useState(false)
   const containerRef = React.useRef(null)
+  const panelId = useId()
 
   useEffect(() => {
     if (!open) return
@@ -33,8 +36,8 @@ export function Dropdown({ label, badge, caret = true, align = 'left', className
         className={'btn dd-btn' + (open ? ' on' : '')}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
         title={title}
-        aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
       >
         {label}
         {badge ? <span className="dd-badge">{badge}</span> : null}
@@ -45,7 +48,7 @@ export function Dropdown({ label, badge, caret = true, align = 'left', className
         ) : null}
       </button>
       {open ? (
-        <div className={'dd-menu' + (align === 'right' ? ' right' : '')}>
+        <div id={panelId} className={'dd-menu' + (align === 'right' ? ' right' : '')}>
           {typeof children === 'function' ? children(close) : children}
         </div>
       ) : null}
