@@ -186,10 +186,8 @@ export const importMap = (text) => {
 // Ends where the element's JSX starts: `element={<X />}`, `element: <X />` or `element: (<X />)`.
 const ROUTE_ELEMENT = /element\s*[:=]\s*[{(]?\s*(?=<)/g
 const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
-// `necessaryRoles: [...]` in route objects, `necessaryRoles={[...]}` as a JSX attribute.
-const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*\[([^\]]*)\]/g
-// `sufficientRoles: testDataRoles`: a named list, resolved through roleConstantLookup.
-const ROUTE_ROLE_CONSTANT = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*)(?![\w$.([])/g
+// `necessaryRoles: <expr>` in route objects, `necessaryRoles={<expr>}` as a JSX attribute.
+const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?/g
 const TAG_NAME = /[\w$]*/y
 
 // Index just past the `}` matching the `{` at openIndex.
@@ -298,19 +296,168 @@ function routeOwnText(text, route, element) {
   return topLevel
 }
 
-// The array body of `const name = [...]` in `text`, exported or not; null when there is none.
-function constantListIn(text, name) {
-  const declaration = new RegExp(`\\bconst\\s+${escapeRegex(name)}\\s*(?::[^=]+)?=\\s*\\[([^\\]]*)\\]`)
-  return declaration.exec(text)?.[1] ?? null
-}
+// ---- Role expressions ----
+// Roles are read statically: array literals, named constants, spreads, `.concat()` and zero-argument
+// helpers returning a list, followed through imports and re-exports. Anything that needs runtime
+// values (arguments, .filter(), conditionals) is reported as unresolved instead of guessed.
 
+const OPENERS = '([{'
+const CLOSERS = ')]}'
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
+const HELPER_CALL = /^([A-Za-z_$][\w$]*)\(\s*\)$/
+const TYPE_ASSERTION = /\s+as\s+[\w$.<>[\]\s|]+$/
 // `import { a, b as c } from 'x'` and `export { a, b as c } from 'x'`.
 const NAMED_BINDINGS =
   /(?:import|export)\s+(?:type\s+)?(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g
 const STAR_EXPORT = /export\s*\*\s*from\s*['"]([^'"]+)['"]/g
-// Name lookups (files followed plus spreads resolved) allowed per route list, so a long or cyclic
-// barrel chain ends.
+// Name lookups (files followed, spreads and helpers resolved) allowed per route expression, so a
+// long or cyclic chain ends.
 const MAX_ROLE_LOOKUPS = 24
+
+// The expression starting at `start`: up to a top-level `,` or `;`, an unmatched closing bracket,
+// or a line break that isn't followed by a `.method()` continuation.
+function expressionAt(text, start) {
+  let depth = 0
+  let quote = null
+  for (let i = start; i < text.length; i++) {
+    const char = text[i]
+    if (quote) {
+      if (char === '\\') i++
+      else if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char
+    else if (OPENERS.includes(char)) depth++
+    else if (CLOSERS.includes(char)) {
+      if (depth === 0) return text.slice(start, i).trim()
+      depth--
+    } else if (depth === 0 && (char === ',' || char === ';')) {
+      return text.slice(start, i).trim()
+    } else if (depth === 0 && char === '\n' && !/^\s*\./.test(text.slice(i + 1))) {
+      const expression = text.slice(start, i).trim()
+      if (expression) return expression
+    }
+  }
+  return text.slice(start).trim()
+}
+
+// `text` split on top-level commas.
+function splitTopLevel(text) {
+  const parts = []
+  let depth = 0
+  let partStart = 0
+  for (let i = 0; i < text.length; i++) {
+    if (OPENERS.includes(text[i])) depth++
+    else if (CLOSERS.includes(text[i])) depth--
+    else if (text[i] === ',' && depth === 0) {
+      parts.push(text.slice(partStart, i))
+      partStart = i + 1
+    }
+  }
+  parts.push(text.slice(partStart))
+  return parts.map((part) => part.trim()).filter(Boolean)
+}
+
+// Index of the bracket matching the one closing at `closeIndex`, scanning backwards.
+function matchingOpener(text, closeIndex) {
+  let depth = 0
+  for (let i = closeIndex; i >= 0; i--) {
+    if (CLOSERS.includes(text[i])) depth++
+    else if (OPENERS.includes(text[i]) && --depth === 0) return i
+  }
+  return -1
+}
+
+// Strips `as const`-style assertions and parentheses that wrap the whole expression.
+function unwrap(expression) {
+  let current = expression.trim()
+  for (;;) {
+    const next = current.replace(TYPE_ASSERTION, '').trim()
+    const wrapped = next.startsWith('(') && next.endsWith(')') && matchingOpener(next, next.length - 1) === 0
+    const unwrapped = wrapped ? next.slice(1, -1).trim() : next
+    if (unwrapped === current) return current
+    current = unwrapped
+  }
+}
+
+// An array literal's entries: `...spread` expressions and roles (userRoles.ASSET or 'ASSET').
+function rolesInList(body, lookup, state) {
+  const roles = []
+  for (const entry of splitTopLevel(body)) {
+    if (entry.startsWith('...')) {
+      for (const role of evaluateRoles(entry.slice(3), lookup, state) || []) pushUnique(roles, role)
+      continue
+    }
+    const match = /^[\w$.]*\.([A-Za-z0-9_]+)$|^['"]([^'"]+)['"]$/.exec(entry)
+    const role = match?.[1] || match?.[2]
+    if (role) pushUnique(roles, role)
+    else state.unresolved = true
+  }
+  return roles
+}
+
+// The roles an expression evaluates to, or null when it can't be read statically. Partial results
+// (a list with one unreadable spread) keep what was read and flag state.unresolved.
+function evaluateRoles(expression, lookup, state) {
+  const roles = evaluateOrNull(expression, lookup, state)
+  if (roles == null) state.unresolved = true
+  return roles
+}
+
+function evaluateOrNull(rawExpression, lookup, state) {
+  const expression = unwrap(rawExpression)
+  if (!expression) return null
+  if (IDENTIFIER.test(expression)) return lookup(expression, false)
+  const helper = HELPER_CALL.exec(expression)
+  if (helper) return lookup(helper[1], true)
+  if (!expression.endsWith(')') && !expression.endsWith(']')) return null
+  const opener = matchingOpener(expression, expression.length - 1)
+  if (opener === 0 && expression.startsWith('[')) return rolesInList(expression.slice(1, -1), lookup, state)
+  const callee = expression.slice(0, opener)
+  if (opener <= 0 || expression[opener] !== '(' || !callee.endsWith('.concat')) return null
+  const receiver = evaluateRoles(callee.slice(0, -'.concat'.length), lookup, state)
+  if (receiver == null) return null
+  const roles = [...receiver]
+  for (const argument of splitTopLevel(expression.slice(opener + 1, -1))) {
+    const argumentRoles = evaluateRoles(argument, lookup, state)
+    if (argumentRoles == null) return null
+    for (const role of argumentRoles) pushUnique(roles, role)
+  }
+  return roles
+}
+
+// The expression a `const name = ...` declaration assigns, or null.
+function constantExpressionIn(text, name) {
+  const declaration = new RegExp(`\\b(?:const|let)\\s+${escapeRegex(name)}\\s*(?::[^=]+)?=(?!>)\\s*`)
+  const match = declaration.exec(text)
+  return match ? expressionAt(text, match.index + match[0].length) : null
+}
+
+// What a zero-argument helper returns: `const name = () => expr`, `() => { return expr }`, or
+// `function name() { return expr }`. Null when there's no such helper.
+function helperReturnIn(text, name) {
+  const escaped = escapeRegex(name)
+  const arrow = new RegExp(
+    `\\b(?:const|let)\\s+${escaped}\\s*(?::[^=]+)?=\\s*(?:async\\s*)?\\(\\s*\\)\\s*(?::[^=]+)?=>\\s*`,
+  )
+  const declaration = new RegExp(`\\bfunction\\s+${escaped}\\s*\\(\\s*\\)\\s*(?::[^{]+)?\\{`)
+  const arrowMatch = arrow.exec(text)
+  if (arrowMatch) {
+    const bodyStart = arrowMatch.index + arrowMatch[0].length
+    if (text[bodyStart] !== '{') return expressionAt(text, bodyStart)
+    return returnedExpression(text, bodyStart)
+  }
+  const declarationMatch = declaration.exec(text)
+  return declarationMatch
+    ? returnedExpression(text, declarationMatch.index + declarationMatch[0].length - 1)
+    : null
+}
+
+function returnedExpression(text, bodyOpenIndex) {
+  const body = text.slice(bodyOpenIndex, closingBraceEnd(text, bodyOpenIndex))
+  const returnMatch = /\breturn\s+/.exec(body)
+  return returnMatch ? expressionAt(body, returnMatch.index + returnMatch[0].length) : null
+}
 
 // Where `name` comes from when this file imports or re-exports it: the specifier and the name it
 // has in that module.
@@ -327,74 +474,65 @@ function bindingSource(text, name) {
   return null
 }
 
-// A list body's roles in order. `...name` spreads are resolved through lookupName; spreads it can't
-// resolve (or member spreads like `...groups.ADMIN`) add nothing.
-function rolesInList(body, lookupName) {
-  const roles = []
-  for (const entry of body.split(',').map((part) => part.trim())) {
-    if (entry.startsWith('...')) {
-      const spreadName = /^\.\.\.([A-Za-z_$][\w$]*)$/.exec(entry)?.[1]
-      for (const role of (spreadName && lookupName(spreadName)) || []) pushUnique(roles, role)
-      continue
-    }
-    // userRoles.ASSET or a quoted 'ASSET'
-    const match = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/.exec(entry)
-    const role = match?.[1] || match?.[2]
-    if (role) pushUnique(roles, role)
-  }
-  return roles
-}
-
-// Resolves a named roles list to its roles: declared in the router file, or imported from another
-// file, following named, renamed and `export *` re-exports, and resolving spreads inside the list
-// the same way. Without fromFile/resolve only the router file itself is searched.
+// A lookup for role names and zero-argument helpers used in a router file: declared in the file,
+// or imported from another one through named, renamed and `export *` re-exports. Without
+// fromFile/resolve only the router file itself is searched.
 export function roleConstantLookup(text, fromFile, resolve) {
   const visited = new Set()
   const followable = Boolean(fromFile && resolve)
 
-  const rolesFor = (file, fileText, name) => {
-    const key = `${file}\u0000${name}`
+  const rolesFor = (file, fileText, name, isCall, state) => {
+    const key = `${file}\u0000${name}\u0000${isCall}`
     if (visited.has(key) || visited.size >= MAX_ROLE_LOOKUPS) return null
     visited.add(key)
-    const body = constantListIn(fileText, name)
-    if (body != null) return rolesInList(body, (spreadName) => rolesFor(file, fileText, spreadName))
+    const expression = isCall ? helperReturnIn(fileText, name) : constantExpressionIn(fileText, name)
+    if (expression != null) {
+      const inThisFile = (innerName, innerIsCall) => rolesFor(file, fileText, innerName, innerIsCall, state)
+      return evaluateRoles(expression, inThisFile, state)
+    }
     if (!followable) return null
     const source = bindingSource(fileText, name)
-    if (source) return rolesInModule(file, source.specifier, source.sourceName)
+    if (source) return rolesInModule(file, source.specifier, source.sourceName, isCall, state)
     for (const [, specifier] of fileText.matchAll(STAR_EXPORT)) {
-      const roles = rolesInModule(file, specifier, name)
+      const roles = rolesInModule(file, specifier, name, isCall, state)
       if (roles) return roles
     }
     return null
   }
 
-  const rolesInModule = (fromPath, specifier, name) => {
+  const rolesInModule = (fromPath, specifier, name, isCall, state) => {
     const target = resolve(fromPath, specifier)
-    return target ? rolesFor(target, readFile(target), name) : null
+    return target ? rolesFor(target, readFile(target), name, isCall, state) : null
   }
 
-  // A fresh visited set per lookup, so one route's walk never blocks another's.
-  return (name) => {
+  // Resolves one route expression; a fresh visited set each time, so routes don't block each other.
+  return (expression) => {
     visited.clear()
-    return rolesFor(fromFile, text, name)
+    const state = { unresolved: false }
+    const lookup = (name, isCall) => rolesFor(fromFile, text, name, isCall, state)
+    const roles = evaluateRoles(expression, lookup, state)
+    return { roles: roles || [], unresolved: state.unresolved }
   }
 }
 
-// Every role in every roles list (necessary and sufficient), in order, without repeats.
-function rolesIn(texts, lookupConstant) {
+// Every role in every roles attribute (necessary and sufficient), in order, without repeats, plus
+// the expressions that couldn't be read statically.
+function rolesIn(texts, resolveExpression) {
   const roles = []
-  const add = (list) => {
-    for (const role of list || []) pushUnique(roles, role)
-  }
+  const unresolvedRoles = []
   for (const text of texts) {
-    for (const [, list] of text.matchAll(ROUTE_ROLES)) add(rolesInList(list, lookupConstant))
-    for (const [, name] of text.matchAll(ROUTE_ROLE_CONSTANT)) add(lookupConstant(name))
+    for (const match of text.matchAll(ROUTE_ROLES)) {
+      const expression = expressionAt(text, match.index + match[0].length)
+      const result = resolveExpression(expression)
+      for (const role of result.roles) pushUnique(roles, role)
+      if (result.unresolved) pushUnique(unresolvedRoles, expression)
+    }
   }
-  return roles
+  return { roles, unresolvedRoles }
 }
 
 // One route per `element` anchor, with the path and roles of the same route object or tag.
-export const parseRoutes = (text, lookupConstant = roleConstantLookup(text)) => {
+export const parseRoutes = (text, resolveRoles = roleConstantLookup(text)) => {
   const routes = []
   for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
     const elementStart = elementMatch.index + elementMatch[0].length
@@ -404,8 +542,8 @@ export const parseRoutes = (text, lookupConstant = roleConstantLookup(text)) => 
     const route = enclosingRoute(text, elementMatch.index)
     const routeText = route ? routeOwnText(text, route, { start: elementStart, end }) : ''
     // Roles can sit on the route itself or on a guard wrapping the screen inside `element`.
-    const roles = rolesIn([routeText, text.slice(elementStart, end)], lookupConstant)
-    routes.push({ component, path: routeText.match(ROUTE_PATH)?.[1] ?? null, roles })
+    const { roles, unresolvedRoles } = rolesIn([routeText, text.slice(elementStart, end)], resolveRoles)
+    routes.push({ component, path: routeText.match(ROUTE_PATH)?.[1] ?? null, roles, unresolvedRoles })
   }
   return routes
 }
@@ -512,12 +650,16 @@ function isRouterFile(file) {
 }
 
 // A component routed from several places becomes one screen with all its paths and roles.
-function screensFromRouters(routerFiles, resolve) {
+// `unresolvedRoles` collects role expressions that couldn't be read statically, for the log.
+function screensFromRouters(routerFiles, resolve, unresolvedRoles = []) {
   const screenByComponent = new Map()
   for (const routerFile of routerFiles) {
     const text = readFile(routerFile)
     const specifierByName = importMap(text)
     for (const route of parseRoutes(text, roleConstantLookup(text, routerFile, resolve))) {
+      for (const expression of route.unresolvedRoles) {
+        unresolvedRoles.push({ file: routerFile, component: route.component, expression })
+      }
       const specifier = specifierByName[route.component]
       const file = specifier ? resolve(routerFile, specifier) : null
       const existing = screenByComponent.get(route.component)
@@ -594,7 +736,8 @@ function gatherRepo(folder) {
   const routerFiles = listSourceFiles(srcDir).filter(isRouterFile)
 
   let method = 'router'
-  let screens = screensFromRouters(routerFiles, resolve)
+  const unresolvedRoles = []
+  let screens = screensFromRouters(routerFiles, resolve, unresolvedRoles)
   if (!screens.some((screen) => screen.file)) {
     method = 'folder'
     screens = screensFromFolders(srcDir, resolve)
@@ -604,6 +747,9 @@ function gatherRepo(folder) {
     .map((screen) => describeScreen(repoDir, screen, resolve))
     .filter(carriesInformation)
   described.sort((a, b) => a.name.localeCompare(b.name))
+  for (const { file, component, expression } of unresolvedRoles) {
+    console.log(`    roles not resolved: ${component} (${relativePosix(repoDir, file)}): ${expression}`)
+  }
   return { method, routerFiles: routerFiles.length, screens: described }
 }
 
