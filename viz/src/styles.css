@@ -29,6 +29,7 @@ body {
   --chip-ink: #45506a;
   --region-bg: rgba(99, 110, 140, 0.05);
   --label-bg: #fff;
+  --brand-tint: #eafaff;
   --focus: #007391;
 }
 .app.dark {
@@ -43,6 +44,10 @@ body {
   --chip-ink: #aebbd6;
   --region-bg: rgba(120, 140, 180, 0.06);
   --label-bg: #0c1322;
+  /* Only the text role of the brand ramp flips: --brand / --brand-strong / --brand-dark fill the
+     toolbar and headers, which look the same in both themes. */
+  --brand-ink: #5dcbe8;
+  --brand-tint: #133a4d;
   --focus: #5dcbe8;
 }
 .app {
@@ -412,7 +417,7 @@ body {
   font: inherit;
   letter-spacing: inherit;
   text-transform: none;
-  color: var(--brand-strong);
+  color: var(--brand-ink);
   cursor: pointer;
 }
 .dd-linkbtn:hover {
@@ -573,7 +578,7 @@ body {
   user-select: none;
 }
 .inv-table th.sorted {
-  color: var(--brand-strong);
+  color: var(--brand-ink);
 }
 .inv-table td {
   padding: 8px 12px;
@@ -679,7 +684,7 @@ body {
   margin-bottom: 0;
 }
 .mx-chip:hover {
-  background: #eafaff;
+  background: var(--brand-tint);
   border-color: var(--brand);
 }
 .mx-chip.st-planned {
