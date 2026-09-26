@@ -8,7 +8,7 @@ function addToListMap(map, key, value) {
   map.get(key).push(value)
 }
 
-// Design-system package names (config.json `uiPackages`) that all collapse onto the single `ui` hub
+// Design-system package names (config.json `uiPackages`) that all collapse onto the single hub
 // card. List both names of a package mid-rename. Empty means no hub card is drawn.
 // Kept in sync with UI_PACKAGES in scripts/assemble.mjs.
 export const DEFAULT_UI_PACKAGES = []
@@ -616,8 +616,8 @@ function packageCard(id, packageName, inventory) {
 }
 
 // Point at the package's real card when one exists; otherwise draw a "pkg:" card for it.
-function dependencyTarget(ctx, dep, isUi, cardIdByPackage) {
-  if (isUi) return ctx.resolveRef('ui')
+function dependencyTarget(ctx, dep, isUi, cardIdByPackage, hubId) {
+  if (isUi) return hubId
   const repoCardId = cardIdByPackage.get(dep.name)
   if (repoCardId) return repoCardId
   const id = 'pkg:' + dep.name
@@ -649,12 +649,15 @@ function addDependencyEdges(ctx) {
   const cardIdByPackage = new Map()
   for (const repo of ctx.repos) if (repo.name) cardIdByPackage.set(repo.name, nodeIdOf(repo))
   const latestUi = latestUiVersion(ctx.data, isUiPackage)
+  const hubId = uiHubFoldersOf(ctx.data.config)
+    .map(ctx.resolveRef)
+    .find((id) => graph.has(id))
 
   for (const repo of ctx.repos) {
     const sourceId = nodeIdOf(repo)
     for (const dep of uniqueDeps(repo.internalDeps)) {
       const isUi = isUiPackage(dep.name)
-      const targetId = dependencyTarget(ctx, dep, isUi, cardIdByPackage)
+      const targetId = dependencyTarget(ctx, dep, isUi, cardIdByPackage, hubId)
       // the design system yalc-links its own package during local dev
       if (targetId === sourceId) continue
       if (!graph.has(targetId)) continue

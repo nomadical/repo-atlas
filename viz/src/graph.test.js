@@ -512,6 +512,19 @@ describe('buildGraph', () => {
     expect(second).toEqual(first)
   })
 
+  it('draws design-system dependency edges to the configured hub folder', () => {
+    const hub = data.repos.find((r) => config.uiHubFolders.includes(r.folder))
+    const consumers = data.repos.filter((r) =>
+      (r.internalDeps || []).some((dep) => config.uiPackages.includes(dep.name)),
+    )
+    expect(consumers.length).toBeGreaterThan(0)
+    const graph = buildGraph(data, { mode: 'dev' })
+    for (const consumer of consumers) {
+      const edge = graph.edges.find((e) => e.source === nodeIdOf(consumer) && e.target === nodeIdOf(hub))
+      expect(edge, consumer.folder).toBeTruthy()
+    }
+  })
+
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
     expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(
