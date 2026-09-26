@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "regenerate": "node scripts/gather-arch.mjs && node scripts/parse-workflows.mjs && node scripts/module-graph.mjs && node scripts/azure-gather.mjs && node scripts/github-inventory.mjs && node scripts/sync-names.mjs && node scripts/backend-scan.mjs && node scripts/assemble.mjs && node scripts/extras-gather.mjs && node scripts/depcruise-accurate.mjs && node scripts/screens-gather.mjs && node scripts/extras-assemble.mjs",
+    "regenerate": "node scripts/gather-arch.mjs && node scripts/parse-workflows.mjs && node scripts/module-graph.mjs && node scripts/azure-gather.mjs && node scripts/github-inventory.mjs && node scripts/sync-names.mjs && node scripts/backend-scan.mjs && node scripts/assemble.mjs && node scripts/extras-gather.mjs && node scripts/depcruise-accurate.mjs && node scripts/screens-gather.mjs && node scripts/extras-assemble.mjs && node scripts/check-demo-data.mjs --warn",
     "guard": "node scripts/guard-data.mjs",
     "history:append": "node golden-path/append-history.mjs",
     "history:guard": "node golden-path/guard-history.mjs",
@@ -11,6 +11,7 @@
     "build": "npm --prefix viz ci && npm --prefix viz run build && node scripts/bundle.mjs",
     "dev": "npm --prefix viz run dev",
     "format": "viz/node_modules/.bin/oxfmt --write scripts server golden-path viz/src viz/vite.config.mjs viz/vitest.config.mjs",
-    "format:check": "viz/node_modules/.bin/oxfmt --check scripts server golden-path viz/src viz/vite.config.mjs viz/vitest.config.mjs"
+    "format:check": "viz/node_modules/.bin/oxfmt --check scripts server golden-path viz/src viz/vite.config.mjs viz/vitest.config.mjs",
+    "hooks": "git config core.hooksPath .githooks"
   }
 }

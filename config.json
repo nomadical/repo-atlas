@@ -1,6 +1,8 @@
 {
   "_README": "Demo configuration for the fictional Meridian Labs estate that ships with this repo. Replace it with your own — see config.template.json for every available field.",
 
+  "demoDataOrg": "meridian-labs",
+
   "title": "Meridian Labs · Architecture Map",
   "subtitle": "The frontend estate and the services it touches",
 

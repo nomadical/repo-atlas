@@ -33,7 +33,10 @@ const PIPELINE = [
   'scripts/assemble.mjs',
   'scripts/extras-gather.mjs',
   'scripts/depcruise-accurate.mjs',
+  'scripts/screens-gather.mjs',
   'scripts/extras-assemble.mjs',
+  // warns (never fails) when the regenerated files replaced the committed demo with real data
+  'scripts/check-demo-data.mjs --warn',
 ]
 const SCRATCH = [
   'scripts/gather-out.json',
@@ -41,6 +44,7 @@ const SCRATCH = [
   'scripts/modulegraph-out.json',
   'scripts/extras-mid.json',
   'scripts/depcruise-out.json',
+  'scripts/screens-out.json',
 ]
 
 const EXEC_MAX_BUFFER = 256 * 1024 * 1024
@@ -110,8 +114,9 @@ const lastLines = (text, count) => text.trim().split('\n').slice(-count).join(' 
 
 async function runScript(script) {
   const started = Date.now()
+  const [file, ...args] = script.split(' ')
   try {
-    const { stdout, stderr } = await execFileP('node', [script], {
+    const { stdout, stderr } = await execFileP('node', [file, ...args], {
       cwd: AUDIT,
       maxBuffer: EXEC_MAX_BUFFER,
     })

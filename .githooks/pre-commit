@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses commits whose data files replace the demo with real estate data (config.json demoDataOrg).
+# Enable once per clone with `npm run hooks`.
+exec node scripts/check-demo-data.mjs --staged
