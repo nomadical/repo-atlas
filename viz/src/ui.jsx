@@ -89,14 +89,15 @@ export const KV = ({ k, v }) => {
   )
 }
 
-const STATUS_COLORS = { Current: '#1e8e3e', Planned: '#1a73e8', Sunsetting: '#e8830c', Removed: '#9aa3b5' }
-const UNKNOWN_STATUS_COLOR = '#888'
+// Colours live in styles.css (--st-* tokens); an unknown status gets the neutral Removed grey.
+const STATUS_CLASS = {
+  Current: 'st-current',
+  Planned: 'st-planned',
+  Sunsetting: 'st-sunsetting',
+  Removed: 'st-removed',
+}
 
 export function StatusChip({ status }) {
   if (!status) return null
-  return (
-    <span className="status-chip" style={{ background: STATUS_COLORS[status] || UNKNOWN_STATUS_COLOR }}>
-      {status}
-    </span>
-  )
+  return <span className={'status-chip ' + (STATUS_CLASS[status] || '')}>{status}</span>
 }

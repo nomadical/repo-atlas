@@ -18,10 +18,12 @@ body {
   --brand-strong: #0086a8;
   --brand-dark: #005168;
   --brand-ink: #007391;
+  /* solid teal behind white text (buttons, "on" chips); the same in both themes */
+  --brand-solid: #007391;
   --canvas: #f4f6fa;
   --card: #fff;
   --ink: #1f2430;
-  --muted: #8a93a6;
+  --muted: #5f6b80;
   --bd: #d9dee9;
   --panel: #fff;
   --panel-bd: #e3e7ef;
@@ -31,12 +33,24 @@ body {
   --label-bg: #fff;
   --brand-tint: #eafaff;
   --focus: #007391;
+  /* lifecycle status: the colour marks borders and chip fills, -on is text on that fill */
+  --st-current: #188038;
+  --st-current-on: #fff;
+  --st-planned: #1967d2;
+  --st-planned-on: #fff;
+  --st-sunsetting: #e8830c;
+  --st-sunsetting-on: #1f2430;
+  --st-removed: #9aa3b5;
+  --st-removed-on: #1f2430;
+  /* kind-coloured text keeps the kind's hue but clamps its lightness to stay readable on cards */
+  --kind-l-min: 0;
+  --kind-l-max: 0.5;
 }
 .app.dark {
   --canvas: #0c1322;
   --card: #162033;
   --ink: #e6e9f2;
-  --muted: #8b97b0;
+  --muted: #97a3bb;
   --bd: #2a3650;
   --panel: #111a2c;
   --panel-bd: #24314c;
@@ -49,6 +63,15 @@ body {
   --brand-ink: #5dcbe8;
   --brand-tint: #133a4d;
   --focus: #5dcbe8;
+  --st-current: #3fb760;
+  --st-current-on: #0c1322;
+  --st-planned: #6ea8f7;
+  --st-planned-on: #0c1322;
+  --st-sunsetting-on: #0c1322;
+  --st-removed: #8a94a8;
+  --st-removed-on: #0c1322;
+  --kind-l-min: 0.76;
+  --kind-l-max: 1;
 }
 .app {
   display: flex;
@@ -595,7 +618,7 @@ body {
   font-weight: 600;
 }
 .inv-table a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .inv-table a:hover {
@@ -607,7 +630,7 @@ body {
   border: none;
   padding: 0;
   font: inherit;
-  color: var(--brand);
+  color: var(--brand-ink);
   cursor: pointer;
 }
 .linklike:hover {
@@ -674,7 +697,7 @@ body {
   background: var(--chip);
   color: var(--ink);
   border: 1px solid var(--bd);
-  border-left: 3px solid #1e8e3e;
+  border-left: 3px solid var(--st-current);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 11.5px;
@@ -688,14 +711,14 @@ body {
   border-color: var(--brand);
 }
 .mx-chip.st-planned {
-  border-left-color: #1a73e8;
+  border-left-color: var(--st-planned);
   border-style: dotted;
 }
 .mx-chip.st-sunsetting {
-  border-left-color: #e8830c;
+  border-left-color: var(--st-sunsetting);
 }
 .mx-chip.st-removed {
-  border-left-color: #9aa3b5;
+  border-left-color: var(--st-removed);
   opacity: 0.6;
   text-decoration: line-through;
 }
@@ -723,13 +746,13 @@ body {
 .mx-chip.mx-legend:hover {
   background: var(--chip);
   border-color: var(--bd);
-  border-left-color: #1e8e3e;
+  border-left-color: var(--st-current);
 }
 .mx-chip.mx-legend.st-sunsetting:hover {
-  border-left-color: #e8830c;
+  border-left-color: var(--st-sunsetting);
 }
 .mx-chip.mx-legend.st-planned:hover {
-  border-left-color: #1a73e8;
+  border-left-color: var(--st-planned);
 }
 .matrix-note {
   font-size: 11px;
@@ -822,7 +845,7 @@ body {
 }
 .lg-chip.st-sunsetting {
   border-style: dashed;
-  border-color: #e8830c;
+  border-color: var(--st-sunsetting);
 }
 .lg-chip.st-planned {
   border-style: dotted;
@@ -1171,13 +1194,26 @@ body {
 
 /* Component Inventory: status lozenges + per-card status styling */
 .status-chip {
-  color: #fff;
+  background: var(--st-removed);
+  color: var(--st-removed-on);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.3px;
   border-radius: 5px;
   padding: 2px 8px;
   text-transform: uppercase;
+}
+.status-chip.st-current {
+  background: var(--st-current);
+  color: var(--st-current-on);
+}
+.status-chip.st-planned {
+  background: var(--st-planned);
+  color: var(--st-planned-on);
+}
+.status-chip.st-sunsetting {
+  background: var(--st-sunsetting);
+  color: var(--st-sunsetting-on);
 }
 .inv-head {
   display: flex;
@@ -1211,7 +1247,7 @@ body {
   margin-top: 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .inv-edit:hover {
@@ -1244,7 +1280,7 @@ body {
 }
 .node-card.st-sunsetting {
   border-style: dashed;
-  border-color: #e8830c;
+  border-color: var(--st-sunsetting);
 }
 .node-card.st-planned {
   border-style: dotted;
@@ -1274,13 +1310,13 @@ body {
 }
 .endpoints a:hover {
   text-decoration: underline;
-  color: var(--brand);
+  color: var(--brand-ink);
 }
 .swaggerlink {
   display: inline-block;
   font-size: 12px;
   margin-bottom: 6px;
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .swaggerlink:hover {
@@ -1495,9 +1531,9 @@ body {
   padding: 5px 11px;
 }
 .layout-pill .btn.primary {
-  background: var(--brand);
+  background: var(--brand-solid);
   color: #fff;
-  border-color: var(--brand);
+  border-color: var(--brand-solid);
 }
 .layout-pill-txt {
   font-weight: 600;
@@ -1555,6 +1591,10 @@ body {
     0 0 0 2px var(--brand),
     0 4px 14px rgba(10, 168, 210, 0.25);
 }
+.node-kind,
+.panel-eyebrow {
+  color: oklch(from var(--kind, var(--muted)) clamp(var(--kind-l-min), l, var(--kind-l-max)) c h);
+}
 .node-kind {
   font-size: 10px;
   text-transform: uppercase;
@@ -1584,7 +1624,9 @@ body {
 }
 .tag {
   color: #fff;
-  font-size: 9px;
+  /* tag fills come from config.json; a dark scrim keeps white text readable on any of them */
+  box-shadow: inset 0 0 0 100px rgb(0 0 0 / 0.25);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.4px;
   border-radius: 4px;
@@ -1931,14 +1973,14 @@ body {
   border-color: var(--brand);
 }
 .gate-card .btn.primary {
-  background: var(--brand-strong);
+  background: var(--brand-solid);
   color: #fff;
   border: none;
   padding: 9px 12px;
   font-size: 14px;
 }
 .gate-card .btn.primary:hover {
-  background: var(--brand-ink);
+  background: var(--brand-dark);
 }
 .gate-err {
   font-size: 12px;
@@ -2055,7 +2097,7 @@ body {
   word-break: break-all;
 }
 .env-val a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .env-val a:hover {
@@ -2078,7 +2120,7 @@ body {
   word-break: break-all;
 }
 .env-module a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .env-module a:hover {
