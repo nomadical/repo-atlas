@@ -583,7 +583,7 @@ function latestUiVersion(data, isUiPackage) {
         ? []
         : (repo.internalDeps || []).filter((dep) => isUiPackage(dep.name)).map((dep) => dep.version),
     )
-  return versions.sort(compareVersions).slice(-1)[0] || null
+  return versions.filter(Boolean).sort(compareVersions).at(-1) ?? null
 }
 
 // A package listed as both a prod and a dev dependency would collide on edge id, so keep one entry

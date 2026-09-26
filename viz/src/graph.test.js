@@ -525,6 +525,23 @@ describe('buildGraph', () => {
     }
   })
 
+  it('flags design-system version lag even when one consumer pins no version', () => {
+    const uiPackage = config.uiPackages[0]
+    const app = (folder, version) => ({
+      ...laneApp([{ name: uiPackage, version }]),
+      folder,
+      inventory: { name: folder, owner: OWNER_A },
+    })
+    const fixture = {
+      config,
+      repos: withHub([app('current-app', '2.0.0'), app('lagging-app', '1.0.0'), app('unpinned-app')]),
+      inventory: [],
+    }
+    const graph = buildGraph(fixture, { mode: 'dev' })
+    const lagging = graph.edges.find((e) => e.source === 'lagging-app')
+    expect(lagging.data).toEqual({ drift: true, scdLatest: '2.0.0' })
+  })
+
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
     expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(
