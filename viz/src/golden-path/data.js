@@ -28,7 +28,9 @@ export async function loadHistory() {
   if (!response.ok) throw new Error(`The nightly history could not be loaded (${response.status}).`)
   // A server without this route answers 200 with the SPA's index.html (the static fallback).
   if (!isJson(response)) {
-    throw new Error('This deployment does not serve the Golden Path data yet — it predates the screen. Redeploy the service and reload.')
+    throw new Error(
+      'This deployment does not serve the Golden Path data yet — it predates the screen. Redeploy the service and reload.',
+    )
   }
   return response.json()
 }

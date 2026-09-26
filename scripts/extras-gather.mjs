@@ -63,7 +63,7 @@ function readmeSummary(readmePath) {
       heading = text.replace(HEADING, '').trim()
       continue
     }
-    const isProse = !/^[#>!\-*`|]/.test(text) && !/^<!--/.test(text)
+    const isProse = !/^[#>!\-*`|]/.test(text) && !text.startsWith('<!--')
     if (isProse) return text.replace(/\s+/g, ' ').slice(0, MAX_PURPOSE_LENGTH)
   }
   return heading

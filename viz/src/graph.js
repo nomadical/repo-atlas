@@ -12,7 +12,8 @@ function addToListMap(map, key, value) {
 // card. List both names of a package mid-rename. Empty means no hub card is drawn.
 // Kept in sync with UI_PACKAGES in scripts/assemble.mjs.
 export const DEFAULT_UI_PACKAGES = []
-export const uiPackagesOf = (config) => new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
+export const uiPackagesOf = (config) =>
+  new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
 
 // Repo folders the design-system hub card can appear under (config.json `uiHubFolders`).
 export const uiHubFoldersOf = (config) => nonEmptyOr(config?.uiHubFolders, ['ui'])
@@ -144,7 +145,9 @@ function chipsFor(repo) {
 //              that lane, `dir: -1|1` is the way extra columns grow. Without hints, lanes
 //              auto-distribute left to right in list order.
 // The default is a single centre lane holding everything, so an unconfigured map still renders.
-export const DEFAULT_CLUSTERS = [{ label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true }]
+export const DEFAULT_CLUSTERS = [
+  { label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true },
+]
 export const resolveClusters = (config) => nonEmptyOr(config?.clusters, DEFAULT_CLUSTERS)
 const fallbackLabelOf = (clusters) => clusters.find((cluster) => cluster.fallback)?.label ?? null
 
@@ -180,11 +183,13 @@ export const isAtRisk = (health) => {
 // absent Set means no constraint. Values OR within a dimension and AND across dimensions. The graph
 // applies `group` per repo before building (so lanes wrap the survivors) and the rest after; the
 // Table and Matrix apply all of them through matchInventory, so every view narrows the same way.
-export const facetsActive = (facets) => !!(facets && (facets.group?.size || facets.status?.size || facets.health?.size || facets.hidden?.size))
+export const facetsActive = (facets) =>
+  !!(facets && (facets.group?.size || facets.status?.size || facets.health?.size || facets.hidden?.size))
 
 // Selecting every option must behave like selecting none. Otherwise ticking every status would
 // drop the status-less nodes (event bus, deploy targets, externals) that an empty selection keeps.
-export const coversAll = (set, options) => !!(set && set.size) && options.length > 0 && options.every((option) => set.has(option))
+export const coversAll = (set, options) =>
+  !!(set && set.size) && options.length > 0 && options.every((option) => set.has(option))
 
 // The graph's post-build status filter (group is already applied per repo).
 export const matchStatus = (inv, facets) => !facets?.status?.size || (!!inv && facets.status.has(inv.status))
@@ -203,7 +208,18 @@ export const matchInventory = (inv, facets, clusters = DEFAULT_CLUSTERS) => {
 }
 
 // Lane colors for data-derived groupings; team clusters carry their own curated colors.
-const GROUP_PALETTE = ['#3949ab', '#00838f', '#558b2f', '#6a1b9a', '#c62828', '#ef6c00', '#00897b', '#5e35b1', '#827717', '#ad1457']
+const GROUP_PALETTE = [
+  '#3949ab',
+  '#00838f',
+  '#558b2f',
+  '#6a1b9a',
+  '#c62828',
+  '#ef6c00',
+  '#00897b',
+  '#5e35b1',
+  '#827717',
+  '#ad1457',
+]
 const OTHER_LANE_COLOR = '#9e9e9e'
 
 // Keys starting with '_' in config.json are comments.
@@ -330,7 +346,9 @@ function productTagger(config) {
   const colorByTag = { ...TAG_COLOR, ...config?.tagColors }
   return (repo) => {
     const applications = repo.inventory?.applications || []
-    const tags = [...new Set(applications.map((application) => tagByApplication[application]).filter(Boolean))]
+    const tags = [
+      ...new Set(applications.map((application) => tagByApplication[application]).filter(Boolean)),
+    ]
     return tags.map((label) => ({ label, color: colorByTag[label] || UNKNOWN_TAG_COLOR }))
   }
 }
@@ -340,7 +358,8 @@ function stalenessOf(data) {
   const asOf = data.generatedAt ? new Date(data.generatedAt).getTime() : Date.now()
   const configuredDays = Number(data.config?.staleDays)
   const staleAfterDays = configuredDays > 0 ? configuredDays : DEFAULT_STALE_DAYS
-  const daysSinceCommit = (repo) => (repo.lastCommit ? Math.round((asOf - new Date(repo.lastCommit).getTime()) / MS_PER_DAY) : null)
+  const daysSinceCommit = (repo) =>
+    repo.lastCommit ? Math.round((asOf - new Date(repo.lastCommit).getTime()) / MS_PER_DAY) : null
   const isStale = (repo) => {
     const days = daysSinceCommit(repo)
     return days != null && days > staleAfterDays
@@ -456,7 +475,15 @@ function indexBackends(data, repos, inventory, topology) {
   const idByName = new Map()
   for (const backend of list) {
     const inv = inventoryOf(backend)
-    const names = [backend.id, backend.repo, backend.repoName, backend.canonicalName, backend.label, backend.invAlias, inv?.name]
+    const names = [
+      backend.id,
+      backend.repo,
+      backend.repoName,
+      backend.canonicalName,
+      backend.label,
+      backend.invAlias,
+      inv?.name,
+    ]
     for (const name of names.filter(Boolean)) idByName.set(String(name).toLowerCase(), backend.id)
   }
   const idOf = (name) => idByName.get(String(name).toLowerCase()) || null
@@ -551,7 +578,11 @@ function compareVersions(a, b) {
 function latestUiVersion(data, isUiPackage) {
   const versions = (data.repos || [])
     .filter(isInScope)
-    .flatMap((repo) => (isUiPackage(repo.name) ? [] : (repo.internalDeps || []).filter((dep) => isUiPackage(dep.name)).map((dep) => dep.version)))
+    .flatMap((repo) =>
+      isUiPackage(repo.name)
+        ? []
+        : (repo.internalDeps || []).filter((dep) => isUiPackage(dep.name)).map((dep) => dep.version),
+    )
   return versions.sort(compareVersions).slice(-1)[0] || null
 }
 
@@ -572,7 +603,9 @@ function uniqueDeps(deps) {
 function packageCard(id, packageName, inventory) {
   const shortName = packageName.replace(PACKAGE_SCOPE, '')
   const entry = inventory.byName.get(shortName.toLowerCase()) || null
-  const subtitle = packageName.startsWith('@') ? packageName.slice(0, packageName.indexOf('/')) + ' pkg' : 'internal pkg'
+  const subtitle = packageName.startsWith('@')
+    ? packageName.slice(0, packageName.indexOf('/')) + ' pkg'
+    : 'internal pkg'
   return cardNode(id, {
     title: shortName,
     subtitle,
@@ -713,7 +746,9 @@ function addDeploymentLayer(ctx) {
     }
   }
 
-  const matchers = targets.filter((target) => target.match).map((target) => ({ pattern: new RegExp(target.match, 'i'), id: target.id }))
+  const matchers = targets
+    .filter((target) => target.match)
+    .map((target) => ({ pattern: new RegExp(target.match, 'i'), id: target.id }))
   const ciTargetId = targets.find((target) => target.testsFallback)?.id
   for (const repo of ctx.repos) {
     const workflowTargets = deploymentTargetText(repo)
@@ -768,7 +803,9 @@ function addCuratedServiceEdges(ctx) {
       source,
       target,
       label: label || undefined,
-      style: touchesBackend ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 } : { stroke: '#0097a7', strokeWidth: 1.6 },
+      style: touchesBackend
+        ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 }
+        : { stroke: '#0097a7', strokeWidth: 1.6 },
       labelStyle: touchesBackend ? { fontSize: 10, fill: '#4e342e' } : { fontSize: 10, fill: '#00838f' },
       labelBgStyle: { fill: touchesBackend ? '#efebe9' : '#e0f7fa' },
     })
@@ -819,7 +856,9 @@ function addContentRepos(ctx) {
 // Every inventory component not already on the map, as an edge-less grid.
 function addInventoryCatalog(ctx) {
   const { graph } = ctx
-  const represented = new Set(graph.nodes.filter((node) => node.data?.inventory).map((node) => node.data.inventory.name))
+  const represented = new Set(
+    graph.nodes.filter((node) => node.data?.inventory).map((node) => node.data.inventory.name),
+  )
   for (const entry of ctx.data.inventory) {
     if (!represented.has(entry.name)) graph.addNode(inventoryCard(entry))
   }
@@ -827,7 +866,12 @@ function addInventoryCatalog(ctx) {
 
 function serviceLinkStyle(isKafka, unverified) {
   if (unverified) {
-    return { stroke: isKafka ? '#fb8c00' : '#00838f', strokeDasharray: '1 4', strokeWidth: 1.2, opacity: 0.45 }
+    return {
+      stroke: isKafka ? '#fb8c00' : '#00838f',
+      strokeDasharray: '1 4',
+      strokeWidth: 1.2,
+      opacity: 0.45,
+    }
   }
   if (isKafka) return { stroke: '#fb8c00', strokeDasharray: '5 3', strokeWidth: 1.6 }
   return { stroke: '#00838f', strokeWidth: 1.6 }
@@ -869,7 +913,8 @@ function addServiceLinks(ctx) {
     if (node.data?.inventory) nodeIdByInventoryName.set(node.data.inventory.name, node.id)
   }
   const inventoryEntryOf = (name) => inventory.byName.get(String(name).toLowerCase())
-  const canResolve = (name) => name === KAFKA_NAME || !!nodeIdByInventoryName.get(name) || !!inventoryEntryOf(name)
+  const canResolve = (name) =>
+    name === KAFKA_NAME || !!nodeIdByInventoryName.get(name) || !!inventoryEntryOf(name)
   const resolve = (name) => {
     if (name === KAFKA_NAME) {
       graph.addNode(cardNode(KAFKA_BUS_ID, { title: 'Kafka', subtitle: 'event bus', kind: 'bus' }))
@@ -907,7 +952,9 @@ function withoutUnlinkedResources(nodes, edges) {
     linked.add(edge.target)
   }
   // catalog cards are edge-less by design
-  return nodes.filter((node) => node.id.startsWith('inv:') || !PRUNABLE_KINDS.includes(node.data.kind) || linked.has(node.id))
+  return nodes.filter(
+    (node) => node.id.startsWith('inv:') || !PRUNABLE_KINDS.includes(node.data.kind) || linked.has(node.id),
+  )
 }
 
 function makeFloating(edge) {
@@ -924,7 +971,8 @@ function keepNodes(view, keep) {
 }
 
 // The name a card is listed and hidden under in the Components filter.
-const listedNameOf = (node) => (node.data?.inventory?.name || node.data?.title || '').replace(/\s+/g, ' ').trim() || null
+const listedNameOf = (node) =>
+  (node.data?.inventory?.name || node.data?.title || '').replace(/\s+/g, ' ').trim() || null
 
 const sortedUnique = (values) => [...new Set(values.filter(Boolean))].sort()
 
@@ -989,12 +1037,19 @@ export function buildGraph(data, opts = {}) {
   // Hidden arrow classes go before pruning and layout, so a node left edge-less by them is dropped
   // and the lanes reflow. The unfiltered list still decides which classes the Legend offers.
   const allEdges = ctx.graph.edges
-  const edges = hiddenEdgeTypes.size ? allEdges.filter((edge) => !hiddenEdgeTypes.has(edgeTypeOf(edge.id, edge))) : allEdges
+  const edges = hiddenEdgeTypes.size
+    ? allEdges.filter((edge) => !hiddenEdgeTypes.has(edgeTypeOf(edge.id, edge)))
+    : allEdges
   const view = { nodes: withoutUnlinkedResources(ctx.graph.nodes, edges), edges }
   for (const edge of view.edges) makeFloating(edge)
 
   if (facets?.health?.size) {
-    keepNodes(view, (node) => node.data.kind === 'bus' || isAtRisk(node.data.inventory?.health || node.data.repo?.inventory?.health))
+    keepNodes(
+      view,
+      (node) =>
+        node.data.kind === 'bus' ||
+        isAtRisk(node.data.inventory?.health || node.data.repo?.inventory?.health),
+    )
   }
   // Only statuses present on the current map, so ticking one always narrows a visible set.
   const statusOptions = sortedUnique(view.nodes.map((node) => node.data?.inventory?.status))
@@ -1017,7 +1072,11 @@ export function buildGraph(data, opts = {}) {
   const filtered = facetsActive(facets)
   const finalIds = new Set(view.nodes.map((node) => node.id))
   const edgeTypesPresent = [
-    ...new Set(allEdges.filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target)).map((edge) => edgeTypeOf(edge.id, edge))),
+    ...new Set(
+      allEdges
+        .filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target))
+        .map((edge) => edgeTypeOf(edge.id, edge)),
+    ),
   ].filter((type) => type !== 'other')
   return {
     ...clusterLayout(view.nodes, view.edges, layout, data.config, filtered, grouping),
@@ -1114,7 +1173,8 @@ function consumerMeanX(node, edges, nodesById) {
   return consumers.reduce((sum, consumer) => sum + consumer.position.x, 0) / consumers.length
 }
 
-const byConsumerX = (nodes, meanX) => nodes.map((node) => ({ node, x: meanX(node) })).sort((a, b) => a.x - b.x)
+const byConsumerX = (nodes, meanX) =>
+  nodes.map((node) => ({ node, x: meanX(node) })).sort((a, b) => a.x - b.x)
 
 // One row, each node under its consumers, then pushed right until nothing overlaps.
 function placeUnderConsumers(nodes, y, meanX) {
@@ -1150,7 +1210,11 @@ function placeGridAbove(nodes, { bottomY, columns, centerX }, meanX) {
 function placeCatalog(components) {
   const gapX = NODE_W + 30
   const gapY = 104
-  const ordered = [...components].sort((a, b) => (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') || a.id.localeCompare(b.id))
+  const ordered = [...components].sort(
+    (a, b) =>
+      (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') ||
+      a.id.localeCompare(b.id),
+  )
   ordered.forEach((node, i) => {
     const row = Math.floor(i / CATALOG_COLUMNS)
     const column = i % CATALOG_COLUMNS
@@ -1204,7 +1268,9 @@ function fence(values) {
 function coreMembers(members) {
   const [minX, maxX] = fence(members.map((member) => member.position.x))
   const [minY, maxY] = fence(members.map((member) => member.position.y))
-  const core = members.filter(({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY)
+  const core = members.filter(
+    ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
+  )
   return core.length ? core : members
 }
 
@@ -1260,9 +1326,13 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
   // on purpose, and not when no design system is configured.
   const hubFolders = uiHubFoldersOf(config)
   const expectsHub = uiPackagesOf(config).size > 0
-  const hub = nodes.find((node) => hubFolders.includes(node.id) || hubFolders.includes(node.data?.repo?.folder))
+  const hub = nodes.find(
+    (node) => hubFolders.includes(node.id) || hubFolders.includes(node.data?.repo?.folder),
+  )
   if (expectsHub && !hub && !filtered) {
-    console.warn(`clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`)
+    console.warn(
+      `clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`,
+    )
     return dagreLayout(nodes, edges, layout)
   }
 
@@ -1285,10 +1355,15 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
     return index < 0 ? UNORDERED : index
   }
   const membersOf = (label) => {
-    const apps = nodes.filter((node) => node.data.repo && laneOf(node.data.repo) === label).sort((a, b) => orderHint(a) - orderHint(b))
+    const apps = nodes
+      .filter((node) => node.data.repo && laneOf(node.data.repo) === label)
+      .sort((a, b) => orderHint(a) - orderHint(b))
     // content repos follow their parent card's lane
     const content = nodes.filter(
-      (node) => node.data.kind === 'content' && node.data.parentId && laneOf(nodesById.get(node.data.parentId)?.data?.repo || {}) === label,
+      (node) =>
+        node.data.kind === 'content' &&
+        node.data.parentId &&
+        laneOf(nodesById.get(node.data.parentId)?.data?.repo || {}) === label,
     )
     const lanePackages = packages.filter((pkg) => packageCluster(pkg) === label)
     return [...apps, ...content, ...lanePackages]
@@ -1297,26 +1372,40 @@ function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grou
   const laneClusters = clusters.filter((cluster) => !cluster.fallback)
   const { anchorByLabel, columnsByLabel, membersByLabel } = layOutLanes(laneClusters, membersOf)
   const leftmostLabel = laneClusters.length
-    ? laneClusters.reduce((leftmost, cluster) => (anchorByLabel.get(cluster.label) < anchorByLabel.get(leftmost.label) ? cluster : leftmost)).label
+    ? laneClusters.reduce((leftmost, cluster) =>
+        anchorByLabel.get(cluster.label) < anchorByLabel.get(leftmost.label) ? cluster : leftmost,
+      ).label
     : null
-  const loosePackagesX = leftmostLabel ? anchorByLabel.get(leftmostLabel) - (columnsByLabel.get(leftmostLabel) || 0) * COL_GAP - 40 : LOOSE_PACKAGES_DEFAULT_X
+  const loosePackagesX = leftmostLabel
+    ? anchorByLabel.get(leftmostLabel) - (columnsByLabel.get(leftmostLabel) || 0) * COL_GAP - 40
+    : LOOSE_PACKAGES_DEFAULT_X
   stackColumn(loosePackages, loosePackagesX)
 
   // Suite-wide repos and packages in the centre column; empty (and boxless) when there are none.
-  const centreNodes = [...nodes.filter((node) => node.data.repo?.inventory?.cluster === fallbackLabel), ...centrePackages]
+  const centreNodes = [
+    ...nodes.filter((node) => node.data.repo?.inventory?.cluster === fallbackLabel),
+    ...centrePackages,
+  ]
   centreNodes.forEach((node, i) => {
     node.position = { x: -40 - NODE_W / 2, y: -160 + i * 104 - NODE_H / 2 }
   })
 
   // Externals in a grid above the main row, clear of its tallest box.
   const externals = ofKind('external')
-  if (externals.length) placeGridAbove(externals, { bottomY: EXTERNALS_BOTTOM_Y, columns: 5, centerX: 0 }, meanX)
+  if (externals.length)
+    placeGridAbove(externals, { bottomY: EXTERNALS_BOTTOM_Y, columns: 5, centerX: 0 }, meanX)
 
   // Anything left over, e.g. a repo newly added since the clusters were configured.
   const laneNodes = laneClusters.flatMap((cluster) => membersByLabel.get(cluster.label) || [])
-  const placedIds = new Set([...laneNodes, ...loosePackages, ...centreNodes, ...externals].map((node) => node.id))
+  const placedIds = new Set(
+    [...laneNodes, ...loosePackages, ...centreNodes, ...externals].map((node) => node.id),
+  )
   const unclassified = nodes.filter(
-    (node) => !placedIds.has(node.id) && !node.id.startsWith('inv:') && !node.id.startsWith('bus:') && !UNCLASSIFIABLE_KINDS.includes(node.data.kind),
+    (node) =>
+      !placedIds.has(node.id) &&
+      !node.id.startsWith('inv:') &&
+      !node.id.startsWith('bus:') &&
+      !UNCLASSIFIABLE_KINDS.includes(node.data.kind),
   )
   if (unclassified.length) stackColumn(unclassified, UNCLASSIFIED_X)
   if (resources.length) placeUnderConsumers(resources, RESOURCES_Y, meanX)

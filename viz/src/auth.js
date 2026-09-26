@@ -65,6 +65,7 @@ export async function initAuth() {
     pkceMethod: 'S256',
     checkLoginIframe: false,
   })
-  keycloak.onTokenExpired = () => keycloak.updateToken(TOKEN_MIN_VALIDITY_SECONDS).catch(() => keycloak.login())
+  keycloak.onTokenExpired = () =>
+    keycloak.updateToken(TOKEN_MIN_VALIDITY_SECONDS).catch(() => keycloak.login())
   return { enabled: true, keycloak }
 }

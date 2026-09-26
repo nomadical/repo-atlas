@@ -1,7 +1,18 @@
 // Structural tests for buildGraph against the real committed model: the invariants the renderer
 // relies on (no dangling edges, clusters and core nodes present, stable across option combos).
 import { describe, it, expect } from 'vitest'
-import { buildGraph, KIND, LAYERS, DEFAULT_LAYERS, resolveClusters, DEFAULT_CLUSTERS, matchInventory, isAtRisk, nodeIdOf, groupingFor } from './graph.js'
+import {
+  buildGraph,
+  KIND,
+  LAYERS,
+  DEFAULT_LAYERS,
+  resolveClusters,
+  DEFAULT_CLUSTERS,
+  matchInventory,
+  isAtRisk,
+  nodeIdOf,
+  groupingFor,
+} from './graph.js'
 import main from '../../fe-architecture.json'
 import extras from '../../fe-architecture-extras.json'
 import config from '../../config.json'
@@ -255,9 +266,10 @@ describe('buildGraph', () => {
       },
       { mode: 'dev' },
     ).nodes.find((n) => n.id === `pkg:${sharedPkg}`)
-    const noOverride = buildGraph({ config, repos: withHub([laneApp([{ name: lonePkg, version: '1.0.0' }])]), inventory: [] }, { mode: 'dev' }).nodes.find(
-      (n) => n.id === `pkg:${lonePkg}`,
-    )
+    const noOverride = buildGraph(
+      { config, repos: withHub([laneApp([{ name: lonePkg, version: '1.0.0' }])]), inventory: [] },
+      { mode: 'dev' },
+    ).nodes.find((n) => n.id === `pkg:${lonePkg}`)
 
     expect(noOverride.data.sharedPkg).toBeFalsy()
     // the un-overridden package sits in the lanes' own package column, left of the centre one —
@@ -319,7 +331,9 @@ describe('buildGraph', () => {
     expect(hidden.edgeTypesPresent).toContain('dependency')
     expect(hidden.edges.some((e) => e.id.startsWith('dep-') && !e.data?.drift)).toBe(false)
     // an unrelated type is untouched by the filter
-    expect(hidden.edges.some((e) => e.id.startsWith('be-'))).toBe(base.edges.some((e) => e.id.startsWith('be-')))
+    expect(hidden.edges.some((e) => e.id.startsWith('be-'))).toBe(
+      base.edges.some((e) => e.id.startsWith('be-')),
+    )
   })
 
   it('hides a component by name via the hidden facet and keeps it listed in facetOptions.components', () => {
@@ -374,7 +388,9 @@ describe('buildGraph', () => {
 
   it('does not balloon a cluster box when one member is dragged far out (outlier-trimmed bounds)', () => {
     const baseline = buildGraph(data, { mode: 'dev' }).nodes.find((n) => n.id === 'region-Resources')
-    const dragged = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 99999, y: 0 } } }).nodes.find((n) => n.id === 'region-Resources')
+    const dragged = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 99999, y: 0 } } }).nodes.find(
+      (n) => n.id === 'region-Resources',
+    )
     if (baseline && dragged) {
       // the moved card must not stretch the outline across the canvas — width stays near baseline
       expect(dragged.style.width).toBeLessThan(baseline.style.width + 600)
@@ -393,7 +409,9 @@ describe('buildGraph', () => {
     const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
     const regions = new Set(graph.nodes.filter((n) => n.type === 'region').map((n) => n.data.label))
     // every lane that actually has members draws its outline; an empty lane legitimately draws none
-    const populated = LANES.filter((label) => graph.nodes.some((n) => n.data?.repo && n.data.cluster === label))
+    const populated = LANES.filter((label) =>
+      graph.nodes.some((n) => n.data?.repo && n.data.cluster === label),
+    )
     for (const label of populated) expect(regions.has(label), label).toBe(true)
     expect(regions.size).toBeGreaterThan(0)
   })
@@ -418,7 +436,10 @@ describe('buildGraph', () => {
         { label: 'Unscoped', match: [], color: '#777', fallback: true, center: true, defaultOn: true },
       ],
     }
-    const graph = buildGraph({ ...data, config: custom }, { mode: 'dev', facets: groups('Everything', 'Devices', 'Unscoped') })
+    const graph = buildGraph(
+      { ...data, config: custom },
+      { mode: 'dev', facets: groups('Everything', 'Devices', 'Unscoped') },
+    )
     const regions = graph.nodes.filter((n) => n.type === 'region')
     const labels = new Set(regions.map((r) => r.data.label))
     // custom labels render; the committed taxonomy's do not
@@ -463,16 +484,24 @@ describe('buildGraph', () => {
     }
     // (d) folder->serviceId resolver: an old folder-keyed ?sel= / saved view still resolves to the node
     expect(nodeIdOf(fixture.repos[1])).toBe('device-data-ingestion')
-    const resolve = (sel) => graph.nodes.find((n) => n.type === 'card' && (n.id === sel || n.data.repo?.folder === sel || n.data.repo?.serviceId === sel))
+    const resolve = (sel) =>
+      graph.nodes.find(
+        (n) =>
+          n.type === 'card' &&
+          (n.id === sel || n.data.repo?.folder === sel || n.data.repo?.serviceId === sel),
+      )
     expect(resolve('device-data-service')?.id).toBe('device-data-ingestion')
     expect(resolve('device-data-ingestion')?.id).toBe('device-data-ingestion')
   })
 
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
-    expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe('device-data-ingestion')
+    expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(
+      'device-data-ingestion',
+    )
     // committed data carries no serviceId yet, so every repo card id is still its folder
     const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    for (const n of graph.nodes.filter((n) => n.type === 'card' && n.data.repo)) expect(n.id).toBe(nodeIdOf(n.data.repo))
+    for (const n of graph.nodes.filter((n) => n.type === 'card' && n.data.repo))
+      expect(n.id).toBe(nodeIdOf(n.data.repo))
   })
 })

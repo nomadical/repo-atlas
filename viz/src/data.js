@@ -28,7 +28,10 @@ async function fetchGatedData(dataUrl) {
   if (!dataUrl) return null
   try {
     const token = getToken()
-    const response = await fetch(dataUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
+    const response = await fetch(
+      dataUrl,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+    )
     if (response.ok) return { data: await response.json() }
     // the session lapsed: re-authenticate rather than fall back to the bundle
     if (response.status === 401) throw flaggedError('unauthorized', 'unauthorized')
@@ -56,7 +59,13 @@ async function tryFetchData(url) {
 const base64ToBytes = (base64) => Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
 
 export async function decryptData(enc, passphrase) {
-  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
   const key = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt: base64ToBytes(enc.salt), iterations: enc.iterations, hash: 'SHA-256' },
     keyMaterial,
@@ -64,6 +73,10 @@ export async function decryptData(enc, passphrase) {
     false,
     ['decrypt'],
   )
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(enc.iv) }, key, base64ToBytes(enc.ct))
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToBytes(enc.iv) },
+    key,
+    base64ToBytes(enc.ct),
+  )
   return JSON.parse(new TextDecoder().decode(plaintext))
 }

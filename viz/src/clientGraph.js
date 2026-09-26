@@ -38,7 +38,12 @@ export function componentAdoption(extras) {
   }
   return [...usageByComponent.entries()]
     .map(([component, usage]) => ({ component, clients: [...usage.clients].sort(), screens: usage.screens }))
-    .sort((a, b) => b.clients.length - a.clients.length || b.screens - a.screens || a.component.localeCompare(b.component))
+    .sort(
+      (a, b) =>
+        b.clients.length - a.clients.length ||
+        b.screens - a.screens ||
+        a.component.localeCompare(b.component),
+    )
 }
 
 // Hosts compare without protocol or path, and with environment segments collapsed to .{env}.

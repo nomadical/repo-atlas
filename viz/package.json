@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "oxlint src",
-    "format": "oxfmt --write src",
-    "format:check": "oxfmt --check src"
+    "format": "oxfmt -c ../.oxfmtrc.json --write src",
+    "format:check": "oxfmt -c ../.oxfmtrc.json --check src"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.0.0",

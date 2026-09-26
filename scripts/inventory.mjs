@@ -58,8 +58,8 @@ export const TOPIC_MAPS = {
   // owner-*/app-* topic is accepted and title-cased ('app-fleet-ops' -> 'Fleet Ops'). Name an entry
   // when that title is wrong, or when it must match the viz label maps and inventory-extra's
   // repo-less entries exactly; otherwise one application splits into two Matrix columns.
-  owner: { ...(appConfig.owners || {}) },
-  app: { ...(appConfig.applications || {}) },
+  owner: { ...appConfig.owners },
+  app: { ...appConfig.applications },
 }
 // The parent type each subtype refines. guard-data errors on a mismatch (subtype-worker on a
 // Library) just like on an unknown closed-enum value.

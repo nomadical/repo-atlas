@@ -1,9 +1,23 @@
 /* Golden Path compliance screen: interface and state only; all evaluation lives in golden-path/lib/*.mjs.
    Runs in a shadow root whose generic class names would collide with the app's CSS, so query via
    `root`, never `document`. */
-import { loadHistory as fetchHistory, loadExceptions as fetchExceptions, loadRules as fetchRules, appendException } from './data.js'
+import {
+  loadHistory as fetchHistory,
+  loadExceptions as fetchExceptions,
+  loadRules as fetchRules,
+  appendException,
+} from './data.js'
 import { replay, auditLine, asOfDate } from '@golden-path/lib/decision-log.mjs'
-import { RULES, CHECKS, COLLECTED, SOURCE, setRules, deriveCollected, cellsOf as evaluateCells, totalOf } from '@golden-path/lib/rules.mjs'
+import {
+  RULES,
+  CHECKS,
+  COLLECTED,
+  SOURCE,
+  setRules,
+  deriveCollected,
+  cellsOf as evaluateCells,
+  totalOf,
+} from '@golden-path/lib/rules.mjs'
 import { SEGMENTS, segmentOf as segmentWithLog, segmentCounts } from '@golden-path/lib/segments.mjs'
 import { expandHistory, statsOn as statsForNight } from '@golden-path/lib/history.mjs'
 import { toParams, fromParams, defaultState, PARAM_KEYS } from '@golden-path/lib/url.mjs'
@@ -152,8 +166,14 @@ function joinWithAnd(items) {
 
 function sourceNote(source) {
   if (!source?.name) return null
-  const revision = source.version ? ` v${esc(source.version)}` : source.lastModified ? ` · ${esc(source.lastModified)}` : ''
-  const name = source.url ? `<a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.name)}</a>` : esc(source.name)
+  const revision = source.version
+    ? ` v${esc(source.version)}`
+    : source.lastModified
+      ? ` · ${esc(source.lastModified)}`
+      : ''
+  const name = source.url
+    ? `<a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.name)}</a>`
+    : esc(source.name)
   return name + revision
 }
 
@@ -371,7 +391,8 @@ const legend = (states) =>
     )
     .join('')}</div>`
 
-const pathThrough = (points) => points.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ')
+const pathThrough = (points) =>
+  points.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ')
 
 // Stroke colour is DIRECTION over the window, not level: green/red already mean conform/deviate here.
 function directionColor(delta) {
@@ -494,7 +515,9 @@ export function mountPage(hostEl, root) {
     if (source) parts.push(source)
     // Without the decision log an approved deviation reads as an open one, so say so.
     if (!decisionLogRead) {
-      parts.push('<span class="warn-note" title="Approved deviations cannot be shown, so they are counted as open ones.">decisions unavailable</span>')
+      parts.push(
+        '<span class="warn-note" title="Approved deviations cannot be shown, so they are counted as open ones.">decisions unavailable</span>',
+      )
     }
     root.querySelector('.top .sub').innerHTML = parts.join(' · ')
   }
@@ -584,7 +607,9 @@ export function mountPage(hostEl, root) {
   function multiSelectHtml(name, values, selected, counts) {
     const options = values
       .map(
-        (value) => `<div class="ms-opt" role="option" data-v="${esc(value)}" aria-selected="${selected.has(value)}">
+        (
+          value,
+        ) => `<div class="ms-opt" role="option" data-v="${esc(value)}" aria-selected="${selected.has(value)}">
             <span class="ms-box">${TICK_ICON}</span>${esc(value)}<span class="cnt">${counts.get(value) || 0}</span></div>`,
       )
       .join('')
@@ -649,9 +674,17 @@ export function mountPage(hostEl, root) {
       <label class="set${extraClass}"><input type="checkbox" data-seg="${id}"${checked ? ' checked' : ''}>
         <span>${label}${hint ? `<small>${hint}</small>` : ''}</span><span class="n">${count}</span></label>`
     const segmentOptions = SEGMENTS.map((segment) =>
-      option(segment.k, '', state.segments.has(segment.k), segment.label, segment.hint, segCounts[segment.k] || 0),
+      option(
+        segment.k,
+        '',
+        state.segments.has(segment.k),
+        segment.label,
+        segment.hint,
+        segCounts[segment.k] || 0,
+      ),
     )
-    byId('segments').innerHTML = option('*', ' all', allChosen, 'All repositories', '', repositories.length) + segmentOptions.join('')
+    byId('segments').innerHTML =
+      option('*', ' all', allChosen, 'All repositories', '', repositories.length) + segmentOptions.join('')
     root.querySelector('#segments input[data-seg="*"]').indeterminate = someChosen
   }
 
@@ -676,7 +709,10 @@ export function mountPage(hostEl, root) {
 
   function renderHiddenNote() {
     const chosen = SEGMENTS.filter((segment) => state.segments.has(segment.k))
-    const notShown = SEGMENTS.reduce((sum, segment) => sum + (state.segments.has(segment.k) ? 0 : segCounts[segment.k] || 0), 0)
+    const notShown = SEGMENTS.reduce(
+      (sum, segment) => sum + (state.segments.has(segment.k) ? 0 : segCounts[segment.k] || 0),
+      0,
+    )
     let shownText
     if (!chosen.length) shownText = 'No group selected'
     else if (chosen.length === SEGMENTS.length) shownText = 'Every repository in the organisation'
@@ -693,14 +729,20 @@ export function mountPage(hostEl, root) {
 
   // Worst first; ties by name.
   function sortedVisibleRows() {
-    return repositories.filter((repo) => matchesFilters(repo)).sort((a, b) => metRatio(a) - metRatio(b) || a.repository.localeCompare(b.repository))
+    return repositories
+      .filter((repo) => matchesFilters(repo))
+      .sort((a, b) => metRatio(a) - metRatio(b) || a.repository.localeCompare(b.repository))
   }
 
   function rowBadges(repo) {
     const exclusion = exclusionOf(repo.repository)
     const archived = repo.archived ? '<span class="arch">archived</span>' : ''
-    const excluded = exclusion ? `<span class="arch excl" title="${esc(auditLine(exclusion)) || 'Excluded from the Golden Path'}">excluded</span>` : ''
-    const owner = repo.owner ? `<span class="owner">${esc(repo.owner)}</span>` : '<span class="owner">no owner</span>'
+    const excluded = exclusion
+      ? `<span class="arch excl" title="${esc(auditLine(exclusion)) || 'Excluded from the Golden Path'}">excluded</span>`
+      : ''
+    const owner = repo.owner
+      ? `<span class="owner">${esc(repo.owner)}</span>`
+      : '<span class="owner">no owner</span>'
     return `<span class="kind">${repo.type}</span>${archived}${excluded}${owner}`
   }
 
@@ -811,7 +853,8 @@ export function mountPage(hostEl, root) {
     renderSummary(rows, cellsByRow)
 
     const headers = CHECKS.map((check, index) => checkHeaderHtml(check, index, rows, cellsByRow)).join('')
-    byId('tbl').innerHTML = `<colgroup><col class="c-name">${CHECKS.map(() => '<col class="c-check">').join('')}<col class="c-total"></colgroup>
+    byId('tbl').innerHTML =
+      `<colgroup><col class="c-name">${CHECKS.map(() => '<col class="c-check">').join('')}<col class="c-total"></colgroup>
        <thead><tr><th><span class="ck-name">Component</span><span class="ck-spec">${rows.length} shown of ${repositories.length}</span></th>
         ${headers}<th><span class="ck-name">Checks met</span><span class="ck-spec">of applicable</span></th></tr></thead>
        <tbody>${tableBodyHtml(rows)}</tbody>`
@@ -846,7 +889,8 @@ export function mountPage(hostEl, root) {
       region = document.createElement('div')
       region.id = 'live'
       region.setAttribute('aria-live', 'polite')
-      region.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap'
+      region.style.cssText =
+        'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap'
       root.appendChild(region)
     }
     region.textContent = message
@@ -1115,8 +1159,16 @@ export function mountPage(hostEl, root) {
     const position = order.indexOf(repoName)
 
     byId('d-name').textContent = repo.repository
-    byId('d-sub').innerHTML = drawerSubtitleHtml(repo, total, countState(cells, 'unk'), position, order.length)
-    byId('d-apps').textContent = repo.applications.length ? repo.applications.join(' · ') : 'Not linked to an application'
+    byId('d-sub').innerHTML = drawerSubtitleHtml(
+      repo,
+      total,
+      countState(cells, 'unk'),
+      position,
+      order.length,
+    )
+    byId('d-apps').textContent = repo.applications.length
+      ? repo.applications.join(' · ')
+      : 'Not linked to an application'
     byId('d-links').innerHTML = drawerLinksHtml(repo)
     byId('d-body').innerHTML = drawerBodyHtml(repo)
     wireDrawerNavigation(order, position)
@@ -1128,7 +1180,8 @@ export function mountPage(hostEl, root) {
     drawer.classList.add('open')
     drawer.setAttribute('aria-hidden', 'false')
     if (!wasOpen) byId('d-name').focus()
-    else announce(`${repo.repository}, ${total.of ? `${total.met} of ${total.of} checks met` : 'not assessed'}`)
+    else
+      announce(`${repo.repository}, ${total.of ? `${total.met} of ${total.of} checks met` : 'not assessed'}`)
     // Stepping through components replaces the entry; only a fresh open pushes, so Back leaves the panel.
     if (history.state?.component !== repoName) writeUrl({ push: !wasOpen, repo: repoName })
     lastRow?.scrollIntoView({ block: 'nearest' })
@@ -1221,7 +1274,8 @@ export function mountPage(hostEl, root) {
   const statsIn = (from, to) => nightsIn(from, to).map(statsOn)
   const rangeGrain = () => bucketDays((range.to - range.from) / DAY_MS)
   // The window's position of `t` along a plot `width` wide inside `padding`.
-  const xScale = (width, padding) => (t) => padding.l + ((t - range.from) / (range.to - range.from || 1)) * (width - padding.l - padding.r)
+  const xScale = (width, padding) => (t) =>
+    padding.l + ((t - range.from) / (range.to - range.from || 1)) * (width - padding.l - padding.r)
 
   const tip = byId('tip')
   function showTip(html, x, y) {
@@ -1235,7 +1289,9 @@ export function mountPage(hostEl, root) {
 
   // Pushes end-of-line labels apart so close values don't overprint.
   function spreadEndLabels(latest, y) {
-    const ends = TREND_SERIES.map((key) => ({ k: key, yv: y(latest[key]), v: latest[key] })).sort((a, b) => a.yv - b.yv)
+    const ends = TREND_SERIES.map((key) => ({ k: key, yv: y(latest[key]), v: latest[key] })).sort(
+      (a, b) => a.yv - b.yv,
+    )
     for (let i = 1; i < ends.length; i++) {
       if (ends[i].yv - ends[i - 1].yv < END_LABEL_GAP) ends[i].yv = ends[i - 1].yv + END_LABEL_GAP
     }
@@ -1264,10 +1320,15 @@ export function mountPage(hostEl, root) {
         ? `${dayAndMonth(from)} ${from.getUTCFullYear()}`
         : `${dayAndMonth(from)} – ${dayAndMonth(to)} ${to.getUTCFullYear()} <span style="opacity:.6">· ${grain === 7 ? 'weekly' : 'monthly'} mean</span>`
     const lines = TREND_SERIES.map(
-      (key) => `<i style="background:${STATE_COLOR[key]}${key === 'unk' ? ';opacity:.5' : ''}"></i>${STATE_LABEL[key]} <b>${point[key]}</b>`,
+      (key) =>
+        `<i style="background:${STATE_COLOR[key]}${key === 'unk' ? ';opacity:.5' : ''}"></i>${STATE_LABEL[key]} <b>${point[key]}</b>`,
     ).join('<br>')
     const applicable = TREND_SERIES.reduce((sum, key) => sum + point[key], 0)
-    return `<b>${heading}</b><br>` + lines + `<br><span style="opacity:.7">of ${applicable} applicable checks</span>`
+    return (
+      `<b>${heading}</b><br>` +
+      lines +
+      `<br><span style="opacity:.7">of ${applicable} applicable checks</span>`
+    )
   }
 
   // One overlay rect, not per-point hits: at daily resolution a per-point target is 1px wide.
@@ -1312,13 +1373,22 @@ export function mountPage(hostEl, root) {
     const top = Math.max(TREND_Y_STEP, Math.ceil(max / TREND_Y_STEP) * TREND_Y_STEP)
     const x = xScale(width, padding)
     const y = (value) => height - padding.b - (value / top) * (height - padding.t - padding.b)
-    const horizontal = (value) => `<line class="gridline" x1="${padding.l}" x2="${width - padding.r}" y1="${y(value)}" y2="${y(value)}"/>`
+    const horizontal = (value) =>
+      `<line class="gridline" x1="${padding.l}" x2="${width - padding.r}" y1="${y(value)}" y2="${y(value)}"/>`
 
     const steps = Array.from({ length: top / TREND_Y_STEP + 1 }, (_, i) => i * TREND_Y_STEP)
     const grid = steps.map(horizontal).join('')
-    const yLabels = steps.map((value, i) => `<text class="axis" x="0" y="${y(value) + 3.5}">${value}${i === steps.length - 1 ? ' checks' : ''}</text>`).join('')
+    const yLabels = steps
+      .map(
+        (value, i) =>
+          `<text class="axis" x="0" y="${y(value) + 3.5}">${value}${i === steps.length - 1 ? ' checks' : ''}</text>`,
+      )
+      .join('')
     const xLabels = ticksFor(range.from, range.to)
-      .map((tick) => `<text class="axis" x="${x(tick.t)}" y="${height - 6}" text-anchor="middle">${tick.label}</text>`)
+      .map(
+        (tick) =>
+          `<text class="axis" x="${x(tick.t)}" y="${height - 6}" text-anchor="middle">${tick.label}</text>`,
+      )
       .join('')
     const overlay = `<line id="xhair" x1="0" x2="0" y1="${padding.t}" y2="${height - padding.b}" stroke="var(--ink)" stroke-width="1" opacity="0"/>
          <rect id="hit" x="${padding.l}" y="${padding.t}" width="${width - padding.l - padding.r}" height="${height - padding.t - padding.b}" fill="transparent"/>`
@@ -1444,8 +1514,12 @@ export function mountPage(hostEl, root) {
   }
 
   function facetHtml(facet) {
-    const now = facet.collected ? `${Math.round(facet.rate * 100)}% · ${facet.met}/${facet.applicable} ${deltaChip(facet)}` : 'not collected yet'
-    const chart = facet.collected ? sparkline(facet) : `<span class="chip unk" style="margin-top:10px">${STATE_ICONS.unk}Not scanned</span>`
+    const now = facet.collected
+      ? `${Math.round(facet.rate * 100)}% · ${facet.met}/${facet.applicable} ${deltaChip(facet)}`
+      : 'not collected yet'
+    const chart = facet.collected
+      ? sparkline(facet)
+      : `<span class="chip unk" style="margin-top:10px">${STATE_ICONS.unk}Not scanned</span>`
     return `<div class="facet${facet.collected ? '' : ' muted'}">
         <h4>${facet.name}</h4>
         <div class="now">${now}</div>
@@ -1638,7 +1712,8 @@ export function mountPage(hostEl, root) {
   }
 
   function showLoadError(error) {
-    byId('tbl').innerHTML = `<tbody><tr><td style="padding:40px;text-align:center;color:var(--faint)">${esc(error.message)}</td></tr></tbody>`
+    byId('tbl').innerHTML =
+      `<tbody><tr><td style="padding:40px;text-align:center;color:var(--faint)">${esc(error.message)}</td></tr></tbody>`
   }
 
   // First paint waits for the decision log too, or approved deviations would show as open.

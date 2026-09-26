@@ -1,6 +1,11 @@
 // Tests for the per-client drill-down graph: screen→endpoint→backend tiers and backend resolution.
 import { describe, it, expect } from 'vitest'
-import { buildClientGraph, clientBackendResolver, screenBackendLabels, componentAdoption } from './clientGraph.js'
+import {
+  buildClientGraph,
+  clientBackendResolver,
+  screenBackendLabels,
+  componentAdoption,
+} from './clientGraph.js'
 
 const data = {
   repos: [{ folder: 'app1', apiUrl: 'api.example.com' }],
