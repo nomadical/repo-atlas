@@ -29,45 +29,103 @@ function agoLabel(days) {
 
 const withoutScope = (packageName) => packageName.replace(PACKAGE_SCOPE, '')
 
-function Resizer({ onResize }) {
-  // Removes the window listeners if the panel unmounts mid-drag (e.g. Escape closes it); otherwise
-  // they would leak until the next mouseup.
-  const cleanupRef = React.useRef(null)
-  React.useEffect(() => () => cleanupRef.current?.(), [])
-  const startDrag = useCallback(
-    (event) => {
-      event.preventDefault()
-      let width = null
-      const onMouseMove = (moveEvent) => {
-        width = Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, window.innerWidth - moveEvent.clientX))
-        onResize(width)
-      }
-      const stopDrag = () => {
-        window.removeEventListener('mousemove', onMouseMove)
-        window.removeEventListener('mouseup', stopDrag)
-        document.body.style.cursor = ''
-        cleanupRef.current = null
-        // Persist once per drag, not per mousemove.
-        if (width == null) return
-        try {
-          localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(width))
-        } catch {}
-      }
-      document.body.style.cursor = 'col-resize'
-      window.addEventListener('mousemove', onMouseMove)
-      window.addEventListener('mouseup', stopDrag)
-      cleanupRef.current = stopDrag
-    },
-    [onResize],
+// Arrow keys move the handle by this much; Shift moves it further.
+const RESIZE_STEP = 16
+const RESIZE_STEP_LARGE = 64
+
+const clampPanelWidth = (width) => Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width))
+
+function savePanelWidth(width) {
+  try {
+    localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(width))
+  } catch {}
+}
+
+// The panel sits on the right, so moving the handle left widens it.
+function keyboardWidth(key, width, step) {
+  if (key === 'ArrowLeft') return width + step
+  if (key === 'ArrowRight') return width - step
+  if (key === 'Home') return PANEL_MIN_WIDTH
+  if (key === 'End') return PANEL_MAX_WIDTH
+  return null
+}
+
+// Drag handle (mouse, pen or touch) and keyboard separator for the panel's width.
+function Resizer({ width, onResize }) {
+  // The pointer that owns the drag and the last width it set; a second pointer can't take over.
+  const dragRef = React.useRef(null)
+  const endDrag = useCallback(() => {
+    const drag = dragRef.current
+    if (!drag) return
+    dragRef.current = null
+    document.body.style.cursor = ''
+    if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId)
+    // Persist once per drag, not per move.
+    if (drag.width != null) savePanelWidth(drag.width)
+  }, [])
+  // A window blur mid-drag, or the panel unmounting (Escape closes it), ends the drag cleanly.
+  React.useEffect(() => {
+    window.addEventListener('blur', endDrag)
+    return () => {
+      window.removeEventListener('blur', endDrag)
+      endDrag()
+    }
+  }, [endDrag])
+
+  const onPointerDown = (event) => {
+    if (dragRef.current || event.button !== 0) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    handle.setPointerCapture?.(event.pointerId)
+    dragRef.current = { pointerId: event.pointerId, handle, width: null }
+    document.body.style.cursor = 'col-resize'
+  }
+  const onPointerMove = (event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    drag.width = clampPanelWidth(window.innerWidth - event.clientX)
+    onResize(drag.width)
+  }
+  const onPointerEnd = (event) => {
+    if (dragRef.current?.pointerId === event.pointerId) endDrag()
+  }
+  const onKeyDown = (event) => {
+    const step = event.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP
+    const next = keyboardWidth(event.key, width, step)
+    if (next == null) return
+    event.preventDefault()
+    const clamped = clampPanelWidth(next)
+    onResize(clamped)
+    savePanelWidth(clamped)
+  }
+
+  return (
+    <div
+      className="panel-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize details panel"
+      aria-valuenow={clampPanelWidth(width)}
+      aria-valuemin={PANEL_MIN_WIDTH}
+      aria-valuemax={PANEL_MAX_WIDTH}
+      tabIndex={0}
+      style={{ touchAction: 'none' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onLostPointerCapture={onPointerEnd}
+      onKeyDown={onKeyDown}
+      title="Drag, or use the arrow keys, to resize"
+    />
   )
-  return <div className="panel-resizer" onMouseDown={startDrag} title="Drag to resize" />
 }
 
 // The frame every details panel shares: resize handle and close button.
 function Panel({ width, kindColor, onResize, onClose, children }) {
   return (
     <aside className="panel" style={{ width, '--kind': kindColor }}>
-      <Resizer onResize={onResize} />
+      <Resizer width={width} onResize={onResize || noop} />
       <button className="close" onClick={onClose} aria-label="Close panel">
         <Icon name="close" />
       </button>
