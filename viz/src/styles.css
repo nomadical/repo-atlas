@@ -45,6 +45,21 @@ body {
   /* kind-coloured text keeps the kind's hue but clamps its lightness to stay readable on cards */
   --kind-l-min: 0;
   --kind-l-max: 0.5;
+  /* tinted pills and inline notices: -bg fill, -ink text, -bd border */
+  --warn-bg: #fff3d6;
+  --warn-ink: #8a5300;
+  --warn-bd: #ffd599;
+  --danger-bg: #fde7e7;
+  --danger-ink: #b3261e;
+  --ok-bg: #e3f5e9;
+  --ok-ink: #1b7a3d;
+  --info-bg: #e3f0ff;
+  --info-ink: #1a5fc8;
+  --violet-bg: #ede7f6;
+  --violet-ink: #4527a0;
+  --violet-bd: #d6c8f5;
+  --neutral-bg: #eceff1;
+  --neutral-ink: #455a64;
 }
 .app.dark {
   --canvas: #0c1322;
@@ -72,6 +87,20 @@ body {
   --st-removed-on: #0c1322;
   --kind-l-min: 0.76;
   --kind-l-max: 1;
+  --warn-bg: #3a2a0c;
+  --warn-ink: #ffc766;
+  --warn-bd: #6b4d12;
+  --danger-bg: #3d1a1d;
+  --danger-ink: #ff9a94;
+  --ok-bg: #133524;
+  --ok-ink: #7ee2a0;
+  --info-bg: #16294a;
+  --info-ink: #9cc2ff;
+  --violet-bg: #2a2147;
+  --violet-ink: #c7b5ff;
+  --violet-bd: #45397a;
+  --neutral-bg: #263245;
+  --neutral-ink: #b8c4d6;
 }
 .app {
   display: flex;
@@ -1154,8 +1183,8 @@ body {
 .node-stale {
   font-size: 9px;
   font-weight: 700;
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
   border-radius: 4px;
   padding: 0 5px;
   margin-left: 6px;
@@ -1171,25 +1200,25 @@ body {
   text-transform: none;
 }
 .node-flag.new {
-  color: #1a73e8;
-  background: #e3f0ff;
+  color: var(--info-ink);
+  background: var(--info-bg);
 }
 .node-flag.warn {
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
 }
 .stale-pill {
   font-size: 10px;
   font-weight: 700;
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
   border-radius: 5px;
   padding: 2px 7px;
   margin-left: 8px;
   vertical-align: middle;
 }
 .stale-text {
-  color: #b26a00 !important;
+  color: var(--warn-ink) !important;
 }
 
 /* Component Inventory: status lozenges + per-card status styling */
@@ -1267,16 +1296,16 @@ body {
   text-transform: uppercase;
 }
 .node-status.st-sunsetting {
-  color: #8a4400;
-  background: #ffe2b3;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
 }
 .node-status.st-planned {
-  color: #174ea6;
-  background: #d7e6fd;
+  color: var(--info-ink);
+  background: var(--info-bg);
 }
 .node-status.st-removed {
-  color: #5f6671;
-  background: #e4e7eb;
+  color: var(--neutral-ink);
+  background: var(--neutral-bg);
 }
 .node-card.st-sunsetting {
   border-style: dashed;
@@ -1422,15 +1451,15 @@ body {
 }
 /* backend chip in the client screens table — tinted to match the Backend tier color */
 .be-chip {
-  background: #fff3e0;
-  color: #9a5a00;
-  border-color: #ffd599;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  border-color: var(--warn-bd);
 }
 /* design-system component chip — tinted to match the dependency-edge color */
 .ui-chip {
-  background: #efe9fb;
-  color: #5b3aa6;
-  border-color: #d6c8f5;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
+  border-color: var(--violet-bd);
 }
 /* design-system adoption mini-table (ui repo Details panel) */
 .adopt-table {
@@ -1463,31 +1492,31 @@ body {
   text-decoration: none;
 }
 .ci-success {
-  background: #e3f5e9;
-  color: #1b7a3d;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
 }
 .ci-failure,
 .ci-timed_out,
 .ci-startup_failure {
-  background: #fde7e7;
-  color: #b3261e;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
 }
 .ci-cancelled,
 .ci-skipped,
 .ci-unknown,
 .ci-in_progress,
 .ci-queued {
-  background: var(--chip-bg, #eceef3);
+  background: var(--neutral-bg);
   color: var(--muted);
 }
 .alerts-bad {
-  color: #b3261e;
+  color: var(--danger-ink);
   font-weight: 600;
 }
 /* at-a-glance health flag on a card (only shown when there's a problem) */
 .node-flag.health-flag {
-  background: #fde7e7;
-  color: #b3261e;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
 }
 /* Figma-style alignment guides painted over the flow while an admin drags a card. */
 .rf-helper-lines {
@@ -1866,22 +1895,22 @@ body {
   gap: 4px;
 }
 .ext-chip {
-  background: #ede7f6;
-  color: #4527a0;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
 }
 .comp-chip {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
 }
 .mod-chip {
-  background: #eceff1;
-  color: #455a64;
+  background: var(--neutral-bg);
+  color: var(--neutral-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
@@ -1922,7 +1951,7 @@ body {
 .node-ext {
   margin-top: 5px;
   font-size: 10px;
-  color: #6a1b9a;
+  color: var(--violet-ink);
   opacity: 0.8;
 }
 
@@ -2110,7 +2139,7 @@ body {
   white-space: nowrap;
 }
 .env-age.old {
-  color: #b26a00;
+  color: var(--warn-ink);
 }
 .env-module {
   font-size: 11px;
@@ -2136,8 +2165,8 @@ body {
 }
 .edge-label {
   position: absolute;
-  background: #ede7f6;
-  color: #5e35b1;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 5px;
@@ -2366,12 +2395,12 @@ body {
   color: var(--chip-ink);
 }
 .adm-tag.warn {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
 }
 .adm-warn {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
   border-radius: 6px;
   padding: 5px 9px;
   font-size: 12px;
