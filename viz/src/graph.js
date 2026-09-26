@@ -660,7 +660,7 @@ function addDependencyEdges(ctx) {
       // the design system yalc-links its own package during local dev
       if (targetId === sourceId) continue
       if (!graph.has(targetId)) continue
-      const behind = isUi && latestUi && compareVersions(dep.version, latestUi) < 0
+      const behind = isUi && latestUi && dep.version && compareVersions(dep.version, latestUi) < 0
       graph.addEdge(dependencyEdge({ sourceId, targetId, dep, isUi, behind, latestUi }))
     }
   }

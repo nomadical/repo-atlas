@@ -574,6 +574,10 @@ describe('buildGraph', () => {
     const graph = buildGraph(fixture, { mode: 'dev' })
     const lagging = graph.edges.find((e) => e.source === 'lagging-app')
     expect(lagging.data).toEqual({ drift: true, scdLatest: '2.0.0' })
+    // no pinned version means we can't tell whether it lags
+    const unpinned = graph.edges.find((e) => e.source === 'unpinned-app')
+    expect(unpinned.data.drift).toBe(false)
+    expect(unpinned.label).toBeUndefined()
   })
 
   it('skips backendExternals whose backend does not resolve instead of leaving a dangling edge', () => {
