@@ -1048,6 +1048,10 @@ tr.grp .gm {
   height: auto;
   overflow: visible;
 }
+/* Horizontal drags scrub the readout; vertical ones still scroll the page. */
+#hit {
+  touch-action: pan-y;
+}
 .chart text {
   font-family: var(--sans);
   fill: var(--mut);

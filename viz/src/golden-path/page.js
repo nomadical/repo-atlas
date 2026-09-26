@@ -381,8 +381,8 @@ function ticksFor(from, to) {
   return yearlyTicks(from, to)
 }
 
-const svgFrame = (width, height, body, label) =>
-  `<svg viewBox="0 0 ${width} ${height}" role="img" style="max-width:${width}px"${label ? ` aria-label="${label}"` : ''}>${body}</svg>`
+const svgFrame = (width, height, body, label, role = 'img') =>
+  `<svg viewBox="0 0 ${width} ${height}" role="${role}" style="max-width:${width}px"${label ? ` aria-label="${label}"` : ''}>${body}</svg>`
 
 const legend = (states) =>
   `<div class="legend-row">${states
@@ -1340,46 +1340,99 @@ export function mountPage(hostEl, root) {
     }).join('')
   }
 
-  function trendTooltipHtml(point, grain) {
+  function trendPointDate(point, grain) {
     const from = new Date(point.from)
     const to = new Date(point.to)
+    if (grain === 1) return `${dayAndMonth(from)} ${from.getUTCFullYear()}`
+    return `${dayAndMonth(from)} – ${dayAndMonth(to)} ${to.getUTCFullYear()}`
+  }
+
+  const bucketName = (grain) => (grain === 7 ? 'weekly' : 'monthly')
+  const applicableAt = (point) => TREND_SERIES.reduce((sum, key) => sum + point[key], 0)
+
+  // The tooltip's content as one sentence, for the keyboard readout.
+  function trendReadoutText(point, grain) {
+    const mean = grain === 1 ? '' : `, ${bucketName(grain)} mean`
+    const values = TREND_SERIES.map((key) => `${STATE_LABEL[key]} ${point[key]}`).join(', ')
+    return `${trendPointDate(point, grain)}${mean}: ${values}, of ${applicableAt(point)} applicable checks`
+  }
+
+  function trendTooltipHtml(point, grain) {
     const heading =
       grain === 1
-        ? `${dayAndMonth(from)} ${from.getUTCFullYear()}`
-        : `${dayAndMonth(from)} – ${dayAndMonth(to)} ${to.getUTCFullYear()} <span style="opacity:.6">· ${grain === 7 ? 'weekly' : 'monthly'} mean</span>`
+        ? trendPointDate(point, grain)
+        : `${trendPointDate(point, grain)} <span style="opacity:.6">· ${bucketName(grain)} mean</span>`
     const lines = TREND_SERIES.map(
       (key) =>
         `<i style="background:${STATE_COLOR[key]}${key === 'unk' ? ';opacity:.5' : ''}"></i>${STATE_LABEL[key]} <b>${point[key]}</b>`,
     ).join('<br>')
-    const applicable = TREND_SERIES.reduce((sum, key) => sum + point[key], 0)
     return (
       `<b>${heading}</b><br>` +
       lines +
-      `<br><span style="opacity:.7">of ${applicable} applicable checks</span>`
+      `<br><span style="opacity:.7">of ${applicableAt(point)} applicable checks</span>`
     )
   }
 
+  function readoutPositionFor(key, index, count) {
+    if (key === 'ArrowRight' || key === 'ArrowUp') return Math.min(count - 1, index + 1)
+    if (key === 'ArrowLeft' || key === 'ArrowDown') return Math.max(0, index - 1)
+    if (key === 'Home') return 0
+    if (key === 'End') return count - 1
+    return -1
+  }
+
   // One overlay rect, not per-point hits: at daily resolution a per-point target is 1px wide.
-  function wireTrendHover(host, points, grain, width, x) {
+  // Pointer events cover mouse, pen and touch; the overlay is also a slider for keyboard readers.
+  function wireTrendReadout(host, points, grain, width, x) {
     const padding = TREND_PADDING
     const hit = host.querySelector('#hit')
     // Measure the plot's svg via the overlay: the legend swatches are the panel's first SVGs.
     const plot = hit.closest('svg')
     const crosshair = host.querySelector('#xhair')
-    hit.onmousemove = (event) => {
+    let shown = points.length - 1
+
+    function show(index) {
+      shown = index
+      const point = points[index]
       const box = plot.getBoundingClientRect()
-      const plotX = ((event.clientX - box.left) / box.width) * width
-      const t = range.from + ((plotX - padding.l) / (width - padding.l - padding.r)) * (range.to - range.from)
-      const nearest = points.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a))
-      crosshair.setAttribute('x1', x(nearest.t))
-      crosshair.setAttribute('x2', x(nearest.t))
+      crosshair.setAttribute('x1', x(point.t))
+      crosshair.setAttribute('x2', x(point.t))
       crosshair.setAttribute('opacity', '.25')
-      showTip(trendTooltipHtml(nearest, grain), event.clientX, box.top + 60)
+      hit.setAttribute('aria-valuenow', String(index))
+      hit.setAttribute('aria-valuetext', trendReadoutText(point, grain))
+      showTip(trendTooltipHtml(point, grain), box.left + (x(point.t) / width) * box.width, box.top + 60)
     }
-    hit.onmouseleave = () => {
+    function hide() {
       crosshair.setAttribute('opacity', '0')
       hideTip()
     }
+    function nearestTo(clientX) {
+      const box = plot.getBoundingClientRect()
+      const plotX = ((clientX - box.left) / box.width) * width
+      const t = range.from + ((plotX - padding.l) / (width - padding.l - padding.r)) * (range.to - range.from)
+      let nearest = 0
+      points.forEach((point, index) => {
+        if (Math.abs(point.t - t) < Math.abs(points[nearest].t - t)) nearest = index
+      })
+      return nearest
+    }
+
+    // The overlay is rebuilt with the chart, so its listeners go with it.
+    hit.addEventListener('pointerdown', (event) => show(nearestTo(event.clientX)))
+    hit.addEventListener('pointermove', (event) => show(nearestTo(event.clientX)))
+    // A lifted finger also "leaves", so touch keeps its readout until the next tap or a scroll.
+    hit.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'touch') hide()
+    })
+    hit.addEventListener('pointercancel', hide)
+    hit.addEventListener('focus', () => show(shown))
+    hit.addEventListener('blur', hide)
+    hit.addEventListener('keydown', (event) => {
+      const position = readoutPositionFor(event.key, shown, points.length)
+      if (position < 0) return
+      event.preventDefault()
+      show(position)
+    })
   }
 
   function chartTrend() {
@@ -1419,15 +1472,18 @@ export function mountPage(hostEl, root) {
       )
       .join('')
     const overlay = `<line id="xhair" x1="0" x2="0" y1="${padding.t}" y2="${height - padding.b}" stroke="var(--ink)" stroke-width="1" opacity="0"/>
-         <rect id="hit" x="${padding.l}" y="${padding.t}" width="${width - padding.l - padding.r}" height="${height - padding.t - padding.b}" fill="transparent"/>`
+         <rect id="hit" x="${padding.l}" y="${padding.t}" width="${width - padding.l - padding.r}" height="${height - padding.t - padding.b}" fill="transparent"
+           tabindex="0" role="slider" aria-label="Trend chart readout; arrow keys step through the window"
+           aria-valuemin="0" aria-valuemax="${points.length - 1}" aria-valuenow="${points.length - 1}"
+           aria-valuetext="${trendReadoutText(latest, grain)}"/>`
     const label = `Checks by state over the selected window. Today: ${TREND_SERIES.map((key) => `${STATE_LABEL[key]} ${latest[key]}`).join(', ')}.`
 
     host.innerHTML = `
       <h3>Overall state</h3>
       ${legend(TREND_SERIES)}
-      ${svgFrame(width, height, grid + yLabels + trendLinesHtml(points, x, y) + horizontal(0) + xLabels + overlay, label)}`
+      ${svgFrame(width, height, grid + yLabels + trendLinesHtml(points, x, y) + horizontal(0) + xLabels + overlay, label, 'group')}`
 
-    wireTrendHover(host, points, grain, width, x)
+    wireTrendReadout(host, points, grain, width, x)
   }
 
   function rangeBarHtml(spanDays, grain) {
@@ -1704,6 +1760,9 @@ export function mountPage(hostEl, root) {
     hostEl.style.setProperty('--top-h', `${height}px`)
   })
   topBarObserver.observe(root.querySelector('.top'))
+
+  // The tooltip is fixed to the viewport, so a scroll would leave it pointing at nothing.
+  listen(hostEl, 'scroll', hideTip)
 
   // Redraw on resize: letting the SVG stretch would scale the axis type with it.
   listen(window, 'resize', () => {
