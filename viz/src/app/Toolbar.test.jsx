@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest'
-import { render } from '../renderForTest.js'
-import { DetailSwitch, SearchBox } from './Toolbar.jsx'
+import { expect, it, vi } from 'vitest'
+import { act, render } from '../renderForTest.js'
+import { DetailSwitch, MoreMenu, SearchBox } from './Toolbar.jsx'
 
 const renderSearch = (view) =>
   render(
@@ -17,4 +17,29 @@ it('names the search box for what it does in the current view', () => {
 it('names the Detail switch without relying on its visible label', () => {
   const container = render(<DetailSwitch mode="dev" setMode={() => {}} />)
   expect(container.querySelector('input').getAttribute('aria-label')).toBe('Detail')
+})
+
+it('keeps Export, Regenerate and Publish reachable from the actions menu', () => {
+  const post = vi.fn()
+  const exportPng = vi.fn()
+  const container = render(
+    <MoreMenu
+      busy={null}
+      exportPng={exportPng}
+      downloadData={() => {}}
+      openEmbed={() => {}}
+      showPipelineActions
+      post={post}
+    />,
+  )
+  const openMenu = () => act(() => container.querySelector('.dd-btn').click())
+  const item = (label) =>
+    [...container.querySelectorAll('.dd-item')].find((button) => button.textContent === label)
+  openMenu()
+  expect(container.querySelector('.dd-btn').getAttribute('title')).toBe('More actions')
+  act(() => item('Export PNG').click())
+  openMenu()
+  act(() => item('Publish diagram').click())
+  expect(exportPng).toHaveBeenCalledOnce()
+  expect(post).toHaveBeenCalledWith('/api/publish', 'Publish')
 })

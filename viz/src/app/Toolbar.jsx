@@ -324,32 +324,13 @@ export function UserChip() {
 const regenerateLabel = (busy) => (busy === 'Regenerate' ? 'Regenerating…' : 'Regenerate data')
 const publishLabel = (busy) => (busy === 'Publish' ? 'Publishing…' : 'Publish diagram')
 
-// Regenerate/Publish hit the Vite dev-server API (vite.config.mjs), which doesn't exist in built
-// deploys, so callers only show them under `npm run dev`.
-export function ToolbarActions({ busy, exportPng, showPipelineActions, post }) {
-  return (
-    <div className="actions">
-      <button className="btn" disabled={!!busy} onClick={exportPng} title="Export current view to PNG">
-        Export
-      </button>
-      {showPipelineActions ? (
-        <>
-          <button className="btn" disabled={!!busy} onClick={() => post('/api/regenerate', 'Regenerate')}>
-            {regenerateLabel(busy)}
-          </button>
-          <button className="btn primary" disabled={!!busy} onClick={() => post('/api/publish', 'Publish')}>
-            {publishLabel(busy)}
-          </button>
-        </>
-      ) : null}
-    </div>
-  )
-}
-
+// Every export and pipeline action, in one menu so the toolbar stays on one row. Regenerate/Publish
+// hit the Vite dev-server API (vite.config.mjs), which doesn't exist in built deploys, so callers
+// only show them under `npm run dev`.
 export function MoreMenu({ busy, exportPng, downloadData, openEmbed, showPipelineActions, post }) {
   return (
     <Dropdown
-      className="more-dd"
+      className="actions-dd"
       label={<Icon name="more" />}
       caret={false}
       align="right"
@@ -373,6 +354,7 @@ export function MoreMenu({ busy, exportPng, downloadData, openEmbed, showPipelin
             </button>
             {showPipelineActions ? (
               <>
+                <div className="dd-group">Pipeline</div>
                 <button
                   className="dd-item"
                   disabled={!!busy}

@@ -35,7 +35,6 @@ import {
   MoreMenu,
   SearchBox,
   ThemeToggle,
-  ToolbarActions,
   UserChip,
   ViewMenu,
   ViewsMenu,
@@ -1190,12 +1189,6 @@ export default function App() {
             <ThemeToggle dark={dark} setDark={setDark} />
             <span className="tb-sep" />
             <UserChip />
-            <ToolbarActions
-              busy={busy}
-              exportPng={exportPng}
-              showPipelineActions={showPipelineActions}
-              post={post}
-            />
             <MoreMenu
               busy={busy}
               exportPng={exportPng}
