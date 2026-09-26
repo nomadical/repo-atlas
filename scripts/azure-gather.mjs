@@ -16,6 +16,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 import { AUDIT } from './_paths.mjs'
+import { runPooled } from './lib/run-pooled.mjs'
 
 const OUT = path.join(AUDIT, 'azure-resources.json')
 const execFileAsync = promisify(execFile)
@@ -24,7 +25,8 @@ const MS_PER_MINUTE = 60000
 const AZ_MAX_BUFFER = 1024 * 1024 * 64
 const AZ_TIMEOUT_MS = 120000
 const GRAPH_PAGE_SIZE = '1000'
-// az CLI startup dominates each call, so parallelism pays off.
+// az CLI startup dominates each call, so parallelism pays off. Pooled calls only fetch; their
+// results are applied afterwards in input order, so the output doesn't depend on which finished first.
 const AZ_CONCURRENCY = 10
 const ERROR_SNIPPET_LENGTH = 120
 
@@ -74,24 +76,21 @@ const az = async (args, { json = true } = {}) => {
   return json ? JSON.parse(stdout || 'null') : stdout
 }
 
-const graphQuery = async (query) =>
-  (await az(['graph', 'query', '-q', query, '--first', GRAPH_PAGE_SIZE])).data
+const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+const compareResources = (a, b) =>
+  compareText(a.name, b.name) ||
+  compareText(a.resourceGroup ?? '', b.resourceGroup ?? '') ||
+  compareText(a.id ?? '', b.id ?? '')
 
-// Runs the thunks with bounded concurrency; results keep the thunks' order.
-const runPooled = async (thunks, limit = AZ_CONCURRENCY) => {
-  const results = Array.from({ length: thunks.length })
-  let nextIndex = 0
-  const worker = async () => {
-    for (;;) {
-      const index = nextIndex++
-      if (index >= thunks.length) return
-      results[index] = await thunks[index]()
-    }
-  }
-  const workerCount = Math.min(limit, thunks.length)
-  await Promise.all(Array.from({ length: workerCount }, worker))
-  return results
-}
+// Resource Graph doesn't promise a row order, so rows are sorted to keep reruns identical.
+const graphQuery = async (query) =>
+  (await az(['graph', 'query', '-q', query, '--first', GRAPH_PAGE_SIZE])).data.sort(compareResources)
+
+const fetchPooled = (items, fetch) =>
+  runPooled(
+    items.map((item) => () => fetch(item)),
+    AZ_CONCURRENCY,
+  )
 
 // Versioned sites keep the version on the app: {env}{app}websitev2 -> app '{app}v2'.
 const parseEnvApp = (name, suffixes = [WEBSITE_SUFFIX, 'storage']) => {
@@ -157,7 +156,7 @@ const frontDoorEndpoints = await graphQuery(
 
 const hostByDomainId = new Map() // lowercased custom-domain resource id -> hostname
 
-const loadProfileDomains = async (profile) => {
+const listProfileDomains = async (profile) => {
   try {
     const domains = await az([
       'afd',
@@ -168,15 +167,20 @@ const loadProfileDomains = async (profile) => {
       '--resource-group',
       profile.resourceGroup,
     ])
-    for (const domain of domains) hostByDomainId.set(domain.id.toLowerCase(), domain.hostName)
+    return { domains }
   } catch (error) {
-    warnings.push(
-      `custom-domain list failed for ${profile.name}: ${String(error.message).slice(0, ERROR_SNIPPET_LENGTH)}`,
-    )
+    return { domains: [], error }
   }
 }
 
-await runPooled(profiles.map((profile) => () => loadProfileDomains(profile)))
+const domainListings = await fetchPooled(profiles, listProfileDomains)
+for (const [index, { domains, error }] of domainListings.entries()) {
+  if (error) {
+    const reason = String(error.message).slice(0, ERROR_SNIPPET_LENGTH)
+    warnings.push(`custom-domain list failed for ${profiles[index].name}: ${reason}`)
+  }
+  for (const domain of domains) hostByDomainId.set(domain.id.toLowerCase(), domain.hostName)
+}
 
 const endpointLocation = (endpointId) => {
   const match = endpointId.match(/resourcegroups\/([^/]+)\/providers\/microsoft\.cdn\/profiles\/([^/]+)\//i)
@@ -206,12 +210,11 @@ const applyRoute = (route, endpointHost) => {
   if (appPattern) slot.path = appPattern.replace(/\/\*$/, '')
 }
 
-const loadEndpointRoutes = async (endpoint) => {
+const listEndpointRoutes = async (endpoint) => {
   const location = endpointLocation(endpoint.id)
-  if (!location) return
-  let routes
+  if (!location) return []
   try {
-    routes = await az([
+    return await az([
       'afd',
       'route',
       'list',
@@ -223,12 +226,14 @@ const loadEndpointRoutes = async (endpoint) => {
       endpoint.name,
     ])
   } catch {
-    return
+    return []
   }
-  for (const route of routes) applyRoute(route, endpoint.hostName)
 }
 
-await runPooled(frontDoorEndpoints.map((endpoint) => () => loadEndpointRoutes(endpoint)))
+const routesByEndpoint = await fetchPooled(frontDoorEndpoints, listEndpointRoutes)
+for (const [index, endpoint] of frontDoorEndpoints.entries()) {
+  for (const route of routesByEndpoint[index]) applyRoute(route, endpoint.hostName)
+}
 
 // ---- 3. FE deploy freshness: $web/index.html last-modified -----------------------------------
 const websiteAccounts = Object.entries(apps).flatMap(([app, { envs }]) =>
@@ -236,9 +241,9 @@ const websiteAccounts = Object.entries(apps).flatMap(([app, { envs }]) =>
     .filter(([, slot]) => slot.storage)
     .map(([env, slot]) => ({ app, env, storageAccount: slot.storage })),
 )
-let unreadableIndexCount = 0
 
-const loadDeployTime = async ({ app, env, storageAccount }) => {
+// Undefined when index.html can't be read.
+const deployTimeOf = async ({ storageAccount }) => {
   try {
     const indexBlob = await az([
       'storage',
@@ -253,13 +258,18 @@ const loadDeployTime = async ({ app, env, storageAccount }) => {
       '--auth-mode',
       'login',
     ])
-    apps[app].envs[env].deployed = indexBlob?.properties?.lastModified || null
+    return indexBlob?.properties?.lastModified || null
   } catch {
-    unreadableIndexCount++
+    return undefined
   }
 }
 
-await runPooled(websiteAccounts.map((websiteAccount) => () => loadDeployTime(websiteAccount)))
+const deployTimes = await fetchPooled(websiteAccounts, deployTimeOf)
+let unreadableIndexCount = 0
+for (const [index, { app, env }] of websiteAccounts.entries()) {
+  if (deployTimes[index] === undefined) unreadableIndexCount++
+  else apps[app].envs[env].deployed = deployTimes[index]
+}
 if (unreadableIndexCount) {
   warnings.push(
     `$web/index.html not readable for ${unreadableIndexCount}/${websiteAccounts.length} website accounts (404 or no Storage Blob Data Reader role)`,
@@ -278,17 +288,18 @@ const loadLastPushes = async (registryName) => {
     warnings.push(`ACR ${registryName}: no data-plane access`)
     return
   }
-  const lastPushByRepo = {}
-  acr[registryName] = lastPushByRepo
-  const loadRepository = async (repository) => {
+  const lastPushOf = async (repository) => {
     try {
       const meta = await az(['acr', 'repository', 'show', '--name', registryName, '--repository', repository])
-      lastPushByRepo[repository] = { lastPush: meta.lastUpdateTime || null }
+      return meta.lastUpdateTime || null
     } catch {
-      lastPushByRepo[repository] = { lastPush: null }
+      return null
     }
   }
-  await runPooled(repositories.map((repository) => () => loadRepository(repository)))
+  const lastPushes = await fetchPooled(repositories, lastPushOf)
+  acr[registryName] = Object.fromEntries(
+    repositories.map((repository, index) => [repository, { lastPush: lastPushes[index] }]),
+  )
 }
 
 const registries = await graphQuery(
