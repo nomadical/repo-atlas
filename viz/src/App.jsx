@@ -110,6 +110,8 @@ const EMPTY_GRAPH = {
 const NO_CONFIG = {}
 const EXPORT_BACKGROUND = { dark: '#0c1322', light: '#f4f6fa' }
 const MINIMAP_FALLBACK_COLOR = '#bbb'
+// colorMode themes React Flow's controls and minimap; its dark pane fill would hide the canvas colour.
+const FLOW_STYLE = { '--xy-background-color': 'transparent' }
 
 function readPanelWidth() {
   const saved = Number(typeof localStorage !== 'undefined' && localStorage.getItem(PANEL_WIDTH_KEY))
@@ -1239,6 +1241,7 @@ export default function App() {
             <ReactFlow
               onInit={(instance) => (rfRef.current = instance)}
               colorMode={dark ? 'dark' : 'light'}
+              style={FLOW_STYLE}
               nodes={rfNodes}
               edges={rfEdges}
               onNodesChange={onNodesChangeAdmin}
