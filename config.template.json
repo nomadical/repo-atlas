@@ -15,6 +15,7 @@
 
   "_dataStaleDays": "The toolbar's 'data N days ago' badge turns amber when the generated data is older than this many days. Default 7.",
   "dataStaleDays": 7,
+  "_demoDataOrg": "Only for a repo whose committed pipeline data must stay a demo (like the public repo-atlas). Set to the demo's org and a pre-commit hook + CI refuse commits whose data files describe any other estate. Leave unset in a fork that commits its own data.",
 
   "_internalScopes": "npm scopes your org publishes under. A dependency in one of these scopes is drawn as an internal-dependency edge instead of an external package. List scopes you've migrated AWAY from too — repos that still pin the old name are exactly the drift worth seeing. Unset: no internal edges are drawn.",
   "internalScopes": ["@acme"],

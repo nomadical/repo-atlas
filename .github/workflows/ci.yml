@@ -30,5 +30,7 @@ jobs:
         run: npm --prefix server ci --omit=dev && node --check server/server.mjs && node --check server/blob-store.mjs
       - name: Data guard
         run: node scripts/guard-data.mjs
+      - name: Demo data lock (no real estate data in the committed files)
+        run: node scripts/check-demo-data.mjs
       - name: Build viz (typecheck-by-build)
         run: npm --prefix viz run build
