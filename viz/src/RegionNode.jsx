@@ -28,7 +28,7 @@ function RegionNode({ data, selected }) {
           onResizeEnd={reportResize}
         />
       ) : null}
-      <span className="region-label" style={{ color: data.color }}>
+      <span className="region-label" style={{ '--kind': data.color }}>
         {data.label}
       </span>
     </div>

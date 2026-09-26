@@ -194,14 +194,13 @@ export default function Details({
         <RepoBody
           {...bodyProps}
           repo={repo}
-          kindColor={kindColor}
           extras={extras}
           isDev={mode === 'dev'}
           config={config}
           onDrillIn={onDrillIn}
         />
       ) : (
-        <ResourceBody {...bodyProps} kindColor={kindColor} />
+        <ResourceBody {...bodyProps} />
       )}
     </Panel>
   )
@@ -226,13 +225,13 @@ function InventorySections({ inventory, docSearchUrl, frameworkConsumers, naviga
 }
 
 // A node with no repo behind it (backend, external service, bus, ...).
-function ResourceBody({ data, kindColor, navigate, docSearchUrl, frameworkConsumers }) {
+function ResourceBody({ data, navigate, docSearchUrl, frameworkConsumers }) {
   const resource = data.resource
   const description = data.inventory?.description || data.subtitle
   return (
     <>
       <div className="panel-head">
-        <span className="panel-eyebrow" style={{ color: kindColor }}>
+        <span className="panel-eyebrow">
           {KIND[data.kind]?.label || data.kind}
           {resource?.repo ? <span className="panel-eyebrow-sub"> · {resource.repo}</span> : null}
         </span>
@@ -299,7 +298,6 @@ function ResourceBody({ data, kindColor, navigate, docSearchUrl, frameworkConsum
 function RepoBody({
   data,
   repo,
-  kindColor,
   extras,
   isDev,
   config,
@@ -321,9 +319,7 @@ function RepoBody({
   return (
     <>
       <div className="panel-head">
-        <span className="panel-eyebrow" style={{ color: kindColor }}>
-          {KIND[repo.kind]?.label || repo.kind}
-        </span>
+        <span className="panel-eyebrow">{KIND[repo.kind]?.label || repo.kind}</span>
         <h2>
           {data.inventory?.name || repo.displayName || repo.folder}
           {data.stale ? (
@@ -545,7 +541,7 @@ function RegionDetails({ region, width, onResize, onClose, onNavigate }) {
   return (
     <Panel width={width} kindColor={regionColor} onResize={onResize} onClose={onClose}>
       <div className="panel-head">
-        <span className="panel-eyebrow" style={{ color: regionColor }}>
+        <span className="panel-eyebrow">
           Group · {members.length} {members.length === 1 ? 'component' : 'components'}
         </span>
         <h2>
@@ -596,7 +592,7 @@ function ScreenDetails({ screen, clientTitle, width, onResize, onClose }) {
   return (
     <Panel width={width} kindColor={screenColor} onResize={onResize} onClose={onClose}>
       <div className="panel-head">
-        <span className="panel-eyebrow" style={{ color: screenColor }}>
+        <span className="panel-eyebrow">
           Screen{clientTitle ? <span className="panel-eyebrow-sub"> · {clientTitle}</span> : null}
         </span>
         <h2>{screen.name}</h2>

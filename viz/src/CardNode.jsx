@@ -69,7 +69,7 @@ function CardNode({ data, selected }) {
   return (
     <div
       className={'node-card' + (selected ? ' selected' : '') + (statusClass ? ' ' + statusClass : '')}
-      style={{ borderTopColor: kind.color }}
+      style={{ borderTopColor: kind.color, '--kind': kind.color }}
       title={cardTooltip(kind, data.status, inventory)}
     >
       <Handle type="target" position={Position.Left} className="hidden-handle" />
@@ -93,7 +93,7 @@ function CardNode({ data, selected }) {
           ))}
         </div>
       ) : null}
-      <div className="node-kind" style={{ color: kind.color }} title={`Component type: ${kind.label}`}>
+      <div className="node-kind" title={`Component type: ${kind.label}`}>
         {kind.label}
         {data.stale ? (
           <span className="node-stale" title={`No commits in ${data.staleDays} days`}>
