@@ -192,3 +192,32 @@ test('parseRoutes: pairs each element with the path of its own route object or t
   assert.equal(byComponent.JsxNoPath.path, null)
   assert.equal(byComponent.JsxAfter.path, '/jsx-after')
 })
+
+test('parseRoutes: roles written as JSX attributes, on the route tag or a wrapper element', () => {
+  const src = `
+    <Routes>
+      <Route path="/admin" necessaryRoles={[userRoles.ADMIN]} element={<Admin />} />
+      <Route
+        path="/reports"
+        element={
+          <RequireRoles sufficientRoles={['REPORTS', userRoles.INSIGHTS]}>
+            <Reports />
+          </RequireRoles>
+        }
+      />
+      <Route path="/open" element={<Open />} />
+    </Routes>`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Admin.roles, ['ADMIN'])
+  assert.equal(byComponent.Reports.path, '/reports')
+  assert.deepEqual(byComponent.Reports.roles, ['REPORTS', 'INSIGHTS'])
+  assert.deepEqual(byComponent.Open.roles, [])
+})
+
+test('parseRoutes: a route with both necessary and sufficient roles keeps both lists', () => {
+  const src = `
+    return [
+      { element: <Lanes />, path: '/lanes', necessaryRoles: [userRoles.LANES], sufficientRoles: [userRoles.ADMIN] },
+    ]`
+  assert.deepEqual(routesByComponent(src).Lanes.roles, ['LANES', 'ADMIN'])
+})
