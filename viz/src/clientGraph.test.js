@@ -1,6 +1,11 @@
 // Tests for the per-client drill-down graph: screen→endpoint→backend tiers and backend resolution.
 import { describe, it, expect } from 'vitest'
-import { buildClientGraph, clientBackendResolver, screenBackendLabels, componentAdoption } from './clientGraph.js'
+import {
+  buildClientGraph,
+  clientBackendResolver,
+  screenBackendLabels,
+  componentAdoption,
+} from './clientGraph.js'
 
 const data = {
   repos: [{ folder: 'app1', apiUrl: 'api.example.com' }],
@@ -13,7 +18,13 @@ const data = {
           routerFiles: 1,
           endpointLinks: { orders: 'https://api.example.com/q/swagger-ui/#/Orders' },
           screens: [
-            { name: 'Orders', component: 'Orders', path: '/orders', roles: ['ADMIN'], endpoints: ['orders', 'users/{id}'] },
+            {
+              name: 'Orders',
+              component: 'Orders',
+              path: '/orders',
+              roles: ['ADMIN'],
+              endpoints: ['orders', 'users/{id}'],
+            },
             { name: 'Home', component: 'Home', path: '/', roles: [], endpoints: [] },
           ],
         },
@@ -28,23 +39,23 @@ describe('buildClientGraph', () => {
   })
 
   it('builds three tiers: screens → endpoints → backend', () => {
-    const g = buildClientGraph(data, 'app1')
-    const byKind = (k) => g.nodes.filter((n) => n.data.kind === k)
+    const graph = buildClientGraph(data, 'app1')
+    const byKind = (k) => graph.nodes.filter((n) => n.data.kind === k)
     expect(byKind('screen').length).toBe(2)
     expect(byKind('endpoint').length).toBe(2) // orders + users/{id}, deduped
     expect(byKind('backend').length).toBe(1) // both endpoints resolve to be1
-    expect(g).toMatchObject({ screenCount: 2, endpointCount: 2, backendCount: 1 })
+    expect(graph).toMatchObject({ screenCount: 2, endpointCount: 2, backendCount: 1 })
   })
 
   it('wires screen→endpoint and endpoint→backend edges (no dangling)', () => {
-    const g = buildClientGraph(data, 'app1')
-    const ids = new Set(g.nodes.map((n) => n.id))
-    for (const e of g.edges) {
+    const graph = buildClientGraph(data, 'app1')
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    for (const e of graph.edges) {
       expect(ids.has(e.source)).toBe(true)
       expect(ids.has(e.target)).toBe(true)
     }
-    expect(g.edges.some((e) => e.source.startsWith('screen:') && e.target.startsWith('ep:'))).toBe(true)
-    expect(g.edges.some((e) => e.source.startsWith('ep:') && e.target.startsWith('be:'))).toBe(true)
+    expect(graph.edges.some((e) => e.source.startsWith('screen:') && e.target.startsWith('ep:'))).toBe(true)
+    expect(graph.edges.some((e) => e.source.startsWith('ep:') && e.target.startsWith('be:'))).toBe(true)
   })
 
   it('resolves endpoints to a backend by swagger-link host and by repo apiUrl fallback', () => {

@@ -1,65 +1,80 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './icons.jsx'
 
-// Right-click context menu (admin only). Positioned at the cursor and clamped to the viewport.
-// Closes on outside-click, Esc, scroll, or after an action runs. `items` is a flat list; entries
-// are { label, icon, onClick, disabled, danger } or { separator: true } for a divider. Falsy items
-// are skipped so callers can inline conditionals.
+const VIEWPORT_MARGIN = 8
+
+// Keeps a box of the given size fully inside the viewport, preferring the requested position.
+function clampToViewport(position, size, viewportSize) {
+  return Math.max(VIEWPORT_MARGIN, Math.min(position, viewportSize - size - VIEWPORT_MARGIN))
+}
+
+function MenuEntry({ item, onClose }) {
+  if (item.separator) return <div className="ctx-sep" />
+  if (item.heading) return <div className="ctx-heading">{item.heading}</div>
+  const runAndClose = () => {
+    item.onClick?.()
+    onClose()
+  }
+  return (
+    <button
+      className={'ctx-item' + (item.danger ? ' danger' : '')}
+      disabled={item.disabled}
+      role="menuitem"
+      onClick={runAndClose}
+    >
+      {item.icon ? <Icon name={item.icon} /> : <span className="ctx-icon-spacer" />}
+      <span>{item.label}</span>
+    </button>
+  )
+}
+
+// Right-click menu (admin only), opened at the cursor. Closes on outside click, Esc, scroll, or
+// after an action. Items are { label, icon, onClick, disabled, danger }, { heading } or
+// { separator: true }; falsy items are skipped so callers can inline conditionals.
 export default function ContextMenu({ x, y, items, onClose }) {
-  const ref = useRef(null)
-  const list = items.filter(Boolean)
-  // measure so we can flip the menu up/left when it would overflow the viewport
-  const [pos, setPos] = useState({ left: x, top: y })
+  const menuRef = useRef(null)
+  const visibleItems = items.filter(Boolean)
+  const [position, setPosition] = useState({ left: x, top: y })
+
+  // Measure after render so the menu can shift back into view when it would overflow.
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const { width, height } = el.getBoundingClientRect()
-    setPos({
-      left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+    const menu = menuRef.current
+    if (!menu) return
+    const { width, height } = menu.getBoundingClientRect()
+    setPosition({
+      left: clampToViewport(x, width, window.innerWidth),
+      top: clampToViewport(y, height, window.innerHeight),
     })
-  }, [x, y, list.length])
+  }, [x, y, visibleItems.length])
+
   useEffect(() => {
-    const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose()
+    const onMouseDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) onClose()
     }
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose()
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
     }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('keydown', onKeyDown)
     window.addEventListener('scroll', onClose, true)
     return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('scroll', onClose, true)
     }
   }, [onClose])
+
   return (
-    <div className="ctx-menu" ref={ref} style={{ left: pos.left, top: pos.top }} role="menu" onContextMenu={(e) => e.preventDefault()}>
-      {list.map((it, i) =>
-        it.separator ? (
-          <div key={i} className="ctx-sep" />
-        ) : it.heading ? (
-          <div key={i} className="ctx-heading">
-            {it.heading}
-          </div>
-        ) : (
-          <button
-            key={i}
-            className={'ctx-item' + (it.danger ? ' danger' : '')}
-            disabled={it.disabled}
-            role="menuitem"
-            onClick={() => {
-              it.onClick?.()
-              onClose()
-            }}
-          >
-            {it.icon ? <Icon name={it.icon} /> : <span className="ctx-icon-spacer" />}
-            <span>{it.label}</span>
-          </button>
-        ),
-      )}
+    <div
+      className="ctx-menu"
+      ref={menuRef}
+      style={{ left: position.left, top: position.top }}
+      role="menu"
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {visibleItems.map((item, index) => (
+        <MenuEntry key={index} item={item} onClose={onClose} />
+      ))}
     </div>
   )
 }

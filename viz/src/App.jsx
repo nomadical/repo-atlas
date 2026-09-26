@@ -1,345 +1,443 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './app/behaviour.css'
 import CardNode from './CardNode.jsx'
 import RegionNode from './RegionNode.jsx'
-import { buildGraph, KIND, LAYERS, edgeTypesFor, resolveClusters, DEFAULT_CLUSTERS, matchInventory, uiPackagesOf, uiHubFoldersOf, coversAll } from './graph.js'
+import {
+  buildGraph,
+  KIND,
+  LAYERS,
+  resolveClusters,
+  DEFAULT_CLUSTERS,
+  matchInventory,
+  uiPackagesOf,
+  uiHubFoldersOf,
+  coversAll,
+} from './graph.js'
 import { edgeTypes } from './floating.jsx'
-import { getUser, logout, authEnabled, relogin, isAdmin } from './auth.js'
+import { authEnabled, relogin, isAdmin } from './auth.js'
 import { getData, decryptData } from './data.js'
-import { Dropdown, FilterRow, docHref } from './ui.jsx'
 import Gate from './Gate.jsx'
 import { Legend, LegendOverlay } from './Legend.jsx'
 import Details from './Details.jsx'
 import { getHelperLines, HelperLines } from './HelperLines.jsx'
 import { Icon } from './icons.jsx'
 import ContextMenu from './ContextMenu.jsx'
+import EmbedDialog from './app/EmbedDialog.jsx'
+import FiltersMenu from './app/FiltersMenu.jsx'
+import {
+  Brand,
+  DetailSwitch,
+  EmbedToolbarActions,
+  GroupByMenu,
+  HealthButton,
+  MoreMenu,
+  SearchBox,
+  ThemeToggle,
+  UserChip,
+  ViewMenu,
+  ViewsMenu,
+} from './app/Toolbar.jsx'
+import { contextMenuItems } from './app/contextMenuItems.js'
+import { activatedNodeId } from './app/keyboard.js'
+import { afterLayout, motionDuration, revealNode } from './app/viewport.js'
+import {
+  EMPTY_LAYOUT,
+  UNDO_LIMIT,
+  normalizeLayout,
+  regionBoundsAround,
+  roundedPosition,
+  withOverride,
+  withoutOverride,
+} from './app/layout.js'
+import { clientScreenCount, findSelNode, singleLineTitle } from './app/nodes.js'
+import { filterSummary } from './app/filterSummary.js'
+import { pipelineHealth } from './app/pipelineHealth.js'
+import {
+  EMBED,
+  VIEW_LABELS,
+  defaultOnLabels,
+  facetsFromParams,
+  groupParamFor,
+  hiddenEdgesFromParams,
+  initialFlag,
+  initialParams,
+  initialString,
+  initialView,
+  isSmallScreen,
+  layersFromParams,
+  parseViewParams,
+  serializeViewParams,
+  toGroupBy,
+  toMode,
+} from './app/urlState.js'
 
-// Off-the-default-path UI is code-split so it stays out of the initial bundle: the Table/Matrix
-// views load when the user switches to them; the Admin panel only for admins who open it.
+// Off-the-default-path UI is code-split: the Table/Matrix views load when the user switches to
+// them, the Admin panel only for admins who open it.
 const InventoryTable = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.InventoryTable })))
 const MatrixView = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.MatrixView })))
-const IntegrationsTable = lazy(() => import('./InventoryViews.jsx').then((m) => ({ default: m.IntegrationsTable })))
+const IntegrationsTable = lazy(() =>
+  import('./InventoryViews.jsx').then((m) => ({ default: m.IntegrationsTable })),
+)
 const AdminPanel = lazy(() => import('./AdminPanel.jsx'))
 const ClientDetailView = lazy(() => import('./ClientDetailView.jsx'))
 
 const nodeTypes = { card: CardNode, region: RegionNode }
-// Integration protocol -> arrow-type key (see graph.js EDGE_TYPES), so the Arrows / integrations
-// filter toggles line up with the Integrations table's Protocol column.
+// Integration protocol -> arrow-type key (graph.js EDGE_TYPES), so the arrow toggles also filter
+// the Integrations table's rows.
 const PROTOCOL_EDGE = { REST: 'rest', Kafka: 'kafka' }
-const GRID = 16 // snap-to-grid step (admin drag mode)
+const GRID = 16 // snap-to-grid step in admin drag mode
 const NO_HELPER = { h: undefined, v: undefined, color: undefined }
-// Card-position overrides are scoped per view-mode (dev vs overview have different node sets, so a
-// card arranged in one shouldn't displace the other). Normalize legacy flat {id:{x,y}} configs.
-const EMPTY_LAYOUT = { dev: {}, overview: {} }
-const normalizeLayout = (l) => {
-  if (!l || typeof l !== 'object') return { ...EMPTY_LAYOUT }
-  if (l.dev || l.overview) return { dev: l.dev || {}, overview: l.overview || {} }
-  return { dev: l, overview: {} } // legacy flat map → treat as the dev layout
+const DEFAULT_TITLE = 'Architecture Map'
+const DEFAULT_DATA_STALE_DAYS = 7
+const TABLE_VIEWS = ['table', 'matrix', 'integrations']
+
+const PANEL_WIDTH_KEY = 'panelW'
+const MIN_PANEL_WIDTH = 280
+const DEFAULT_PANEL_WIDTH = 360
+const SAVED_VIEWS_KEY = 'archmap-views'
+const PASSPHRASE_KEY = 'archmap-pass'
+
+const FRAME_DURATION = 450
+const EMBED_FRAME_DELAY = 300
+const EMPTY_GRAPH = {
+  nodes: [],
+  edges: [],
+  facetOptions: { status: [], components: [] },
+  edgeTypesPresent: [],
+}
+// One object for a missing config, so hooks that depend on it don't rerun every render.
+const NO_CONFIG = {}
+const EXPORT_BACKGROUND = { dark: '#0c1322', light: '#f4f6fa' }
+const MINIMAP_FALLBACK_COLOR = '#bbb'
+// colorMode themes React Flow's controls and minimap; its dark pane fill would hide the canvas colour.
+const FLOW_STYLE = { '--xy-background-color': 'transparent' }
+
+function readPanelWidth() {
+  const saved = Number(typeof localStorage !== 'undefined' && localStorage.getItem(PANEL_WIDTH_KEY))
+  return saved >= MIN_PANEL_WIDTH ? saved : DEFAULT_PANEL_WIDTH
 }
 
-// --- shareable view state encoded in the URL query (G) ---
-// Layer params come from the LAYERS registry (graph.js); each serializes as its DEVIATION from
-// the default — absent at the default, `=1`/`=0` otherwise — so a default-on layer switched OFF
-// survives a reload/share, and untouched views keep a clean URL. Legacy `be=1&dpl=1` links parse
-// identically.
-const initialParams = new URLSearchParams(typeof location !== 'undefined' ? location.search : '')
-const qFlag = (param, dflt) => (initialParams.has(param) ? initialParams.get(param) === '1' : dflt)
-const qStr = (k, dflt) => initialParams.get(k) ?? dflt
-// A comma-list facet param: the values when the key is present (an empty `?k=` → [] = "show all",
-// which is how a cleared group survives a reload / embed), or null when the key is absent entirely.
-const qList = (k) => (initialParams.has(k) ? (initialParams.get(k) || '').split(',').filter(Boolean) : null)
-// Groups shown before any toggle. Seeded from the built-in clusters' `defaultOn` flags (re-seeded from
-// the config's clusters once data loads), so ISS/IoT stay hidden by default while CSS/Shared show.
-const defaultOnLabels = (clusterDefs) => clusterDefs.filter((c) => c.defaultOn).map((c) => c.label)
-// Embed (kiosk) mode: the page was loaded inside an <iframe> via ?embed=1. We strip the toolbar
-// chrome to just a title + "open full map" link so a specific, pre-filtered slice of the map can be
-// framed in a wiki page. The filters/facets/view in the URL already define *which* slice.
-const EMBED = initialParams.get('embed') === '1'
+// Saved views are per user (localStorage); sharing goes through the URL / Copy link instead.
+function readSavedViews() {
+  try {
+    const saved = JSON.parse(
+      (typeof localStorage !== 'undefined' && localStorage.getItem(SAVED_VIEWS_KEY)) || '[]',
+    )
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
 
-const VIEW_LABELS = { graph: 'Graph', matrix: 'Matrix', table: 'Table', integrations: 'Integrations' }
-// single view whitelist — keep the URL codec, applyViewParams and the Admin default-view select in lockstep
-const VIEWS = Object.keys(VIEW_LABELS)
-// graph lane groupings (Group by dropdown + `by` URL param)
-const GROUP_BY_LABELS = { team: 'By team', application: 'By application', platform: 'By platform' }
-const DEFAULT_TITLE = 'Architecture Map'
+function toggledIn(set, value) {
+  const next = new Set(set)
+  if (next.has(value)) next.delete(value)
+  else next.add(value)
+  return next
+}
 
-// Resolve a saved ?sel= id to a card node, aliasing the repo FOLDER (old links / saved views used the
-// folder before the serviceId became the node id) and the serviceId, so both keep resolving.
-const matchSelNode = (n, id) => n.type === 'card' && (n.id === id || n.data.repo?.folder === id || n.data.repo?.serviceId === id)
+const uniqueValues = (values) => [...new Set(values.filter(Boolean))]
 
-// A pipeline-health token. Most are repo names (optionally followed by " — reason" or
-// " (detail)"); link the repo part straight to GitHub so an owner can jump in and curate it.
-// Tokens that aren't a single repo-like word (free-text drift notes) render as plain chips.
-function HealthChip({ token, org }) {
-  const m = /^([A-Za-z0-9][A-Za-z0-9._-]*?)(\s+(?:—|\().*)?$/.exec(token)
-  const name = m?.[1]
-  // Without a known org (data.org) we can't build a repo link — fall back to a plain chip.
-  if (!name || /\s/.test(name) || !org) return <span className="mod-chip">{token}</span>
+const sortedKey = (set) => [...set].sort().join(',')
+
+// Changes whenever the canvas must remount (it keys the <ReactFlow> wrapper).
+function canvasKey({ layers, viewMode, facets, hiddenEdges, generatedAt }) {
+  const layerBits = LAYERS.map((layer) => (layers[layer.key] ? 1 : 0)).join('')
+  const facetKey = [facets.group, facets.status, facets.health, facets.hidden].map(sortedKey).join('|')
+  return `${layerBits}-${viewMode}-${facetKey}-${sortedKey(hiddenEdges)}-${generatedAt || ''}`
+}
+
+// Region boxes become movable/resizable for admins, persisting their geometry via onResize. Every
+// viewer can focus a region, since Enter on it spotlights its members like a click.
+function withRegionEditing(nodes, admin, setRegionGeom) {
+  return nodes.map((node) => {
+    if (node.type !== 'region') return node
+    return {
+      ...node,
+      draggable: admin,
+      selectable: admin,
+      focusable: true,
+      ariaLabel: `${node.data.label} cluster`,
+      data: { ...node.data, editable: admin, onResize: (geom) => setRegionGeom(node.id, geom) },
+    }
+  })
+}
+
+// The focused nodes plus their direct neighbours, and the edges between them.
+function litAround(focusNodes, edges) {
+  const litNodes = new Set(focusNodes)
+  const litEdges = new Set()
+  for (const edge of edges) {
+    if (!focusNodes.has(edge.source) && !focusNodes.has(edge.target)) continue
+    litEdges.add(edge.id)
+    litNodes.add(edge.source)
+    litNodes.add(edge.target)
+  }
+  return { ln: litNodes, le: litEdges }
+}
+
+const focusClass = (litSet, id) => (litSet.has(id) ? 'lit' : 'dim')
+
+// The PNG file name: the title slugified, falling back to the project name.
+function exportFileName(title) {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return (slug || 'repo-atlas') + '.png'
+}
+
+function downloadHref(href, fileName) {
+  const link = document.createElement('a')
+  link.href = href
+  link.download = fileName
+  link.click()
+}
+
+const errorText = (error, maxLength) => String(error.message || error).slice(0, maxLength)
+
+// A Table/Matrix/Integrations row selected into the Details panel.
+function inventorySelection(entry) {
+  let kind = 'component'
+  if (entry.type === 'Client') kind = 'client'
+  else if (/third/i.test(entry.type)) kind = 'external'
+  return { title: entry.name, kind, subtitle: entry.owner, inventory: entry }
+}
+
+function Spinner({ label }) {
   return (
-    <span className="mod-chip">
-      <a href={`https://github.com/${org}/${name}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-        {name}
-      </a>
-      {m[2] || ''}
-    </span>
+    <div className="loading" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      {label ? <span>{label}</span> : null}
+    </div>
   )
 }
 
-// Embed dialog — turns the *current* filtered view into a copy-pasteable <iframe> snippet plus a
-// live preview, so a curator can frame exactly the slice they're looking at into a wiki page. The
-// URL already mirrors every filter/facet/view/selection, so we just take location.search, force
-// embed=1, and hand back the snippet. Dismiss via the ✕, the backdrop, or Esc.
-function EmbedDialog({ onClose, onCopied, title }) {
-  const [w, setW] = useState('100%')
-  const [h, setH] = useState('640')
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  const src = useMemo(() => {
-    const p = new URLSearchParams(location.search)
-    p.set('embed', '1')
-    return location.origin + location.pathname + '?' + p.toString()
-  }, [])
-  // numeric dimensions get a px unit; "100%" and other CSS values pass through untouched
-  const dim = (v) => (/^\d+$/.test(String(v).trim()) ? v + 'px' : String(v).trim() || 'auto')
-  const snippet = `<iframe src="${src}" title="${title}" width="${dim(w)}" height="${dim(h)}" loading="lazy" style="border:0;border-radius:12px;max-width:100%"></iframe>`
-  const copy = () => {
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(snippet).then(() => onCopied?.())
-    else onCopied?.()
-  }
+function AccessDenied({ dark, reason }) {
   return (
-    <div className="legend-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Embed this view">
-      <div className="legend-card embed-card" onClick={(e) => e.stopPropagation()}>
-        <div className="legend-head">
-          <h3>Embed this view</h3>
-          <button className="btn ghost" onClick={onClose} aria-label="Close embed dialog">
-            <Icon name="close" />
-          </button>
-        </div>
-        <p className="embed-hint">
-          The embed shows <b>exactly the current filters, view &amp; selection</b>. Adjust the filters first to frame a specific part of the map, then copy the
-          snippet below into your wiki's HTML/iframe macro or any web page.
-        </p>
-        <div className="embed-dims">
-          <label>
-            Width
-            <input value={w} onChange={(e) => setW(e.target.value)} placeholder="100%" />
-          </label>
-          <label>
-            Height
-            <input value={h} onChange={(e) => setH(e.target.value)} placeholder="640" />
-          </label>
-          <span className="embed-dims-note">Plain numbers are pixels; use 100% to fill the container.</span>
-        </div>
-        <textarea className="embed-code" readOnly value={snippet} rows={3} onFocus={(e) => e.target.select()} />
-        <div className="embed-actions">
-          <a className="btn ghost" href={src} target="_blank" rel="noreferrer" title="Open the embeddable view in a new tab">
-            <Icon name="external" /> Preview
-          </a>
-          <button className="btn primary" onClick={copy}>
-            <Icon name="code" /> Copy embed code
-          </button>
-        </div>
-        <div className="embed-preview-wrap">
-          <div className="embed-preview-cap">Live preview</div>
-          <iframe className="embed-preview" src={src} title="Embed preview" loading="lazy" />
+    <div className={'app' + (dark ? ' dark' : '')}>
+      <div className="loading" role="alert">
+        <div>
+          <p>
+            <b>You're signed in, but your account can't read the architecture data.</b>
+          </p>
+          <p>
+            The data API requires an access role ({reason}). Ask IT to assign it to your account, then{' '}
+            <button className="btn" onClick={() => location.reload()}>
+              reload
+            </button>
+            .
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
+function TableViews({
+  view,
+  facetInventory,
+  visibleIntegrations,
+  data,
+  query,
+  config,
+  externalsByRepo,
+  setSel,
+}) {
+  const onSelect = (entry) => setSel(inventorySelection(entry))
+  let table
+  if (view === 'matrix') {
+    table = <MatrixView inventory={facetInventory} query={query} onSelect={onSelect} config={config} />
+  } else if (view === 'integrations') {
+    table = (
+      <IntegrationsTable
+        integrations={visibleIntegrations}
+        inventory={data?.inventory || []}
+        query={query}
+        onSelect={onSelect}
+      />
+    )
+  } else {
+    table = (
+      <InventoryTable
+        inventory={facetInventory}
+        query={query}
+        onSelect={onSelect}
+        externals={externalsByRepo}
+        docSearchUrl={config?.docSearchUrl}
+      />
+    )
+  }
+  return <Suspense fallback={<Spinner />}>{table}</Suspense>
+}
+
+// Shown on the canvas while the admin layout differs from the saved one or has overrides.
+function LayoutPill({ layoutDirty, autoArrange, openAdmin }) {
+  return (
+    <div className="layout-pill">
+      <span className="layout-pill-txt">
+        {layoutDirty ? <Icon name="dot" className="pill-dot" /> : null}{' '}
+        {layoutDirty ? 'Layout changed' : 'Custom layout'}
+      </span>
+      <button className="btn ghost" onClick={autoArrange} title="Re-flow this view to the automatic layout">
+        Auto-arrange
+      </button>
+      {layoutDirty ? (
+        <button
+          className="btn primary"
+          onClick={openAdmin}
+          title="Open Admin to save the layout to config.json"
+        >
+          Save…
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export default function App() {
   const [data, setData] = useState(null)
-  // Detail layers — additive; one state object driven by the LAYERS registry, seeded from the URL.
-  const [layers, setLayers] = useState(() => Object.fromEntries(LAYERS.map((l) => [l.key, qFlag(l.param, l.default)])))
-  const toggleLayer = useCallback((key, on) => setLayers((ls) => ({ ...ls, [key]: on })), [])
-  // Default to the (touch-friendly) Table on small screens unless the URL pins a view. Skip the
-  // heuristic in embed mode: a narrow iframe would otherwise flip a framed graph to the table.
-  const [view, setView] = useState(() => {
-    const smallScreen = typeof window !== 'undefined' && window.innerWidth < 760
-    const dflt = !initialParams.has('view') && smallScreen && !EMBED ? 'table' : 'graph'
-    const v = qStr('view', dflt)
-    return VIEWS.includes(v) ? v : 'graph'
-  })
+  // Detail layers are additive and seeded from the URL.
+  const [layers, setLayers] = useState(() => layersFromParams(initialParams))
+  const toggleLayer = useCallback((key, on) => setLayers((current) => ({ ...current, [key]: on })), [])
+  const [view, setView] = useState(initialView)
   const [sel, setSel] = useState(null)
-  // Graph lane grouping (Group by: Team | Application | Platform). Layout-only — the team clusters
-  // stay the Group FILTER taxonomy, so grouping and filtering compose. URL param `by`.
-  const [groupBy, setGroupBy] = useState(() => {
-    const v = qStr('by', 'team')
-    return v === 'application' || v === 'platform' ? v : 'team'
-  })
-  // Per-client drill-down: when set, the body shows ClientDetailView (screens + endpoint usage) for
-  // this repo folder, overlaying whatever view is selected. Cleared by the in-view Back button.
-  const [clientId, setClientId] = useState(() => qStr('client', '') || null)
+  // Graph lane grouping. Layout-only: the team clusters stay the Group filter, so grouping and
+  // filtering compose.
+  const [groupBy, setGroupBy] = useState(() => toGroupBy(initialString('by', 'team')))
+  // Per-client drill-down: when set, ClientDetailView for this repo folder replaces the body.
+  const [clientId, setClientId] = useState(() => initialString('client', '') || null)
   const [busy, setBusy] = useState(null)
   const [toast, setToast] = useState(null)
-  const [query, setQuery] = useState('') // search box (F)
-  const [compFilter, setCompFilter] = useState('') // text filter inside the Filters → Components list
-  // Narrowing filters — faceted: OR within a dimension, AND across. `group` = team cluster,
-  // `status` = lifecycle stage, `health` = at-risk (alerts / failing CI). An empty Set means that
-  // dimension imposes no constraint. Seeded from the URL for shareable links; absent from the URL,
-  // `group` falls back to the default-on clusters (so ISS/IoT start hidden) while `status`/`health`
-  // start empty (no constraint).
-  const [facets, setFacets] = useState(() => ({
-    group: new Set(qList('group') ?? defaultOnLabels(DEFAULT_CLUSTERS)),
-    status: new Set(qList('status') ?? []),
-    health: new Set(qFlag('risk', false) ? ['at-risk'] : []),
-    // per-component show/hide list, keyed by lowercased inventory name (seeded from ?hide=)
-    hidden: new Set((qList('hide') ?? []).map((s) => s.toLowerCase())),
-  }))
+  const [query, setQuery] = useState('')
+  const [compFilter, setCompFilter] = useState('') // text filter inside the Components list
+  // Faceted filters: OR within a dimension, AND across. Absent from the URL, `group` falls back to
+  // the default-on clusters.
+  const [facets, setFacets] = useState(() =>
+    facetsFromParams(initialParams, defaultOnLabels(DEFAULT_CLUSTERS)),
+  )
   const toggleFacet = useCallback(
-    (dim, val) =>
-      setFacets((f) => {
-        const next = new Set(f[dim])
-        if (next.has(val)) next.delete(val)
-        else next.add(val)
-        return { ...f, [dim]: next }
-      }),
+    (dimension, value) =>
+      setFacets((current) => ({ ...current, [dimension]: toggledIn(current[dimension], value) })),
     [],
   )
-  // Bulk show/hide for the per-component list (the Select all / Clear buttons). `names` is whatever
-  // is currently visible in the list (so it composes with the text filter); keyed by lowercased name.
+  // Bulk show/hide for the components list; `names` is whatever the list currently shows.
   const setComponentsHidden = useCallback((names, hide) => {
-    const keys = names.map((n) => n.toLowerCase())
-    setFacets((f) => {
-      const next = new Set(f.hidden)
-      for (const k of keys) {
-        if (hide) next.add(k)
-        else next.delete(k)
+    const keys = names.map((name) => name.toLowerCase())
+    setFacets((current) => {
+      const hidden = new Set(current.hidden)
+      for (const key of keys) {
+        if (hide) hidden.add(key)
+        else hidden.delete(key)
       }
-      return { ...f, hidden: next }
+      return { ...current, hidden }
     })
   }, [])
-  // Arrow-type visibility — a Set of edge-type keys the user has HIDDEN (empty = show every arrow).
-  // Seeded from the URL for shareable/embedded links; toggled from the on-canvas Legend arrow rows.
-  const [hiddenEdges, setHiddenEdges] = useState(() => new Set(qList('hedge') ?? []))
-  const toggleEdge = useCallback(
-    (key) =>
-      setHiddenEdges((s) => {
-        const next = new Set(s)
-        if (next.has(key)) next.delete(key)
-        else next.add(key)
-        return next
-      }),
-    [],
-  )
-  const [showHealth, setShowHealth] = useState(false) // health popover (E)
-  // Dismiss the health popover on an outside click / Escape (it isn't a Dropdown, so it needs its own).
+  // Edge-type keys the user has hidden (empty = show every arrow).
+  const [hiddenEdges, setHiddenEdges] = useState(() => hiddenEdgesFromParams(initialParams))
+  const toggleEdge = useCallback((key) => setHiddenEdges((current) => toggledIn(current, key)), [])
+  const [showHealth, setShowHealth] = useState(false)
+  // The health popover isn't a Dropdown, so it needs its own outside-click / Escape dismissal.
   const healthRef = useRef(null)
   useEffect(() => {
     if (!showHealth) return
-    const onDoc = (e) => {
-      if (healthRef.current && !healthRef.current.contains(e.target)) setShowHealth(false)
+    const onMouseDown = (event) => {
+      if (healthRef.current && !healthRef.current.contains(event.target)) setShowHealth(false)
     }
-    const onKey = (e) => e.key === 'Escape' && setShowHealth(false)
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
+    const onKeyDown = (event) => event.key === 'Escape' && setShowHealth(false)
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [showHealth])
-  const [showLegend, setShowLegend] = useState(false) // legend / help overlay
-  const [showEmbed, setShowEmbed] = useState(false) // embed-snippet builder dialog
-  const [showAdmin, setShowAdmin] = useState(false) // admin / curation editor
-  const [layout, setLayout] = useState(EMPTY_LAYOUT) // admin drag overrides per mode; seeded from config
+  const [showLegend, setShowLegend] = useState(false)
+  const [showEmbed, setShowEmbed] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
+  const [layout, setLayout] = useState(EMPTY_LAYOUT) // admin drag overrides per mode
   const [savedLayout, setSavedLayout] = useState(EMPTY_LAYOUT) // last persisted layout, for dirty tracking
-  const [helper, setHelper] = useState(NO_HELPER) // active alignment guide lines while dragging
-  const [ctx, setCtx] = useState(null) // right-click context menu: { x, y, node } (node null = pane)
-  const rfRef = useRef(null) // ReactFlow instance — for fitView/navigation
-  const layoutUndo = useRef([]) // stack of prior layout snapshots (Cmd/Ctrl+Z)
-  // snapshot the current layout so the last few drags / re-flows / region edits can be undone
+  const [helper, setHelper] = useState(NO_HELPER) // alignment guide lines while dragging
+  const [ctx, setCtx] = useState(null) // context menu target: { x, y, node }, node null = pane
+  const rfRef = useRef(null) // ReactFlow instance
+  const canvasRef = useRef(null)
+  // Until this time a frameNodes() animation owns the viewport, so revealing the selection waits.
+  const framingUntil = useRef(0)
+  const layoutUndo = useRef([]) // prior layout snapshots for Cmd/Ctrl+Z
   const pushUndo = useCallback(() => {
     layoutUndo.current.push(layout)
-    if (layoutUndo.current.length > 50) layoutUndo.current.shift()
+    if (layoutUndo.current.length > UNDO_LIMIT) layoutUndo.current.shift()
   }, [layout])
-  const [panelW, setPanelW] = useState(() => {
-    const saved = Number(typeof localStorage !== 'undefined' && localStorage.getItem('panelW'))
-    return saved >= 280 ? saved : 360
-  })
-  // Per-user named views: each saved view is the query string buildViewParams() emits, stored under
-  // localStorage (not shared across users — the URL / Copy-link covers sharing). Persisted eagerly on
-  // every mutation, mirroring the panelW localStorage pattern. Dragged card positions are NOT saved.
-  const [views, setViews] = useState(() => {
-    try {
-      const arr = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem('archmap-views')) || '[]')
-      return Array.isArray(arr) ? arr : []
-    } catch {
-      return []
-    }
-  })
+  const [panelW, setPanelW] = useState(readPanelWidth)
+  // Each saved view is a query string from buildViewParams(). Card positions are not saved.
+  const [views, setViews] = useState(readSavedViews)
   const persistViews = useCallback((next) => {
     setViews(next)
     try {
-      localStorage.setItem('archmap-views', JSON.stringify(next))
+      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(next))
     } catch {}
   }, [])
 
   const [enc, setEnc] = useState(null) // encrypted envelope awaiting a passphrase
   const [gateError, setGateError] = useState(false)
   const [gateBusy, setGateBusy] = useState(false)
-  const [denied, setDenied] = useState(null) // 403 from the data API — signed in but missing the read role
+  const [denied, setDenied] = useState(null) // signed in but missing the read role
   const load = useCallback(() => {
-    getData()
-      .then(async (res) => {
-        if (res.data) return setData(res.data)
-        setEnc(res.encrypted)
-        const saved = localStorage.getItem('archmap-pass') // unlock silently on revisits
-        if (saved)
-          try {
-            setData(await decryptData(res.encrypted, saved))
-          } catch {
-            localStorage.removeItem('archmap-pass')
-          }
-      })
-      .catch((e) => {
-        // Session expired -> the token refresh failed and the data endpoint 401'd; re-authenticate.
-        if (e?.unauthorized && authEnabled()) {
-          setToast('Session expired — signing in again…')
-          relogin()
-          return
-        }
-        // Signed in but missing the read role (e.g. SAM_READ) — a clear ask-for-access screen.
-        if (e?.forbidden) {
-          setDenied(String(e.message || 'access denied'))
-          return
-        }
-        setToast('Failed to load data: ' + e)
-      })
+    const showData = async (result) => {
+      if (result.data) return setData(result.data)
+      setEnc(result.encrypted)
+      // unlock silently on revisits
+      const savedPassphrase = localStorage.getItem(PASSPHRASE_KEY)
+      if (!savedPassphrase) return
+      try {
+        setData(await decryptData(result.encrypted, savedPassphrase))
+      } catch {
+        localStorage.removeItem(PASSPHRASE_KEY)
+      }
+    }
+    const showError = (error) => {
+      // A 401 here means the token refresh failed: the session expired.
+      if (error?.unauthorized && authEnabled()) {
+        setToast('Session expired — signing in again…')
+        relogin()
+        return
+      }
+      if (error?.forbidden) {
+        setDenied(String(error.message || 'access denied'))
+        return
+      }
+      setToast('Failed to load data: ' + error)
+    }
+    return getData().then(showData).catch(showError)
   }, [])
   useEffect(() => {
     load()
   }, [load])
-  // Escape clears the current spotlight/selection/search from anywhere (unless a menu/overlay owns it)
+  // Escape clears the spotlight, selection and search, unless an overlay or menu owns it.
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return
       if (showLegend || showAdmin) return // those handle their own Escape
-      // an open embed dialog / context menu owns this Escape: dismiss it WITHOUT also clearing
-      // the selection and search underneath
+      // Dismiss the embed dialog / context menu without also clearing what's underneath.
       if (showEmbed) return setShowEmbed(false)
       if (ctx) return setCtx(null)
       setSel(null)
       setBlockFocus(null)
       setQuery('')
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [showLegend, showAdmin, showEmbed, ctx])
   const unlock = useCallback(
-    async (pass) => {
+    async (passphrase) => {
       setGateBusy(true)
       setGateError(false)
       try {
-        setData(await decryptData(enc, pass))
+        setData(await decryptData(enc, passphrase))
         try {
-          localStorage.setItem('archmap-pass', pass)
+          localStorage.setItem(PASSPHRASE_KEY, passphrase)
         } catch {}
       } catch {
         setGateError(true)
@@ -352,67 +450,50 @@ export default function App() {
 
   const [hoverId, setHoverId] = useState(null)
   const [blockFocus, setBlockFocus] = useState(null) // Set of node ids, or null
-  const [dark, setDark] = useState(() => qFlag('dark', false))
-  const [mode, setMode] = useState(() => (qStr('mode', 'dev') === 'overview' ? 'overview' : 'dev')) // 'dev' | 'overview'
-  // Privileged controls (settings, dev mode, regenerate/publish) are admin-only; non-admins are
-  // locked to the read-only overview regardless of the mode state / URL.
+  const [dark, setDark] = useState(() => initialFlag('dark', false))
+  const [mode, setMode] = useState(() => toMode(initialString('mode', 'dev')))
+  // Non-admins are locked to the read-only overview regardless of the mode state or URL.
   const admin = isAdmin()
   const viewMode = admin ? mode : 'overview'
-  // persist a region's geometry override (move/resize) into the current mode's layout map
   const setRegionGeom = useCallback(
-    (id, g) => {
+    (id, geom) => {
       pushUndo()
-      setLayout((l) => ({ ...l, [viewMode]: { ...l[viewMode], [id]: g } }))
+      setLayout((current) => withOverride(current, viewMode, id, geom))
     },
     [pushUndo, viewMode],
   )
-  // drop a region's geometry override so it reverts to the auto-computed bounds on the next build
+  // The region reverts to its auto-computed bounds on the next build.
   const clearRegionGeom = useCallback(
     (id) => {
       pushUndo()
-      setLayout((l) => {
-        const mode = { ...l[viewMode] }
-        delete mode[id]
-        return { ...l, [viewMode]: mode }
-      })
+      setLayout((current) => withoutOverride(current, viewMode, id))
     },
     [pushUndo, viewMode],
   )
-  // shrink/grow a region box so it tightly wraps its member cards (their live positions + measured
-  // sizes), using the same padding the auto-layout uses (see graph.js `box`): 34px sides, extra top
-  // room for the label. No-op if the region has no members currently on the canvas.
+  // No-op when none of the region's members is on the canvas.
   const resizeRegionToFit = useCallback(
     (regionId, members) => {
       const nodes = rfRef.current?.getNodes?.() || []
-      const idset = new Set(members || [])
-      const cards = nodes.filter((n) => idset.has(n.id))
+      const memberIds = new Set(members || [])
+      const cards = nodes.filter((node) => memberIds.has(node.id))
       if (!cards.length) return
-      const dim = (n, k) => (k === 'w' ? (n.measured?.width ?? n.width ?? 224) : (n.measured?.height ?? n.height ?? 96))
-      const xs = cards.map((n) => n.position.x)
-      const ys = cards.map((n) => n.position.y)
-      const minX = Math.min(...xs) - 34
-      const maxX = Math.max(...cards.map((n) => n.position.x + dim(n, 'w'))) + 34
-      const minY = Math.min(...ys) - 52
-      const maxY = Math.max(...cards.map((n) => n.position.y + dim(n, 'h'))) + 30
-      setRegionGeom(regionId, { x: Math.round(minX), y: Math.round(minY), w: Math.round(maxX - minX), h: Math.round(maxY - minY) })
+      setRegionGeom(regionId, regionBoundsAround(cards))
     },
     [setRegionGeom],
   )
 
-  // editable, published app config (config.json -> data.config). All optional; each falls back to
-  // the built-in default so an un-curated config changes nothing.
-  const config = data?.config || {}
+  // Published app config (config.json). Every field is optional and falls back to a built-in default.
+  const config = data?.config || NO_CONFIG
   const clusterDefs = useMemo(() => resolveClusters(config), [config])
   const title = config.title || DEFAULT_TITLE
   const subtitle = config.subtitle || ''
   const logoUrl = config.logoUrl || ''
-  // Freshness threshold for the toolbar's "data N days ago" badge — how old the GENERATED DATA may
-  // get before the badge turns amber. Distinct from `staleDays` (repo commit staleness, graph.js).
-  const dataStaleDays = Number(config.dataStaleDays) > 0 ? Number(config.dataStaleDays) : 7
-  // Config-aware URL defaults: dark/mode/view serialize as their DEVIATION from these (mirroring
-  // the layer params), so in a deployment whose config flips a default the built-in value stays
-  // representable — switching back to it writes an explicit param (`dark=0`, `view=graph`) instead
-  // of an empty URL that the config-defaults effect silently reverts on the next reload.
+  // How old the generated data may get before the toolbar badge turns amber. Not the same as
+  // `staleDays`, which is about repo commits (graph.js).
+  const dataStaleDays =
+    Number(config.dataStaleDays) > 0 ? Number(config.dataStaleDays) : DEFAULT_DATA_STALE_DAYS
+  // dark/mode/view serialize against the config defaults, so switching back to a built-in default
+  // writes an explicit param instead of an empty URL the config would revert on reload.
   const cfgDark = config.defaultTheme === 'dark'
   const cfgMode = config.defaultMode === 'overview' ? 'overview' : 'dev'
   const cfgView = VIEW_LABELS[config.defaultView] ? config.defaultView : 'graph'
@@ -420,143 +501,138 @@ export default function App() {
     document.title = title
   }, [title])
 
-  // Apply config-driven defaults (view / mode / theme) once, after the data (and thus config)
-  // first loads — but only for state the URL didn't already pin, so shared links always win and a
-  // user's in-session change is never clobbered. Small screens keep the touch-friendly Table.
+  // Apply config defaults once, when the config first loads, and only where the URL didn't pin
+  // the value: shared links win and in-session changes are never clobbered.
   const appliedDefaults = useRef(false)
   useEffect(() => {
     if (appliedDefaults.current || !data?.config) return
     appliedDefaults.current = true
-    const c = data.config
-    const smallScreen = typeof window !== 'undefined' && window.innerWidth < 760
-    if (!initialParams.has('view') && !smallScreen && VIEW_LABELS[c.defaultView]) setView(c.defaultView)
-    if (!initialParams.has('mode') && (c.defaultMode === 'overview' || c.defaultMode === 'dev')) setMode(c.defaultMode)
-    if (!initialParams.has('dark') && (c.defaultTheme === 'dark' || c.defaultTheme === 'light')) setDark(c.defaultTheme === 'dark')
-    // when the config defines its own clusters, seed the default-on groups from them (unless the URL
-    // already pinned ?group=), so a fork controls which groups start hidden.
-    if (!initialParams.has('group') && Array.isArray(c.clusters) && c.clusters.length) setFacets((f) => ({ ...f, group: new Set(defaultOnLabels(c.clusters)) }))
-    if (c.layout && typeof c.layout === 'object') {
-      const norm = normalizeLayout(c.layout) // admin-curated card positions (per mode)
-      setLayout(norm)
-      setSavedLayout(norm)
+    const loadedConfig = data.config
+    const { defaultView, defaultMode, defaultTheme, clusters } = loadedConfig
+    // small screens keep the touch-friendly Table
+    if (!initialParams.has('view') && !isSmallScreen() && VIEW_LABELS[defaultView]) setView(defaultView)
+    if (!initialParams.has('mode') && (defaultMode === 'overview' || defaultMode === 'dev'))
+      setMode(defaultMode)
+    if (!initialParams.has('dark') && (defaultTheme === 'dark' || defaultTheme === 'light')) {
+      setDark(defaultTheme === 'dark')
+    }
+    // A fork's own clusters decide which groups start hidden.
+    if (!initialParams.has('group') && Array.isArray(clusters) && clusters.length) {
+      setFacets((current) => ({ ...current, group: new Set(defaultOnLabels(clusters)) }))
+    }
+    if (loadedConfig.layout && typeof loadedConfig.layout === 'object') {
+      const curatedLayout = normalizeLayout(loadedConfig.layout)
+      setLayout(curatedLayout)
+      setSavedLayout(curatedLayout)
     }
   }, [data])
 
-  // Detail layers (resources/services, integrations, deployments, component catalog, service links)
-  // are available to EVERYONE — not gated behind admin/dev mode. (Dev "mode" still adds tooling/test
-  // chips + the richer layout, and ⚙ Settings / Regenerate / drag-arrange stay admin-only.)
-  // ONE build per change: buildGraph applies the layers + all facets itself and reports the status
-  // options present before the status filter ran (facetOptions), so the Filters menu scopes its
-  // options to the current view without a second build.
+  // One build per change: buildGraph applies layers and facets itself, and reports the status
+  // options present before the status filter ran, so the Filters menu needs no second build.
   const buildOpts = useMemo(
     () => ({ layers, facets, hiddenEdges, mode: viewMode, layout: layout[viewMode] || {}, groupBy }),
     [layers, facets, hiddenEdges, viewMode, layout, groupBy],
   )
-  const graph = useMemo(
-    () => (data ? buildGraph(data, buildOpts) : { nodes: [], edges: [], facetOptions: { status: [], components: [] }, edgeTypesPresent: [] }),
-    [data, buildOpts],
-  )
-  const kindsPresent = useMemo(() => new Set(graph.nodes.map((n) => n.data.kind)), [graph])
-  const facetKey = `${[...facets.group].sort().join(',')}|${[...facets.status].sort().join(',')}|${[...facets.health].sort().join(',')}|${[...facets.hidden].sort().join(',')}`
-  const flowKey = `${LAYERS.map((l) => (layers[l.key] ? 1 : 0)).join('')}-${viewMode}-${facetKey}-${[...hiddenEdges].sort().join(',')}-${data?.generatedAt || ''}`
+  const graph = useMemo(() => (data ? buildGraph(data, buildOpts) : EMPTY_GRAPH), [data, buildOpts])
+  const kindsPresent = useMemo(() => new Set(graph.nodes.map((node) => node.data.kind)), [graph])
+  const flowKey = canvasKey({ layers, viewMode, facets, hiddenEdges, generatedAt: data?.generatedAt })
 
-  // React Flow owns node/edge state so it can persist measured dimensions
-  // (controlled props without onNodesChange caused re-measure flicker + dropped clicks).
+  // React Flow owns node/edge state so it keeps measured dimensions (controlled props without
+  // onNodesChange caused re-measure flicker and dropped clicks).
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([])
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([])
 
-  // load a fresh layout when the graph (toggles/mode/data) changes. For admins, region boxes become
-  // movable/resizable (NodeResizer) — inject the editable flag + the persist callback here.
   useEffect(() => {
-    setRfNodes(
-      graph.nodes.map((n) =>
-        n.type === 'region'
-          ? { ...n, draggable: admin, selectable: admin, focusable: admin, data: { ...n.data, editable: admin, onResize: (g) => setRegionGeom(n.id, g) } }
-          : n,
-      ),
-    )
+    setRfNodes(withRegionEditing(graph.nodes, admin, setRegionGeom))
     setRfEdges(graph.edges)
   }, [graph, admin, setRegionGeom, setRfNodes, setRfEdges])
 
-  // (F) search → reuse the focus (lit/dim) mechanism to spotlight matches. searchList keeps the
-  // graph order so the count + ‹/› stepper walk matches predictably.
+  // Search reuses the focus (lit/dim) spotlight. Matches keep graph order so the ‹/› stepper
+  // walks them predictably.
   const searchList = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return []
-    return graph.nodes.filter((n) => n.type === 'card' && `${n.data.title} ${n.data.subtitle || ''}`.toLowerCase().includes(q)).map((n) => n.id)
+    const needle = query.trim().toLowerCase()
+    if (!needle) return []
+    const matches = (node) =>
+      node.type === 'card' && `${node.data.title} ${node.data.subtitle || ''}`.toLowerCase().includes(needle)
+    return graph.nodes.filter(matches).map((node) => node.id)
   }, [query, graph])
   const searchMatches = useMemo(() => (searchList.length ? new Set(searchList) : null), [searchList])
   const [matchIdx, setMatchIdx] = useState(0)
   useEffect(() => setMatchIdx(0), [query])
-  // clamp when the list shrinks after a graph rebuild (filter/layer toggle) — otherwise the
-  // "n/m" counter can read past the end (e.g. "5/3") and Enter steps land modulo-arbitrarily
-  useEffect(() => setMatchIdx((i) => (searchList.length && i >= searchList.length ? 0 : i)), [searchList])
+  // Clamp when a rebuild shrinks the list, or the counter reads past the end ("5/3").
+  useEffect(
+    () => setMatchIdx((index) => (searchList.length && index >= searchList.length ? 0 : index)),
+    [searchList],
+  )
 
-  // Filter options. Group is the fixed team taxonomy (always offer every cluster). Status is scoped
-  // to the CURRENT view: on the graph only statuses that actually have a node (reported by the build
-  // itself, pre-status-filter) are offered, so ticking one always narrows a visible set and never
-  // blanks the canvas. The Table/Matrix cover the full inventory, so there Status draws from every entry.
+  // Group always offers every cluster. On the graph, status and components come from the build,
+  // so a ticked status always narrows a visible set; Table/Matrix draw from the full inventory.
   const facetOptions = useMemo(() => {
-    const uniq = (xs) => [...new Set(xs.filter(Boolean))].sort()
+    const inventory = data?.inventory || []
+    const sortedUnique = (values) => uniqueValues(values).sort()
+    const onGraph = view === 'graph'
     return {
-      group: clusterDefs.map((c) => c.label),
-      status: view === 'graph' ? graph.facetOptions?.status || [] : uniq((data?.inventory || []).map((e) => e.status)),
-      // graph: the hideable cards on the current map (reported by the build); Table/Matrix: every
-      // inventory component (the list can reach ~136 rows, hence the text filter + scroll cap).
-      components: view === 'graph' ? graph.facetOptions?.components || [] : uniq((data?.inventory || []).map((e) => e.name)),
+      group: clusterDefs.map((cluster) => cluster.label),
+      status: onGraph
+        ? graph.facetOptions?.status || []
+        : sortedUnique(inventory.map((entry) => entry.status)),
+      components: onGraph
+        ? graph.facetOptions?.components || []
+        : sortedUnique(inventory.map((entry) => entry.name)),
     }
   }, [view, graph, data, clusterDefs])
-  // inventory filtered by the same group + status + health facets, for the Table / Matrix views.
-  // Normalize first so an all-selected facet equals none-selected (same rule the graph applies).
+  // Inventory for the Table / Matrix views, filtered by the same facets. An all-selected facet
+  // counts as none-selected, the same rule the graph applies.
   const facetInventory = useMemo(() => {
-    const uniq = (xs) => [...new Set(xs.filter(Boolean))]
-    const groupOpts = clusterDefs.map((c) => c.label)
-    const statusOpts = uniq((data?.inventory || []).map((e) => e.status))
-    const hideOpts = uniq((data?.inventory || []).map((e) => String(e.name).toLowerCase()))
-    const eff = {
+    const inventory = data?.inventory || []
+    const groupOptions = clusterDefs.map((cluster) => cluster.label)
+    const statusOptions = uniqueValues(inventory.map((entry) => entry.status))
+    const hideOptions = uniqueValues(inventory.map((entry) => String(entry.name).toLowerCase()))
+    const effectiveFacets = {
       ...facets,
-      group: coversAll(facets.group, groupOpts) ? new Set() : facets.group,
-      status: coversAll(facets.status, statusOpts) ? new Set() : facets.status,
-      hidden: coversAll(facets.hidden, hideOpts) ? new Set() : facets.hidden,
+      group: coversAll(facets.group, groupOptions) ? new Set() : facets.group,
+      status: coversAll(facets.status, statusOptions) ? new Set() : facets.status,
+      hidden: coversAll(facets.hidden, hideOptions) ? new Set() : facets.hidden,
     }
-    return (data?.inventory || []).filter((e) => matchInventory(e, eff, clusterDefs))
+    return inventory.filter((entry) => matchInventory(entry, effectiveFacets, clusterDefs))
   }, [data, facets, clusterDefs])
-  // repo basename -> auto-detected integrations (data.repos[].externals), for the Table's
-  // Integrations column. Inventory `repoName` === repo `folder`, so this keys cleanly.
+  // Repo folder -> auto-detected integrations, for the Table's Integrations column. Inventory
+  // `repoName` equals the repo `folder`, so this keys cleanly.
   const externalsByRepo = useMemo(() => {
-    const m = {}
-    for (const r of data?.repos || []) if (r.externals?.length) m[r.folder] = r.externals
-    return m
+    const byFolder = {}
+    for (const repo of data?.repos || []) {
+      if (repo.externals?.length) byFolder[repo.folder] = repo.externals
+    }
+    return byFolder
   }, [data])
 
-  // Integration protocol -> arrow-type key, so the Filters "Arrows / integrations" toggles apply to
-  // the Integrations table too (hiding "Kafka" drops both the graph's Kafka arrows and the table's
-  // Kafka rows). Which arrow types are actually present in the integration data drives the toggles
-  // shown while the Integrations view is active.
-  const integrationEdgeTypes = useMemo(() => [...new Set((data?.integrations || []).map((i) => PROTOCOL_EDGE[i.protocol]).filter(Boolean))], [data])
+  // The arrow toggles apply to the Integrations table too: hiding Kafka drops the graph's Kafka
+  // arrows and the table's Kafka rows.
+  const integrationEdgeTypes = useMemo(
+    () => uniqueValues((data?.integrations || []).map((integration) => PROTOCOL_EDGE[integration.protocol])),
+    [data],
+  )
   const visibleIntegrations = useMemo(
     () =>
-      (data?.integrations || []).filter((i) => {
-        const t = PROTOCOL_EDGE[i.protocol]
-        return !t || !hiddenEdges.has(t)
+      (data?.integrations || []).filter((integration) => {
+        const edgeType = PROTOCOL_EDGE[integration.protocol]
+        return !edgeType || !hiddenEdges.has(edgeType)
       }),
     [data, hiddenEdges],
   )
 
-  // The graph node id of the currently-selected single component, so selecting a card dims everything
-  // that isn't it or a direct neighbour — the same treatment as hovering. Region selections drive
-  // `blockFocus` instead; screen / other-panel selections have no node and yield null.
+  // The node of the selected single component, so selecting a card spotlights it like a hover.
+  // Region selections drive `blockFocus` instead; screen selections have no node.
   const selId = useMemo(() => {
     if (!sel || sel.region || sel.screen) return null
-    const byRef = graph.nodes.find((n) => n.data === sel)
-    if (byRef) return byRef.id
+    const sameObject = graph.nodes.find((node) => node.data === sel)
+    if (sameObject) return sameObject.id
     const key = sel.repo?.serviceId || sel.repo?.folder || sel.resource?.id
-    return key ? (graph.nodes.find((n) => matchSelNode(n, key))?.id ?? null) : null
+    if (!key) return null
+    return findSelNode(graph.nodes, key)?.id ?? null
   }, [sel, graph])
 
-  // focus (dim everything else) = hovered node > search hits > a clicked block's members > the selected
-  // card. Facets are a true filter now (they remove non-matching nodes in buildGraph), so they no
-  // longer drive dimming.
+  // What to spotlight, by priority. Facets don't dim: they remove nodes in buildGraph.
   const focusNodes = useMemo(() => {
     if (hoverId) return new Set([hoverId])
     if (searchMatches) return searchMatches
@@ -565,204 +641,153 @@ export default function App() {
     return null
   }, [hoverId, searchMatches, blockFocus, selId])
 
-  const lit = useMemo(() => {
-    if (!focusNodes) return null
-    const ln = new Set(focusNodes),
-      le = new Set()
-    for (const e of graph.edges)
-      if (focusNodes.has(e.source) || focusNodes.has(e.target)) {
-        le.add(e.id)
-        ln.add(e.source)
-        ln.add(e.target)
-      }
-    return { ln, le }
-  }, [focusNodes, graph])
+  const lit = useMemo(() => (focusNodes ? litAround(focusNodes, graph.edges) : null), [focusNodes, graph])
 
-  // apply focus by mutating ONLY className (spreads existing nodes -> keeps measured dims -> no flicker)
+  // Only className changes: spreading the existing nodes keeps their measured dims, so no flicker.
+  // Unchanged nodes and edges keep their identity so React Flow skips re-rendering them.
   useEffect(() => {
-    setRfNodes((nds) => nds.map((n) => (n.type === 'region' ? n : { ...n, className: !lit ? undefined : lit.ln.has(n.id) ? 'lit' : 'dim' })))
-    setRfEdges((eds) =>
-      eds.map((e) => {
-        const cls = !lit ? undefined : lit.le.has(e.id) ? 'lit' : 'dim'
-        return { ...e, className: cls, data: { ...e.data, dim: cls === 'dim' } } // portal-rendered labels read data.dim
+    setRfNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.type === 'region') return node
+        const className = lit ? focusClass(lit.ln, node.id) : undefined
+        return node.className === className ? node : { ...node, className }
+      }),
+    )
+    setRfEdges((edges) =>
+      edges.map((edge) => {
+        const className = lit ? focusClass(lit.le, edge.id) : undefined
+        if (edge.className === className) return edge
+        // edge labels render in a portal and read data.dim
+        return { ...edge, className, data: { ...edge.data, dim: className === 'dim' } }
       }),
     )
   }, [lit, setRfNodes, setRfEdges])
 
-  // (G) keep the URL query in sync so the current view is shareable. Everything serializes as its
-  // DEVIATION from the default: layer params are omitted at their default and written `=1`/`=0`
-  // otherwise (so a default-on layer switched OFF survives a reload/share); `group` is omitted when
-  // it matches the default-on set, and an explicit empty `?group=` when the user cleared it to show
-  // every group. `status`/`risk` have no default, so plain presence is enough.
   const defaultGroups = useMemo(() => new Set(defaultOnLabels(clusterDefs)), [clusterDefs])
-  const groupParam = useMemo(() => {
-    const cur = [...facets.group].sort()
-    const def = [...defaultGroups].sort()
-    return cur.length === def.length && cur.every((l, i) => l === def[i]) ? null : cur.join(',')
-  }, [facets.group, defaultGroups])
-  // Build the URLSearchParams that mirror the current view — the single source shared by the URL-sync
-  // effect below, the Copy-link button, and saved named views. Everything serializes as its DEVIATION
-  // from the default (see the layer/group notes above), so a default view yields an empty query.
-  const buildViewParams = useCallback(() => {
-    const p = new URLSearchParams()
-    for (const l of LAYERS) if (layers[l.key] !== l.default) p.set(l.param, layers[l.key] ? '1' : '0')
-    if (facets.health.size) p.set('risk', '1')
-    if (dark !== cfgDark) p.set('dark', dark ? '1' : '0')
-    if (groupParam != null) p.set('group', groupParam)
-    if (facets.status.size) p.set('status', [...facets.status].join(','))
-    if (facets.hidden.size) p.set('hide', [...facets.hidden].join(','))
-    if (hiddenEdges.size) p.set('hedge', [...hiddenEdges].join(','))
-    if (viewMode !== cfgMode) p.set('mode', viewMode)
-    if (view !== cfgView) p.set('view', view)
-    if (groupBy !== 'team') p.set('by', groupBy)
-    if (clientId) p.set('client', clientId)
-    if (sel?.repo?.folder || sel?.resource?.id) p.set('sel', sel.repo?.serviceId || sel.repo?.folder || sel.resource.id)
-    // catalog cards and the Kafka bus are selectable too — write their node ids so those
-    // selections share/restore like any other (matchSelNode resolves them by exact id)
-    else if (sel?.inventory?.name) p.set('sel', 'inv:' + sel.inventory.name)
-    else if (sel?.kind === 'bus') p.set('sel', 'bus:kafka')
-    if (EMBED) p.set('embed', '1') // stay in kiosk mode across in-iframe reloads
-    return p
-  }, [groupParam, layers, dark, view, sel, facets, hiddenEdges, clientId, viewMode, cfgDark, cfgMode, cfgView, groupBy])
+  const groupParam = useMemo(() => groupParamFor(facets.group, defaultGroups), [facets.group, defaultGroups])
+  // The query that mirrors the current view: used by the URL sync, Copy link and saved views.
+  const buildViewParams = useCallback(
+    () =>
+      serializeViewParams({
+        layers,
+        facets,
+        hiddenEdges,
+        groupParam,
+        dark,
+        viewMode,
+        view,
+        groupBy,
+        clientId,
+        sel,
+        defaults: { dark: cfgDark, mode: cfgMode, view: cfgView },
+      }),
+    [
+      groupParam,
+      layers,
+      dark,
+      view,
+      sel,
+      facets,
+      hiddenEdges,
+      clientId,
+      viewMode,
+      cfgDark,
+      cfgMode,
+      cfgView,
+      groupBy,
+    ],
+  )
   useEffect(() => {
-    const qs = buildViewParams().toString()
-    history.replaceState(null, '', qs ? '?' + qs : location.pathname)
+    const queryString = buildViewParams().toString()
+    history.replaceState(null, '', queryString ? '?' + queryString : location.pathname)
   }, [buildViewParams])
-  // Apply a saved/shared query string to the live view by driving the EXISTING setters — the inverse of
-  // buildViewParams, using the same qFlag/qList semantics as the initial URL seed so a saved view
-  // round-trips exactly. Restores the whole captured slice (layers, facets, arrow toggles, theme, mode,
-  // view, drill-down, selection); anything the query omits falls back to that field's default.
-  // A saved view's ?sel= may name a node that only exists AFTER the view's layers/facets rebuild
-  // the graph (e.g. the view enables the Resources layer and selects a backend). applyViewParams
-  // stashes the unresolved id here and this effect resolves it against the next build — one
-  // attempt only, so an id that's truly gone can't hijack an unrelated later rebuild.
+  // A saved view's ?sel= may name a node that only exists after its layers/facets rebuild the
+  // graph. applyViewParams parks the id here and the next build resolves it. One attempt only,
+  // so an id that's truly gone can't hijack a later rebuild.
   const pendingSelRef = useRef(null)
   useEffect(() => {
     if (pendingSelRef.current == null) return
     const id = pendingSelRef.current
     pendingSelRef.current = null
-    const n = graph.nodes.find((x) => matchSelNode(x, id))
-    if (n) setSel(n.data)
+    const node = findSelNode(graph.nodes, id)
+    if (node) setSel(node.data)
   }, [graph])
+  // The inverse of buildViewParams: restores the whole captured view through the normal setters.
   const applyViewParams = useCallback(
-    (qs) => {
-      const p = new URLSearchParams(qs)
-      const flag = (k, dflt) => (p.has(k) ? p.get(k) === '1' : dflt)
-      const list = (k) => (p.has(k) ? (p.get(k) || '').split(',').filter(Boolean) : null)
-      setLayers(Object.fromEntries(LAYERS.map((l) => [l.key, flag(l.param, l.default)])))
-      setFacets({
-        group: new Set(list('group') ?? defaultOnLabels(clusterDefs)),
-        status: new Set(list('status') ?? []),
-        health: new Set(flag('risk', false) ? ['at-risk'] : []),
-        hidden: new Set((list('hide') ?? []).map((s) => s.toLowerCase())),
+    (queryString) => {
+      const saved = parseViewParams(queryString, {
+        clusterDefs,
+        defaults: { dark: cfgDark, mode: cfgMode, view: cfgView },
       })
-      setHiddenEdges(new Set(list('hedge') ?? []))
-      // omitted params fall back to the CONFIG defaults (what buildViewParams serialized against),
-      // not the built-ins — a view saved at the config default must restore to it.
-      setDark(flag('dark', cfgDark))
-      setMode(p.has('mode') ? (p.get('mode') === 'overview' ? 'overview' : 'dev') : cfgMode)
-      const v = p.get('view') || cfgView
-      setView(VIEWS.includes(v) ? v : 'graph')
-      const by = p.get('by')
-      setGroupBy(by === 'application' || by === 'platform' ? by : 'team')
-      setClientId(p.get('client') || null)
-      const selId = p.get('sel')
-      if (!selId) setSel(null)
-      else {
-        const n = graph.nodes.find((x) => matchSelNode(x, selId))
-        if (n) setSel(n.data)
-        else pendingSelRef.current = selId // not in the pre-apply graph — resolve after the rebuild
+      setLayers(saved.layers)
+      setFacets(saved.facets)
+      setHiddenEdges(saved.hiddenEdges)
+      setDark(saved.dark)
+      setMode(saved.mode)
+      setView(saved.view)
+      setGroupBy(saved.groupBy)
+      setClientId(saved.clientId)
+      if (!saved.selId) {
+        setSel(null)
+        return
       }
+      const node = findSelNode(graph.nodes, saved.selId)
+      if (node) setSel(node.data)
+      else pendingSelRef.current = saved.selId
     },
     [clusterDefs, graph, cfgDark, cfgMode, cfgView],
   )
 
-  // (G) restore a selected node from the URL once the graph is built
-  const restoredSel = React.useRef(false)
+  // Restore the URL's selected node once the graph is built.
+  const restoredSel = useRef(false)
   useEffect(() => {
     if (restoredSel.current || !graph.nodes.length) return
-    const id = qStr('sel', null)
-    if (id) {
-      const n = graph.nodes.find((x) => matchSelNode(x, id))
-      if (n) {
-        setSel(n.data)
-        if (EMBED) setTimeout(() => frameNodes([n.id]), 300) // embed: open zoomed to the framed node
-      }
+    const id = initialString('sel', null)
+    const node = id ? findSelNode(graph.nodes, id) : null
+    if (node) {
+      setSel(node.data)
+      // embeds open zoomed to the framed node
+      if (EMBED) setTimeout(() => frameNodes([node.id]), EMBED_FRAME_DELAY)
     }
     restoredSel.current = true
   }, [graph])
 
-  // (E) pipeline-health: validation block from assemble + any Unclassified repos in the layout
-  const health = useMemo(() => {
-    const v = data?.validation || {}
-    const unclassified = graph.nodes.find((n) => n.id === 'region-Unclassified')?.data.members || []
-    const items = []
-    if (unclassified.length) items.push({ kind: 'Unclassified repos (no cluster assigned)', list: unclassified })
-    if (v.newlyDiscovered?.length) items.push({ kind: 'New repos (created on GitHub recently — double-check curation)', list: v.newlyDiscovered })
-    if (v.unclonedOrgRepos?.length) items.push({ kind: `On ${data?.org || 'the'} org but not cloned locally`, list: v.unclonedOrgRepos })
-    if (v.staleClones?.length) items.push({ kind: 'Clones with no readable git history', list: v.staleClones })
-    if (v.duplicateClones?.length) items.push({ kind: 'Duplicate local clones of one repo (stale pre-rename folder)', list: v.duplicateClones })
-    if (v.repoRenames?.length) items.push({ kind: 'GitHub repos renamed (curated names auto-fixed at runtime)', list: v.repoRenames })
-    if (v.repoMissingOnGitHub?.length) items.push({ kind: 'GitHub repos not found (deleted or no access)', list: v.repoMissingOnGitHub })
-    if (v.uncuratedRepos?.length) items.push({ kind: 'Org repos with no inventory topics (not on the map — curate to include)', list: v.uncuratedRepos })
-    if (v.incompleteCuration?.length) items.push({ kind: 'On the map but half-curated (missing owner/status/description)', list: v.incompleteCuration })
-    if (v.statusMismatch?.length) items.push({ kind: 'Archived on GitHub but status not Removed (to be curated)', list: v.statusMismatch })
-    if (v.azureStaleMappings?.length) items.push({ kind: 'Stale Azure name mappings (repo-extra.json)', list: v.azureStaleMappings })
-    // Azure drift (assemble.mjs azure overlay) — what's actually deployed vs what's curated
-    if (v.azureUnmappedApps?.length) items.push({ kind: 'Deployed in Azure but not on the map', list: v.azureUnmappedApps })
-    if (v.azureEnvDrift?.length) items.push({ kind: 'Environment drift (Azure vs workflows)', list: v.azureEnvDrift })
-    if (v.azureRemovedButDeployed?.length) items.push({ kind: 'Removed/Sunsetting but recently deployed', list: v.azureRemovedButDeployed })
-    if (v.azureNeedsCuration?.length) items.push({ kind: 'Deployed services awaiting curation (scaffolded into the table)', list: v.azureNeedsCuration })
-    if (v.azureAcrNotInInventory?.length) items.push({ kind: 'In container registry, no matching GitHub repo', list: v.azureAcrNotInInventory })
-    return { items, count: items.reduce((s, i) => s + i.list.length, 0) }
-  }, [data, graph])
+  const health = useMemo(() => pipelineHealth(data, graph, { dataStaleDays }), [data, graph, dataStaleDays])
 
-  // (H) export the current diagram view to a PNG
   const exportPng = useCallback(async () => {
-    const vp = document.querySelector('.react-flow__viewport')
-    // no canvas in Table/Matrix/Integrations — say so instead of silently doing nothing
-    if (!vp) return setToast('Export captures the Graph view — switch to Graph first')
+    const viewport = document.querySelector('.react-flow__viewport')
+    // Table/Matrix/Integrations have no canvas to capture.
+    if (!viewport) return setToast('Export captures the Graph view — switch to Graph first')
     setBusy('Export')
     try {
-      // html-to-image is only needed for export — load it on demand so it stays out of the main bundle
+      // loaded on demand to keep html-to-image out of the main bundle
       const { toPng } = await import('html-to-image')
-      const url = await toPng(vp, {
-        backgroundColor: dark ? '#0c1322' : '#f4f6fa',
+      const pngUrl = await toPng(viewport, {
+        backgroundColor: dark ? EXPORT_BACKGROUND.dark : EXPORT_BACKGROUND.light,
         pixelRatio: 2,
-        width: vp.scrollWidth || undefined,
-        height: vp.scrollHeight || undefined,
+        width: viewport.scrollWidth || undefined,
+        height: viewport.scrollHeight || undefined,
       })
-      const a = document.createElement('a')
-      a.href = url
-      a.download =
-        (title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '') || 'repo-atlas') + '.png'
-      a.click()
+      downloadHref(pngUrl, exportFileName(title))
       setToast('Exported PNG')
-    } catch (e) {
-      setToast('Export failed — ' + String(e.message || e).slice(0, 120))
+    } catch (error) {
+      setToast('Export failed — ' + errorText(error, 120))
     } finally {
       setBusy(null)
     }
   }, [dark, title])
 
-  // download the exact data object that feeds the app (the served model), so it can be handed to
-  // Claude / inspected directly. JSON is the canonical form the pipeline emits.
+  // The exact data object the app runs on, e.g. to hand to Claude or inspect.
   const downloadData = useCallback(() => {
     if (!data) return
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'repo-atlas-data.json'
-    a.click()
-    URL.revokeObjectURL(url)
+    const blobUrl = URL.createObjectURL(blob)
+    downloadHref(blobUrl, 'repo-atlas-data.json')
+    URL.revokeObjectURL(blobUrl)
     setToast('Downloaded data (JSON)')
   }, [data])
 
-  // copy a shareable link to the current view (the URL already mirrors filters/mode/selection)
+  // The URL already mirrors the view, so the link is just location.href.
   const copyLink = useCallback(() => {
     const url = location.href
     const done = () => setToast('Link copied to clipboard')
@@ -774,15 +799,17 @@ export default function App() {
     setBusy(label)
     setToast(null)
     try {
-      const r = await fetch(endpoint, { method: 'POST' })
-      const body = await r.json()
-      if (!r.ok || body.ok === false) throw new Error(JSON.stringify(body.log || body.error || body))
+      const response = await fetch(endpoint, { method: 'POST' })
+      const body = await response.json()
+      if (!response.ok || body.ok === false) throw new Error(JSON.stringify(body.log || body.error || body))
       if (endpoint === '/api/regenerate') {
         await load()
         setToast('Regenerated — data refreshed')
-      } else setToast('Published to ' + body.path)
-    } catch (e) {
-      setToast(label + ' failed (is the dev server running?) — ' + String(e.message || e).slice(0, 200))
+      } else {
+        setToast('Published to ' + body.path)
+      }
+    } catch (error) {
+      setToast(label + ' failed (is the dev server running?) — ' + errorText(error, 200))
     } finally {
       setBusy(null)
     }
@@ -790,69 +817,101 @@ export default function App() {
 
   const onNodeClick = useCallback(
     (_, node) => {
-      if (node.type === 'region') {
-        const ids = node.data.members || []
-        const idset = new Set(ids)
-        const members = graph.nodes
-          .filter((n) => n.type === 'card' && idset.has(n.id))
-          .map((n) => ({ id: n.id, title: String(n.data.title).replace('\n', ' '), kind: n.data.kind }))
-        setBlockFocus(new Set(ids))
-        setSel({ region: { label: node.data.label, color: node.data.color, members, note: config.regionNotes?.[node.data.label] || '' } })
-      } else {
+      if (node.type !== 'region') {
         setSel(node.data)
         setBlockFocus(null)
+        return
       }
+      const ids = node.data.members || []
+      const memberIds = new Set(ids)
+      const members = graph.nodes
+        .filter((n) => n.type === 'card' && memberIds.has(n.id))
+        .map((n) => ({ id: n.id, title: singleLineTitle(n.data.title), kind: n.data.kind }))
+      setBlockFocus(new Set(ids))
+      setSel({
+        region: {
+          label: node.data.label,
+          color: node.data.color,
+          members,
+          note: config.regionNotes?.[node.data.label] || '',
+        },
+      })
     },
     [graph, config],
   )
-  // double-click a client card to drill into its per-screen view (single click still selects)
+  // Enter/Space on a focused card or region does what a click does.
+  const onCanvasKeyDown = useCallback(
+    (event) => {
+      const id = activatedNodeId(event)
+      const node = id && rfRef.current?.getNode(id)
+      if (!node) return
+      event.preventDefault()
+      onNodeClick(event, node)
+    },
+    [onNodeClick],
+  )
+  // Double-clicking a client card drills into its screens; a single click still selects.
   const onNodeDoubleClick = useCallback(
     (_, node) => {
       const folder = node.data?.repo?.folder
-      if (node.type === 'card' && node.data?.kind === 'client' && data?.extras?.screens?.perRepo?.[folder]?.screens?.length) {
-        setClientId(folder)
-      }
+      const isClientCard = node.type === 'card' && node.data?.kind === 'client'
+      if (isClientCard && clientScreenCount(data, folder)) setClientId(folder)
     },
     [data],
   )
-  // open a screen's detail (from the drill-down view) in the side panel
   const onSelectScreen = useCallback((screen, clientTitle) => {
     if (screen) setSel({ screen, clientTitle })
   }, [])
-  // smoothly frame a set of node ids in the graph viewport (used by search + cross-navigation)
+  // Waits for layout so a Details panel opening in the same click has already narrowed the canvas.
   const frameNodes = useCallback((ids) => {
     if (!ids?.length) return
-    rfRef.current?.fitView({ nodes: ids.map((id) => ({ id })), duration: 450, padding: 0.5, maxZoom: 1.3 })
+    framingUntil.current = performance.now() + FRAME_DURATION
+    afterLayout(() =>
+      rfRef.current?.fitView({
+        nodes: ids.map((id) => ({ id })),
+        duration: motionDuration(FRAME_DURATION),
+        padding: 0.5,
+        maxZoom: 1.3,
+      }),
+    )
   }, [])
-  // cross-navigation from the Details panel: resolve a key (node id, repo FOLDER or serviceId via
-  // matchSelNode — adoption chips are keyed by folder, which stopped being the node id for
-  // serviceId-keyed repos (#16) — internal pkg name, or repo name) to a card, select it, and
-  // frame it. No-op if that node isn't currently on the map.
+  // The Details panel narrows the canvas and can cover the card just selected: pan it back into view.
+  useEffect(() => {
+    if (!selId) return
+    return afterLayout(() => {
+      if (performance.now() < framingUntil.current) return
+      revealNode(rfRef.current, selId, canvasRef.current, FRAME_DURATION)
+    })
+  }, [selId])
+  // Cross-navigation from the Details panel. `key` may be a node id, a repo folder or serviceId
+  // (adoption chips are keyed by folder), a repo name, or an internal package name. No-op when
+  // that node isn't on the map.
   const navigateTo = useCallback(
     (key) => {
       if (!key) return
       const nodes = graph.nodes
-      const n =
-        nodes.find((x) => x.id === key) ||
-        nodes.find((x) => matchSelNode(x, key)) ||
-        nodes.find((x) => x.data?.repo?.name === key) ||
-        (uiPackagesOf(config).has(key) && nodes.find((x) => uiHubFoldersOf(config).includes(x.id))) ||
-        nodes.find((x) => x.id === 'pkg:' + key)
-      if (!n || n.type === 'region') return
-      setSel(n.data)
+      const uiHubNode = () =>
+        uiPackagesOf(config).has(key) && nodes.find((node) => uiHubFoldersOf(config).includes(node.id))
+      const target =
+        nodes.find((node) => node.id === key) ||
+        findSelNode(nodes, key) ||
+        nodes.find((node) => node.data?.repo?.name === key) ||
+        uiHubNode() ||
+        nodes.find((node) => node.id === 'pkg:' + key)
+      if (!target || target.type === 'region') return
+      setSel(target.data)
       setBlockFocus(null)
-      frameNodes([n.id])
+      frameNodes([target.id])
     },
-    [graph, frameNodes],
+    [graph, config, frameNodes],
   )
-  // search result stepper: cycle to the next/prev match, framing + selecting it
   const stepMatch = useCallback(
-    (dir) => {
+    (direction) => {
       if (!searchList.length) return
-      const next = (matchIdx + dir + searchList.length) % searchList.length
+      const next = (matchIdx + direction + searchList.length) % searchList.length
       setMatchIdx(next)
-      const n = graph.nodes.find((x) => x.id === searchList[next])
-      if (n) setSel(n.data)
+      const node = graph.nodes.find((n) => n.id === searchList[next])
+      if (node) setSel(node.data)
       frameNodes([searchList[next]])
     },
     [searchList, matchIdx, graph, frameNodes],
@@ -861,21 +920,20 @@ export default function App() {
     if (node.type !== 'region') setHoverId(node.id)
   }, [])
   const onNodeLeave = useCallback(() => setHoverId(null), [])
-  // admin-only: remember where a card was dropped so it survives rebuilds + can be published.
-  // Positions are scoped to the current view-mode (dev / overview).
+  // Admin only: remember where a card was dropped so it survives rebuilds and can be published.
   const onNodeDragStop = useCallback(
     (_, node) => {
       setHelper(NO_HELPER)
       if (node.type === 'region') {
-        // keep the box's current size; only the position moved
-        const cur = (layout[viewMode] || {})[node.id] || {}
-        const w = cur.w ?? Math.round(node.measured?.width ?? node.width ?? 0)
-        const h = cur.h ?? Math.round(node.measured?.height ?? node.height ?? 0)
-        setRegionGeom(node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y), w, h })
+        // only the position moved; keep the box's current size
+        const current = (layout[viewMode] || {})[node.id] || {}
+        const w = current.w ?? Math.round(node.measured?.width ?? node.width ?? 0)
+        const h = current.h ?? Math.round(node.measured?.height ?? node.height ?? 0)
+        setRegionGeom(node.id, { ...roundedPosition(node), w, h })
         return
       }
       pushUndo()
-      setLayout((l) => ({ ...l, [viewMode]: { ...l[viewMode], [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) } } }))
+      setLayout((current) => withOverride(current, viewMode, node.id, roundedPosition(node)))
     },
     [pushUndo, viewMode, setRegionGeom, layout],
   )
@@ -883,37 +941,39 @@ export default function App() {
     pushUndo()
     setLayout(EMPTY_LAYOUT)
   }, [pushUndo])
-  // re-flow just this view back to the computed layout (clears the current mode's overrides)
+  // Re-flow this view to the computed layout by clearing the current mode's overrides.
   const autoArrange = useCallback(() => {
     pushUndo()
-    setLayout((l) => ({ ...l, [viewMode]: {} }))
+    setLayout((current) => ({ ...current, [viewMode]: {} }))
   }, [pushUndo, viewMode])
   const undoLayout = useCallback(() => {
-    const prev = layoutUndo.current.pop()
-    if (prev) setLayout(prev)
+    const previous = layoutUndo.current.pop()
+    if (previous) setLayout(previous)
   }, [])
-  // Cmd/Ctrl+Z undoes the last admin drag / re-flow (ignored while typing in a field)
+  // Cmd/Ctrl+Z undoes the last admin drag or re-flow, except while typing in a field.
   useEffect(() => {
     if (!admin) return
-    const onKey = (e) => {
-      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !typing) {
-        e.preventDefault()
-        undoLayout()
-      }
+    const onKeyDown = (event) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || '')
+      const isUndo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z'
+      if (!isUndo || typing) return
+      event.preventDefault()
+      undoLayout()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [admin, undoLayout])
-  // admin drag: snap a dragged card to align with its neighbours (Figma-style guides) on top of the
-  // grid snap, and surface the guide lines. Falls through to the default change handler otherwise.
+  // Admin drag: snap the card to align with its neighbours (Figma-style guides) on top of the grid
+  // snap, and show the guide lines.
   const onNodesChangeAdmin = useCallback(
     (changes) => {
-      const c = changes[0]
-      if (admin && changes.length === 1 && c.type === 'position' && c.dragging && c.position) {
-        const { horizontal, vertical, color, snapPosition } = getHelperLines(c, rfNodes)
-        if (snapPosition.x != null) c.position.x = snapPosition.x
-        if (snapPosition.y != null) c.position.y = snapPosition.y
+      const change = changes[0]
+      const isSingleDrag =
+        admin && changes.length === 1 && change.type === 'position' && change.dragging && change.position
+      if (isSingleDrag) {
+        const { horizontal, vertical, color, snapPosition } = getHelperLines(change, rfNodes)
+        if (snapPosition.x != null) change.position.x = snapPosition.x
+        if (snapPosition.y != null) change.position.y = snapPosition.y
         setHelper({ h: horizontal, v: vertical, color })
       } else if (helper.h !== undefined || helper.v !== undefined) {
         setHelper(NO_HELPER)
@@ -926,479 +986,185 @@ export default function App() {
     setBlockFocus(null)
     setSel(null)
   }, [])
-  // clicking a dependency / service edge spotlights its two endpoints (reuses the focus mechanism)
+  // Clicking an edge spotlights its two endpoints.
   const onEdgeClick = useCallback((_, edge) => {
     setBlockFocus(new Set([edge.source, edge.target]))
     setSel(null)
   }, [])
-  // right-click context menu (admin only). Capture the cursor + target; the item list is built at
-  // render time (buildCtxItems) so it reflects the current node/pane and available actions.
+  // Admin only. The menu items are built at render time so they reflect the current target.
   const onNodeContextMenu = useCallback(
-    (e, node) => {
+    (event, node) => {
       if (!admin) return
-      e.preventDefault()
-      setCtx({ x: e.clientX, y: e.clientY, node })
+      event.preventDefault()
+      setCtx({ x: event.clientX, y: event.clientY, node })
     },
     [admin],
   )
   const onPaneContextMenu = useCallback(
-    (e) => {
+    (event) => {
       if (!admin) return
-      e.preventDefault()
-      setCtx({ x: e.clientX, y: e.clientY, node: null })
+      event.preventDefault()
+      setCtx({ x: event.clientX, y: event.clientY, node: null })
     },
     [admin],
   )
-  const fitView = useCallback(() => rfRef.current?.fitView({ duration: 450, padding: 0.15 }), [])
+  const fitView = useCallback(
+    () => rfRef.current?.fitView({ duration: motionDuration(FRAME_DURATION), padding: 0.15 }),
+    [],
+  )
   const extras = data?.extras
 
-  // Badges. Layers = how many detail layers are switched on (additive; adds node types). Filters = how
-  // many narrowing selections are active (each ticked group + status + health value). Counting what's
-  // ON means clearing everything reads 0.
-  // Detail layers and the arrow / integration toggles are now folded into the Filters dropdown, so
-  // their non-default state counts toward the Filters badge and clears on Reset.
-  const layerDeviations = view === 'graph' ? LAYERS.filter((l) => layers[l.key] !== l.default).length : 0
-  // hidden-arrow toggles count only where the Arrows section exists (Graph/Integrations) — in
-  // Table/Matrix the badge would otherwise show a count the open menu can't explain
-  const filterCount =
-    facets.group.size +
-    facets.status.size +
-    facets.health.size +
-    facets.hidden.size +
-    layerDeviations +
-    (view === 'graph' || view === 'integrations' ? hiddenEdges.size : 0)
-  // At the default view when the group matches the default-on set (groupParam null), no status/health/
-  // hidden value is picked, no arrow class is hidden, and (in Graph) the detail layers are at their
-  // defaults. Anything else is a deviation the "Reset filters" button returns from — including a
-  // clear-everything (empty group).
-  const isDefaultFilters = groupParam == null && !facets.status.size && !facets.health.size && !facets.hidden.size && !layerDeviations && !hiddenEdges.size
-  // "Reset filters" returns to the default view — the default-on groups (ISS/IoT hidden), no status,
-  // no at-risk, no hidden components, every arrow class shown, and the default detail layers.
+  const { filterCount, isDefaultFilters } = filterSummary({ view, facets, layers, hiddenEdges, groupParam })
   const resetFilters = useCallback(() => {
     setFacets({ group: new Set(defaultGroups), status: new Set(), health: new Set(), hidden: new Set() })
-    setLayers(Object.fromEntries(LAYERS.map((l) => [l.key, l.default])))
+    setLayers(Object.fromEntries(LAYERS.map((layer) => [layer.key, layer.default])))
     setHiddenEdges(new Set())
   }, [defaultGroups])
 
-  // unsaved-layout tracking for the canvas pill
   const layoutDirty = admin && JSON.stringify(layout) !== JSON.stringify(savedLayout)
   const modeLayoutCount = Object.keys(layout[viewMode] || {}).length
 
-  if (!data && denied)
-    return (
-      <div className={'app' + (dark ? ' dark' : '')}>
-        <div className="loading" role="alert">
-          <div>
-            <p>
-              <b>You're signed in, but your account can't read the architecture data.</b>
-            </p>
-            <p>
-              The data API requires an access role ({denied}). Ask IT to assign it to your account, then{' '}
-              <button className="btn" onClick={() => location.reload()}>
-                reload
-              </button>
-              .
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  if (!data && enc)
+  if (!data && denied) return <AccessDenied dark={dark} reason={denied} />
+  if (!data && enc) {
     return (
       <div className={'app' + (dark ? ' dark' : '')}>
         <Gate onUnlock={unlock} error={gateError} busy={gateBusy} />
       </div>
     )
+  }
 
-  // Build the right-click menu for the captured target. Regions get geometry actions; cards get
-  // navigation/links; the empty pane gets whole-view layout actions. Admin-only (the handlers bail
-  // for non-admins), so edit actions are always available here.
-  const buildCtxItems = () => {
-    if (!ctx) return []
-    const node = ctx.node
-    if (node?.type === 'region') {
-      const label = node.data.label
-      return [
-        { heading: label + ' group' },
-        { label: 'Select group', icon: 'box', onClick: () => onNodeClick(null, node) },
-        { label: 'Resize to fit members', icon: 'integrations', onClick: () => resizeRegionToFit(node.id, node.data.members) },
-        { label: 'Reset box to auto', icon: 'dot', onClick: () => clearRegionGeom(node.id), disabled: !(layout[viewMode] || {})[node.id] },
-        { separator: true },
-        { label: 'Edit group descriptions…', icon: 'edit', onClick: () => setShowAdmin(true) },
-      ]
-    }
-    if (node) {
-      const d = node.data
-      const repoUrl = d.inventory?.repo || d.repo?.remote?.replace(/\.git$/, '') || null
-      const dh = docHref(d.inventory?.doc, d.inventory?.docUrl, config?.docSearchUrl)
-      const canDrill = d.kind === 'client' && data?.extras?.screens?.perRepo?.[d.repo?.folder]?.screens?.length
-      return [
-        { heading: String(d.title || '').replace('\n', ' ') },
-        { label: 'Details', icon: 'more', onClick: () => onNodeClick(null, node) },
-        { label: 'Focus / frame', icon: 'search', onClick: () => frameNodes([node.id]) },
-        canDrill ? { label: 'View screens →', icon: 'integrations', onClick: () => setClientId(d.repo.folder) } : null,
-        { separator: true },
-        { label: 'Open repo on GitHub', icon: 'github', onClick: () => window.open(repoUrl, '_blank', 'noopener'), disabled: !repoUrl },
-        { label: 'Open documentation', icon: 'book', onClick: () => window.open(dh, '_blank', 'noopener'), disabled: !dh },
-      ]
-    }
-    return [
-      { heading: 'Canvas' },
-      { label: 'Fit view', icon: 'search', onClick: fitView },
-      { label: 'Auto-arrange this view', icon: 'rocket', onClick: autoArrange },
-      { separator: true },
-      { label: 'Reset all layout', icon: 'close', danger: true, onClick: resetLayout },
-    ]
+  const openAdmin = () => setShowAdmin(true)
+  const openEmbed = () => setShowEmbed(true)
+  const showPipelineActions = import.meta.env.DEV && admin
+  // Golden Path needs a backend for its data, so the static Pages build hides the link.
+  const showGoldenPath = import.meta.env.DEV || import.meta.env.VITE_DATA_URL
+  const pickView = (nextView) => {
+    setView(nextView)
+    setClientId(null) // switching the view exits any per-client drill-down
+  }
+  const buildCtxItems = () =>
+    contextMenuItems(ctx, {
+      modeLayout: layout[viewMode] || {},
+      config,
+      data,
+      onNodeClick,
+      resizeRegionToFit,
+      clearRegionGeom,
+      openAdmin,
+      frameNodes,
+      setClientId,
+      fitView,
+      autoArrange,
+      resetLayout,
+    })
+  const clientTitle = () => {
+    const repo = data.repos?.find((r) => r.folder === clientId)
+    return repo?.inventory?.name || repo?.displayName || clientId
+  }
+  const leaveClientView = () => {
+    setClientId(null)
+    if (sel?.screen) setSel(null)
   }
 
   return (
     <div className={'app' + (dark ? ' dark' : '') + (EMBED ? ' embed' : '')}>
       <header className={'toolbar' + (EMBED ? ' embed' : '')}>
-        <div className="brand">
-          {logoUrl ? <img className="brand-logo" src={logoUrl} alt="" /> : <span className="brand-mark" />}
-          <span className="brand-text">{title}</span>
-          {subtitle ? <span className="brand-sub">{subtitle}</span> : null}
-          {data?.generatedAt
-            ? (() => {
-                const days = Math.floor((Date.now() - new Date(data.generatedAt).getTime()) / 86400000)
-                const ago = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`
-                return (
-                  <span className={'gen' + (days > dataStaleDays ? ' old' : '')} title={new Date(data.generatedAt).toLocaleString()}>
-                    data {ago}
-                  </span>
-                )
-              })()
-            : null}
-        </div>
+        <Brand
+          logoUrl={logoUrl}
+          title={title}
+          subtitle={subtitle}
+          generatedAt={data?.generatedAt}
+          dataStaleDays={dataStaleDays}
+        />
         {EMBED ? (
-          <>
-            <div className="spacer" />
-            <a
-              className="btn ghost embed-fullmap"
-              href={(() => {
-                const p = new URLSearchParams(location.search)
-                p.delete('embed')
-                const qs = p.toString()
-                return location.origin + location.pathname + (qs ? '?' + qs : '')
-              })()}
-              target="_blank"
-              rel="noreferrer"
-              title="Open the full interactive map in a new tab"
-            >
-              <Icon name="external" /> Open full map
-            </a>
-            <button
-              className="btn ghost"
-              onClick={() => setDark((d) => !d)}
-              title="Toggle theme"
-              aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-            >
-              <Icon name={dark ? 'sun' : 'moon'} />
-            </button>
-          </>
+          <EmbedToolbarActions dark={dark} setDark={setDark} />
         ) : (
           <>
-            <Dropdown className="view-dd" label={VIEW_LABELS[view]} title="Switch view">
-              {(close) =>
-                Object.entries(VIEW_LABELS).map(([v, label]) => (
-                  <button
-                    key={v}
-                    className={'dd-item' + (view === v ? ' on' : '')}
-                    onClick={() => {
-                      setView(v)
-                      setClientId(null) // switching the map view exits any per-client drill-down
-                      close()
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))
-              }
-            </Dropdown>
-            {admin ? (
-              <label className="switch" title="Show extra detail (tooling/test chips + the richer layout)">
-                <input type="checkbox" checked={mode === 'dev'} onChange={(e) => setMode(e.target.checked ? 'dev' : 'overview')} />
-                <span className="switch-track">
-                  <span className="switch-thumb" />
-                </span>
-                <span className="switch-label">Detail</span>
-              </label>
-            ) : null}
-            {/* Group by — which taxonomy the graph's lanes follow. Layout-only: the Group FILTER
-                below always stays the team taxonomy, so grouping and filtering compose. */}
-            {view === 'graph' ? (
-              <Dropdown
-                className="groupby-dd"
-                label={GROUP_BY_LABELS[groupBy]}
-                title="Group the graph's lanes by team, application or platform (config.json `platforms`)"
-              >
-                {(close) =>
-                  Object.entries(GROUP_BY_LABELS).map(([v, label]) => (
-                    <button
-                      key={v}
-                      className={'dd-item' + (groupBy === v ? ' on' : '')}
-                      onClick={() => {
-                        setGroupBy(v)
-                        close()
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))
-                }
-              </Dropdown>
-            ) : null}
-            {/* Filters — one control: faceted narrowing (group/status/health, subtractive) plus the graph
-                detail layers (additive), folded in here so there's a single menu instead of two. */}
-            <Dropdown className="filters-dd" label="Filters" badge={filterCount || null} title="Narrow or detail the map — groups, status, health, layers">
-              {isDefaultFilters ? (
-                <div className="dd-hint">Default view. Tick a group or status to narrow, or untick every group to show all.</div>
-              ) : (
-                <button className="dd-item dd-clear" onClick={resetFilters}>
-                  <Icon name="close" /> Reset filters (default view)
-                </button>
-              )}
-              <div className="dd-group">Group (team)</div>
-              {facetOptions.group.map((label) => {
-                const def = clusterDefs.find((c) => c.label === label)
-                return (
-                  <FilterRow key={'g:' + label} checked={facets.group.has(label)} onChange={() => toggleFacet('group', label)}>
-                    {def?.color ? <span className="tagdot" style={{ background: def.color }} /> : null}
-                    {label}
-                  </FilterRow>
-                )
-              })}
-              {facetOptions.status.length ? (
-                <>
-                  <div className="dd-group">Status</div>
-                  {facetOptions.status.map((s) => (
-                    <FilterRow key={'s:' + s} checked={facets.status.has(s)} onChange={() => toggleFacet('status', s)}>
-                      {s}
-                    </FilterRow>
-                  ))}
-                </>
-              ) : null}
-              <div className="dd-group">Health</div>
-              <FilterRow checked={facets.health.has('at-risk')} onChange={() => toggleFacet('health', 'at-risk')}>
-                <span className="tagdot" style={{ background: '#b3261e' }} />
-                At-risk only (alerts / failing CI)
-              </FilterRow>
-              {/* Detail (graph-only, additive) — each toggle draws an extra class of nodes on top of the
-                  base repo/service map. Deliberately NOT called "Layer": that word was ambiguous with the
-                  inventory's Type, so it's graph-only "Detail" now. */}
-              {view === 'graph' ? (
-                <>
-                  <div className="dd-group">Detail (graph only)</div>
-                  <div className="dd-subhint">Each adds a class of nodes on top of the base map. Untick all to return to the base map.</div>
-                  {LAYERS.map((l) => (
-                    <FilterRow key={'l:' + l.key} checked={layers[l.key]} onChange={(on) => toggleLayer(l.key, on)}>
-                      {l.label}
-                    </FilterRow>
-                  ))}
-                </>
-              ) : null}
-              {/* Arrows / integrations — show/hide each arrow class present on the map (moved here from
-                  the on-canvas Legend, which is now a pure key). Hiding an arrow type also drops nodes
-                  it leaves edge-less (orphan prune in buildGraph), so e.g. hiding Kafka removes the bus
-                  node too. Also applied to the Integrations table view (REST/Kafka rows). */}
-              {(() => {
-                // Which arrow types the toggles cover in the current view: on the graph, every class
-                // drawn; in the Integrations table, just the protocols present there. Other views have
-                // no arrows, so the section is hidden.
-                const arrowKeys = view === 'graph' ? graph.edgeTypesPresent || [] : view === 'integrations' ? integrationEdgeTypes : []
-                if (!arrowKeys.length) return null
-                return (
-                  <>
-                    <div className="dd-group">Arrows / integrations</div>
-                    {edgeTypesFor(config)
-                      .filter((e) => arrowKeys.includes(e.key))
-                      .map((e) => (
-                        <FilterRow key={'e:' + e.key} checked={!hiddenEdges.has(e.key)} onChange={() => toggleEdge(e.key)}>
-                          <span className="legend-edge" style={{ borderTopColor: e.color, borderTopStyle: e.dash }} />
-                          {e.label}
-                        </FilterRow>
-                      ))}
-                  </>
-                )
-              })()}
-              {/* Components — show/hide individual inventory components. Scoped to the current view
-                  (graph nodes / full inventory); a hidden item stays listed so it can be re-checked.
-                  Keyed by lowercased inventory name (matches matchInventory + buildGraph). */}
-              {facetOptions.components.length
-                ? (() => {
-                    const shown = facetOptions.components.filter((name) => name.toLowerCase().includes(compFilter.trim().toLowerCase()))
-                    return (
-                      <>
-                        <div className="dd-group">
-                          Components
-                          {/* Only a "Show all" — clearing the whole hidden set. There's deliberately no
-                              "hide all": unchecking every component is symmetric with checking every one
-                              (both show all — see graph.js), so a hide-all button would be a no-op. */}
-                          {facets.hidden.size ? (
-                            <span className="dd-group-actions">
-                              <button className="dd-linkbtn" onClick={() => setComponentsHidden([...facets.hidden], false)}>
-                                Show all
-                              </button>
-                            </span>
-                          ) : null}
-                        </div>
-                        <input
-                          className="dd-filter"
-                          type="search"
-                          value={compFilter}
-                          placeholder="Filter components…"
-                          onChange={(e) => setCompFilter(e.target.value)}
-                        />
-                        <div className="dd-scroll">
-                          {shown.map((name) => (
-                            <FilterRow
-                              key={'c:' + name}
-                              checked={!facets.hidden.has(name.toLowerCase())}
-                              onChange={() => toggleFacet('hidden', name.toLowerCase())}
-                            >
-                              {name}
-                            </FilterRow>
-                          ))}
-                        </div>
-                      </>
-                    )
-                  })()
-                : null}
-            </Dropdown>
-            <div className="search-wrap">
-              <Icon name="search" className="search-icon" />
-              <input
-                className="search"
-                type="search"
-                value={query}
-                placeholder={view === 'table' ? 'Filter inventory…' : view === 'integrations' ? 'Filter integrations…' : 'Search repos…'}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && view === 'graph') {
-                    if (e.shiftKey) stepMatch(-1)
-                    else if (searchList.length > 1) stepMatch(1)
-                    else frameNodes(searchList)
-                  }
-                }}
-                title="Highlight matching cards — Enter to step through matches"
-              />
-              {query && view === 'graph' ? (
-                <span className="search-nav">
-                  <span className="search-count">{searchList.length ? `${matchIdx + 1}/${searchList.length}` : '0'}</span>
-                  {searchList.length ? (
-                    <>
-                      <button className="search-step" onClick={() => stepMatch(-1)} title="Previous match (Shift+Enter)" aria-label="Previous match">
-                        <Icon name="prev" />
-                      </button>
-                      <button className="search-step" onClick={() => stepMatch(1)} title="Next match (Enter)" aria-label="Next match">
-                        <Icon name="next" />
-                      </button>
-                    </>
-                  ) : null}
-                </span>
-              ) : null}
-            </div>
+            <ViewMenu view={view} onPick={pickView} />
+            {admin ? <DetailSwitch mode={mode} setMode={setMode} /> : null}
+            {view === 'graph' ? <GroupByMenu groupBy={groupBy} setGroupBy={setGroupBy} /> : null}
+            <FiltersMenu
+              view={view}
+              facets={facets}
+              facetOptions={facetOptions}
+              toggleFacet={toggleFacet}
+              filterCount={filterCount}
+              isDefaultFilters={isDefaultFilters}
+              resetFilters={resetFilters}
+              clusterDefs={clusterDefs}
+              layers={layers}
+              toggleLayer={toggleLayer}
+              graphEdgeTypes={graph.edgeTypesPresent}
+              integrationEdgeTypes={integrationEdgeTypes}
+              config={config}
+              hiddenEdges={hiddenEdges}
+              toggleEdge={toggleEdge}
+              setComponentsHidden={setComponentsHidden}
+              compFilter={compFilter}
+              setCompFilter={setCompFilter}
+            />
+            <SearchBox
+              view={view}
+              query={query}
+              setQuery={setQuery}
+              searchList={searchList}
+              matchIdx={matchIdx}
+              stepMatch={stepMatch}
+              frameNodes={frameNodes}
+            />
             <div className="spacer" />
             {health.count ? (
-              <div className="health-wrap" ref={healthRef}>
-                <button
-                  className={'btn health' + (showHealth ? ' on' : '')}
-                  onClick={() => setShowHealth((s) => !s)}
-                  title="Pipeline warnings"
-                  aria-label={`Pipeline warnings: ${health.count}`}
-                  aria-expanded={showHealth}
-                >
-                  <Icon name="warning" /> {health.count}
-                </button>
-                {showHealth ? (
-                  <div className="health-pop">
-                    <div className="health-title">Pipeline health</div>
-                    {health.items.map((it) => (
-                      <div key={it.kind} className="health-item">
-                        <div className="health-kind">{it.kind}</div>
-                        <div className="chiprow">
-                          {it.list.map((x) => (
-                            <HealthChip key={x} token={x} org={data.org} />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <HealthButton
+                health={health}
+                org={data.org}
+                open={showHealth}
+                setOpen={setShowHealth}
+                wrapRef={healthRef}
+              />
             ) : null}
             <span className="tb-sep" />
-            <Dropdown className="views-dd" label="Views" badge={views.length || null} title="Save, apply or share named views">
-              {(close) => (
-                <>
-                  <button
-                    className="dd-item"
-                    onClick={() => {
-                      const name = window.prompt('Save current view as:')?.trim()
-                      if (name) {
-                        persistViews([...views.filter((v) => v.name !== name), { name, q: buildViewParams().toString() }])
-                        setToast('Saved view “' + name + '”')
-                      }
-                      close()
-                    }}
-                  >
-                    Save current…
-                  </button>
-                  <button
-                    className="dd-item"
-                    onClick={() => {
-                      copyLink()
-                      close()
-                    }}
-                  >
-                    <Icon name="link" /> Copy link
-                  </button>
-                  {views.length ? <div className="dd-group">Saved views</div> : null}
-                  {views.map((v) => (
-                    <div key={v.name} className="views-row">
-                      <button
-                        className="dd-item views-apply"
-                        onClick={() => {
-                          applyViewParams(v.q)
-                          close()
-                        }}
-                        title="Apply this view"
-                      >
-                        {v.name}
-                      </button>
-                      <button
-                        className="btn ghost views-del"
-                        onClick={() => persistViews(views.filter((x) => x.name !== v.name))}
-                        title={'Delete ' + v.name}
-                        aria-label={'Delete view ' + v.name}
-                      >
-                        <Icon name="close" />
-                      </button>
-                    </div>
-                  ))}
-                </>
-              )}
-            </Dropdown>
-            <button className="btn ghost" onClick={copyLink} title="Copy a shareable link to this exact view" aria-label="Copy shareable link">
+            <ViewsMenu
+              views={views}
+              persistViews={persistViews}
+              buildViewParams={buildViewParams}
+              copyLink={copyLink}
+              applyViewParams={applyViewParams}
+              setToast={setToast}
+            />
+            <button
+              className="btn ghost"
+              onClick={copyLink}
+              title="Copy a shareable link to this exact view"
+              aria-label="Copy shareable link"
+            >
               <Icon name="link" />
             </button>
             <button
               className="btn ghost"
-              onClick={() => setShowEmbed(true)}
+              onClick={openEmbed}
               title="Embed this view as an iframe (frames the current filtered slice)"
               aria-label="Embed this view"
             >
               <Icon name="code" />
             </button>
-            {/* The one link into the Golden Path compliance screen (src/golden-path/, routed in
-                main.jsx). A plain href, so it lands on that route with no map state in the URL.
-                Hidden when there is no backend to serve its data (the static Pages build). */}
-            {(import.meta.env.DEV || import.meta.env.VITE_DATA_URL) && (
-              <a className="btn ghost" href="?view=golden-path" title="Golden Path compliance" aria-label="Golden Path compliance">
+            {/* The one link into the Golden Path screen (src/golden-path/, routed in main.jsx). A
+                plain href, so it lands there with no map state in the URL. */}
+            {showGoldenPath && (
+              <a
+                className="btn ghost"
+                href="?view=golden-path"
+                title="Golden Path compliance"
+                aria-label="Golden Path compliance"
+              >
                 <Icon name="compliance" />
               </a>
             )}
-            <button className="btn ghost" onClick={() => setShowLegend(true)} title="Legend / help" aria-label="Legend and help">
+            <button
+              className="btn ghost"
+              onClick={() => setShowLegend(true)}
+              title="Legend / help"
+              aria-label="Legend and help"
+            >
               <Icon name="help" />
             </button>
             <button
@@ -1411,183 +1177,84 @@ export default function App() {
               <Icon name="download" />
             </button>
             {admin ? (
-              <button className="btn ghost" onClick={() => setShowAdmin(true)} title="Settings & curate the model (Admin)" aria-label="Settings — admin">
+              <button
+                className="btn ghost"
+                onClick={openAdmin}
+                title="Settings & curate the model (Admin)"
+                aria-label="Settings — admin"
+              >
                 <Icon name="gear" />
               </button>
             ) : null}
-            <button
-              className="btn ghost"
-              onClick={() => setDark((d) => !d)}
-              title="Toggle theme"
-              aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-            >
-              <Icon name={dark ? 'sun' : 'moon'} />
-            </button>
+            <ThemeToggle dark={dark} setDark={setDark} />
             <span className="tb-sep" />
-            {(() => {
-              const user = getUser()
-              return user ? (
-                <div className="auth-chip" title={user.email || user.username || ''}>
-                  <span className="auth-user">{user.name}</span>
-                  <button className="btn ghost" onClick={logout} title="Sign out">
-                    Logout
-                  </button>
-                </div>
-              ) : null
-            })()}
-            <div className="actions">
-              <button className="btn" disabled={!!busy} onClick={exportPng} title="Export current view to PNG">
-                Export
-              </button>
-              {/* Regenerate/Publish hit the Vite dev-server API (vite.config.mjs); they don't exist in
-              built deploys, so only show them under `npm run dev`. */}
-              {import.meta.env.DEV && admin ? (
-                <>
-                  <button className="btn" disabled={!!busy} onClick={() => post('/api/regenerate', 'Regenerate')}>
-                    {busy === 'Regenerate' ? 'Regenerating…' : 'Regenerate data'}
-                  </button>
-                  <button className="btn primary" disabled={!!busy} onClick={() => post('/api/publish', 'Publish')}>
-                    {busy === 'Publish' ? 'Publishing…' : 'Publish diagram'}
-                  </button>
-                </>
-              ) : null}
-            </div>
-            <Dropdown className="more-dd" label={<Icon name="more" />} caret={false} align="right" title="More actions">
-              {(close) => (
-                <>
-                  <button
-                    className="dd-item"
-                    disabled={!!busy}
-                    onClick={() => {
-                      exportPng()
-                      close()
-                    }}
-                  >
-                    Export PNG
-                  </button>
-                  <button
-                    className="dd-item"
-                    onClick={() => {
-                      downloadData()
-                      close()
-                    }}
-                  >
-                    Download data (JSON)
-                  </button>
-                  <button
-                    className="dd-item"
-                    onClick={() => {
-                      setShowEmbed(true)
-                      close()
-                    }}
-                  >
-                    Embed this view…
-                  </button>
-                  {import.meta.env.DEV && admin ? (
-                    <>
-                      <button
-                        className="dd-item"
-                        disabled={!!busy}
-                        onClick={() => {
-                          post('/api/regenerate', 'Regenerate')
-                          close()
-                        }}
-                      >
-                        {busy === 'Regenerate' ? 'Regenerating…' : 'Regenerate data'}
-                      </button>
-                      <button
-                        className="dd-item"
-                        disabled={!!busy}
-                        onClick={() => {
-                          post('/api/publish', 'Publish')
-                          close()
-                        }}
-                      >
-                        {busy === 'Publish' ? 'Publishing…' : 'Publish diagram'}
-                      </button>
-                    </>
-                  ) : null}
-                </>
-              )}
-            </Dropdown>
+            <UserChip />
+            <MoreMenu
+              busy={busy}
+              exportPng={exportPng}
+              downloadData={downloadData}
+              openEmbed={openEmbed}
+              showPipelineActions={showPipelineActions}
+              post={post}
+            />
           </>
         )}
       </header>
 
       {showLegend ? <LegendOverlay onClose={() => setShowLegend(false)} /> : null}
-      {showEmbed ? <EmbedDialog title={title} onClose={() => setShowEmbed(false)} onCopied={() => setToast('Embed code copied to clipboard')} /> : null}
-      {ctx && admin ? <ContextMenu x={ctx.x} y={ctx.y} items={buildCtxItems()} onClose={() => setCtx(null)} /> : null}
+      {showEmbed ? (
+        <EmbedDialog
+          title={title}
+          onClose={() => setShowEmbed(false)}
+          onCopied={() => setToast('Embed code copied to clipboard')}
+        />
+      ) : null}
+      {ctx && admin ? (
+        <ContextMenu x={ctx.x} y={ctx.y} items={buildCtxItems()} onClose={() => setCtx(null)} />
+      ) : null}
       {showAdmin && data && admin ? (
         <Suspense fallback={null}>
-          <AdminPanel data={data} layout={layout} onResetLayout={resetLayout} onSaved={() => setSavedLayout(layout)} onClose={() => setShowAdmin(false)} />
+          <AdminPanel
+            data={data}
+            layout={layout}
+            onResetLayout={resetLayout}
+            onSaved={() => setSavedLayout(layout)}
+            onClose={() => setShowAdmin(false)}
+          />
         </Suspense>
       ) : null}
 
       <div className="body">
         {!data ? (
-          <div className="loading" role="status" aria-live="polite">
-            <span className="spinner" aria-hidden="true" />
-            <span>Loading architecture…</span>
-          </div>
+          <Spinner label="Loading architecture…" />
         ) : clientId ? (
-          <Suspense
-            fallback={
-              <div className="loading" role="status" aria-live="polite">
-                <span className="spinner" aria-hidden="true" />
-              </div>
-            }
-          >
+          <Suspense fallback={<Spinner />}>
             <ClientDetailView
               data={data}
               folder={clientId}
-              title={(() => {
-                const r = data.repos?.find((x) => x.folder === clientId)
-                return r?.inventory?.name || r?.displayName || clientId
-              })()}
+              title={clientTitle()}
               dark={dark}
-              onBack={() => {
-                setClientId(null)
-                if (sel?.screen) setSel(null)
-              }}
+              onBack={leaveClientView}
               onSelectScreen={onSelectScreen}
             />
           </Suspense>
-        ) : view === 'table' || view === 'matrix' || view === 'integrations' ? (
-          (() => {
-            const onSelect = (e) =>
-              setSel({
-                title: e.name,
-                kind: e.type === 'Client' ? 'client' : /third/i.test(e.type) ? 'external' : 'component',
-                subtitle: e.owner,
-                inventory: e,
-              })
-            const fallback = (
-              <div className="loading" role="status" aria-live="polite">
-                <span className="spinner" aria-hidden="true" />
-              </div>
-            )
-            return (
-              <Suspense fallback={fallback}>
-                {view === 'matrix' ? (
-                  <MatrixView inventory={facetInventory} query={query} onSelect={onSelect} config={config} />
-                ) : view === 'integrations' ? (
-                  <IntegrationsTable integrations={visibleIntegrations} inventory={data?.inventory || []} query={query} onSelect={onSelect} />
-                ) : (
-                  <InventoryTable
-                    inventory={facetInventory}
-                    query={query}
-                    onSelect={onSelect}
-                    externals={externalsByRepo}
-                    docSearchUrl={config?.docSearchUrl}
-                  />
-                )}
-              </Suspense>
-            )
-          })()
+        ) : TABLE_VIEWS.includes(view) ? (
+          <TableViews
+            view={view}
+            facetInventory={facetInventory}
+            visibleIntegrations={visibleIntegrations}
+            data={data}
+            query={query}
+            config={config}
+            externalsByRepo={externalsByRepo}
+            setSel={setSel}
+          />
         ) : (
-          <div className="canvas" key={flowKey}>
+          <div className="canvas" key={flowKey} ref={canvasRef} onKeyDown={onCanvasKeyDown}>
             <ReactFlow
-              onInit={(inst) => (rfRef.current = inst)}
+              onInit={(instance) => (rfRef.current = instance)}
+              colorMode={dark ? 'dark' : 'light'}
+              style={FLOW_STYLE}
               nodes={rfNodes}
               edges={rfEdges}
               onNodesChange={onNodesChangeAdmin}
@@ -1612,27 +1279,30 @@ export default function App() {
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={18} color={dark ? '#223052' : '#e6e8ee'} />
-              {admin ? <Background id="grid" variant="lines" gap={GRID} color={dark ? '#18233c' : '#eceef3'} /> : null}
+              {admin ? (
+                <Background id="grid" variant="lines" gap={GRID} color={dark ? '#18233c' : '#eceef3'} />
+              ) : null}
               {admin ? <HelperLines horizontal={helper.h} vertical={helper.v} color={helper.color} /> : null}
-              {EMBED ? null : <MiniMap pannable zoomable nodeColor={(n) => KIND[n.data?.kind]?.color || '#bbb'} />}
+              {EMBED ? null : (
+                <MiniMap
+                  pannable
+                  zoomable
+                  nodeColor={(node) => KIND[node.data?.kind]?.color || MINIMAP_FALLBACK_COLOR}
+                />
+              )}
               <Controls />
             </ReactFlow>
             {admin && (layoutDirty || modeLayoutCount > 0) ? (
-              <div className="layout-pill">
-                <span className="layout-pill-txt">
-                  {layoutDirty ? <Icon name="dot" className="pill-dot" /> : null} {layoutDirty ? 'Layout changed' : 'Custom layout'}
-                </span>
-                <button className="btn ghost" onClick={autoArrange} title="Re-flow this view to the automatic layout">
-                  Auto-arrange
-                </button>
-                {layoutDirty ? (
-                  <button className="btn primary" onClick={() => setShowAdmin(true)} title="Open Admin to save the layout to config.json">
-                    Save…
-                  </button>
-                ) : null}
-              </div>
+              <LayoutPill layoutDirty={layoutDirty} autoArrange={autoArrange} openAdmin={openAdmin} />
             ) : null}
-            {EMBED ? null : <Legend kinds={kindsPresent} edgeTypesPresent={graph.edgeTypesPresent} hiddenEdges={hiddenEdges} config={config} />}
+            {EMBED ? null : (
+              <Legend
+                kinds={kindsPresent}
+                edgeTypesPresent={graph.edgeTypesPresent}
+                hiddenEdges={hiddenEdges}
+                config={config}
+              />
+            )}
           </div>
         )}
 
@@ -1653,7 +1323,9 @@ export default function App() {
       </div>
 
       {busy || toast ? (
-        <div className={'toast' + (toast && /fail/i.test(toast) ? ' err' : '')}>{busy ? busy + ' in progress… (the pipeline can take a minute)' : toast}</div>
+        <div className={'toast' + (toast && /fail/i.test(toast) ? ' err' : '')}>
+          {busy ? busy + ' in progress… (the pipeline can take a minute)' : toast}
+        </div>
       ) : null}
     </div>
   )

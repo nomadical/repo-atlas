@@ -3,14 +3,25 @@
    page down; errors throw so the route answers 500 instead of claiming a save. */
 import fs from 'node:fs'
 
+// Warns with the real 1-based line number. Only objects are entries: a line that parses to
+// `null` or a number would crash the replay, so it is skipped like a malformed one.
 export function parseLines(text) {
-  return text
-    .split('\n')
-    .filter(Boolean)
-    .map((l, i) => {
-      try { return JSON.parse(l) } catch { console.warn(`skipping malformed line ${i + 1}`); return null }
-    })
-    .filter(Boolean)
+  const entries = []
+  text.split('\n').forEach((line, index) => {
+    if (!line.trim()) return
+    const entry = parseLine(line)
+    if (entry && typeof entry === 'object') entries.push(entry)
+    else console.warn(`skipping malformed line ${index + 1}`)
+  })
+  return entries
+}
+
+function parseLine(line) {
+  try {
+    return JSON.parse(line)
+  } catch {
+    return undefined
+  }
 }
 
 export function fileStore({ path }) {
@@ -18,9 +29,10 @@ export function fileStore({ path }) {
     list() {
       try {
         return parseLines(fs.readFileSync(path, 'utf8'))
-      } catch (e) {
-        if (e.code === 'ENOENT') return [] // no file yet == empty log, not an error
-        throw e // any other fs error must NOT read as "no decisions" — the route answers 500
+      } catch (error) {
+        // No file yet is an empty log. Any other fs error must not read as "no decisions".
+        if (error.code === 'ENOENT') return []
+        throw error
       }
     },
     append(entry) {

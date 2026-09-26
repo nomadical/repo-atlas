@@ -25,11 +25,7 @@
           "repository": "design-system",
           "type": "Library",
           "owner": "Platform",
-          "applications": [
-            "Shop",
-            "Ops Console",
-            "Partner API"
-          ],
+          "applications": ["Shop", "Ops Console", "Partner API"],
           "status": "Current",
           "language": "TypeScript 5.7.3",
           "framework": "React 19.2.0",
@@ -52,9 +48,7 @@
           "repository": "storefront-web",
           "type": "Client",
           "owner": "Storefront",
-          "applications": [
-            "Shop"
-          ],
+          "applications": ["Shop"],
           "status": "Current",
           "language": "TypeScript 5.7.3",
           "framework": "React 19.2.0",
@@ -65,9 +59,7 @@
           "repository": "checkout-web",
           "type": "Client",
           "owner": "Storefront",
-          "applications": [
-            "Shop"
-          ],
+          "applications": ["Shop"],
           "status": "Current",
           "language": "TypeScript 5.7.3",
           "framework": "React 19.2.0",
@@ -78,9 +70,7 @@
           "repository": "ops-console",
           "type": "Client",
           "owner": "Fulfilment",
-          "applications": [
-            "Ops Console"
-          ],
+          "applications": ["Ops Console"],
           "status": "Current",
           "language": "TypeScript 5.7.3",
           "framework": "React 18.2.0",
@@ -91,9 +81,7 @@
           "repository": "partner-portal",
           "type": "Client",
           "owner": "Platform",
-          "applications": [
-            "Partner API"
-          ],
+          "applications": ["Partner API"],
           "status": "Sunsetting",
           "language": "TypeScript 4.9.5",
           "framework": "React 18.2.0",
@@ -104,10 +92,7 @@
           "repository": "edge-gateway",
           "type": "Service",
           "owner": "Platform",
-          "applications": [
-            "Partner API",
-            "Shop"
-          ],
+          "applications": ["Partner API", "Shop"],
           "status": "Current",
           "language": null,
           "framework": null,
@@ -129,10 +114,7 @@
           "repository": "orders-service",
           "type": "Service",
           "owner": "Fulfilment",
-          "applications": [
-            "Shop",
-            "Ops Console"
-          ],
+          "applications": ["Shop", "Ops Console"],
           "status": "Current",
           "language": null,
           "framework": null,
@@ -146,9 +128,7 @@
           "repository": "inventory-service",
           "type": "Service",
           "owner": "Fulfilment",
-          "applications": [
-            "Ops Console"
-          ],
+          "applications": ["Ops Console"],
           "status": "Current",
           "language": null,
           "framework": null,
@@ -176,9 +156,7 @@
           "repository": "catalog-service",
           "type": "Service",
           "owner": "Storefront",
-          "applications": [
-            "Shop"
-          ],
+          "applications": ["Shop"],
           "status": "Current",
           "language": null,
           "framework": null,
@@ -192,9 +170,7 @@
           "repository": "recommendations-service",
           "type": "Service",
           "owner": "Storefront",
-          "applications": [
-            "Shop"
-          ],
+          "applications": ["Shop"],
           "status": "Planned",
           "language": null,
           "framework": null,
@@ -224,9 +200,7 @@
           "repository": "ops-console",
           "type": "Client",
           "owner": "Fulfilment",
-          "applications": [
-            "Ops Console"
-          ],
+          "applications": ["Ops Console"],
           "status": "Current",
           "language": "TypeScript 5.7.3",
           "framework": "React 19.2.0",

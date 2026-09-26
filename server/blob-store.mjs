@@ -6,19 +6,24 @@ import { AppendBlobClient } from '@azure/storage-blob'
 import { DefaultAzureCredential } from '@azure/identity'
 import { parseLines } from '../golden-path/lib/store.mjs'
 
+const NOT_FOUND = 404
+
 export function blobStore({ url }) {
   const blob = new AppendBlobClient(url, new DefaultAzureCredential())
   return {
     async list() {
       try {
-        return parseLines((await blob.downloadToBuffer()).toString('utf8'))
-      } catch (e) {
-        if (e.statusCode === 404) return [] // no blob yet == empty log, not an error
-        throw e // anything else must NOT read as "no decisions" — the route answers 500
+        const contents = await blob.downloadToBuffer()
+        return parseLines(contents.toString('utf8'))
+      } catch (error) {
+        // No blob yet is an empty log. Anything else must not read as "no decisions".
+        if (error.statusCode === NOT_FOUND) return []
+        throw error
       }
     },
     async append(entry) {
-      await blob.createIfNotExists() // idempotent; creates the blob as AppendBlob on first write
+      // Idempotent; the first write creates the blob as an AppendBlob.
+      await blob.createIfNotExists()
       const line = JSON.stringify(entry) + '\n'
       await blob.appendBlock(line, Buffer.byteLength(line))
       return entry

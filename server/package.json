@@ -1,8 +1,8 @@
 {
   "name": "repo-atlas-server",
   "private": true,
-  "type": "module",
   "description": "Static + Keycloak-token-gated-data server for the architecture map (deployed via fe-node-services).",
+  "type": "module",
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs"

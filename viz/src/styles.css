@@ -18,10 +18,14 @@ body {
   --brand-strong: #0086a8;
   --brand-dark: #005168;
   --brand-ink: #007391;
+  /* solid teal behind white text (buttons, "on" chips); the same in both themes */
+  --brand-solid: #007391;
+  --ok-solid: #2e7d32;
+  --danger-solid: #c62828;
   --canvas: #f4f6fa;
   --card: #fff;
   --ink: #1f2430;
-  --muted: #8a93a6;
+  --muted: #5f6b80;
   --bd: #d9dee9;
   --panel: #fff;
   --panel-bd: #e3e7ef;
@@ -29,12 +33,41 @@ body {
   --chip-ink: #45506a;
   --region-bg: rgba(99, 110, 140, 0.05);
   --label-bg: #fff;
+  --brand-tint: #eafaff;
+  --focus: #007391;
+  /* lifecycle status: the colour marks borders and chip fills, -on is text on that fill */
+  --st-current: #188038;
+  --st-current-on: #fff;
+  --st-planned: #1967d2;
+  --st-planned-on: #fff;
+  --st-sunsetting: #e8830c;
+  --st-sunsetting-on: #1f2430;
+  --st-removed: #9aa3b5;
+  --st-removed-on: #1f2430;
+  /* kind-coloured text keeps the kind's hue but clamps its lightness to stay readable on cards */
+  --kind-l-min: 0;
+  --kind-l-max: 0.5;
+  /* tinted pills and inline notices: -bg fill, -ink text, -bd border */
+  --warn-bg: #fff3d6;
+  --warn-ink: #8a5300;
+  --warn-bd: #ffd599;
+  --danger-bg: #fde7e7;
+  --danger-ink: #b3261e;
+  --ok-bg: #e3f5e9;
+  --ok-ink: #1b7a3d;
+  --info-bg: #e3f0ff;
+  --info-ink: #1a5fc8;
+  --violet-bg: #ede7f6;
+  --violet-ink: #4527a0;
+  --violet-bd: #d6c8f5;
+  --neutral-bg: #eceff1;
+  --neutral-ink: #455a64;
 }
 .app.dark {
   --canvas: #0c1322;
   --card: #162033;
   --ink: #e6e9f2;
-  --muted: #8b97b0;
+  --muted: #97a3bb;
   --bd: #2a3650;
   --panel: #111a2c;
   --panel-bd: #24314c;
@@ -42,12 +75,44 @@ body {
   --chip-ink: #aebbd6;
   --region-bg: rgba(120, 140, 180, 0.06);
   --label-bg: #0c1322;
+  /* Only the text role of the brand ramp flips: --brand / --brand-strong / --brand-dark fill the
+     toolbar and headers, which look the same in both themes. */
+  --brand-ink: #5dcbe8;
+  --brand-tint: #133a4d;
+  --focus: #5dcbe8;
+  --st-current: #3fb760;
+  --st-current-on: #0c1322;
+  --st-planned: #6ea8f7;
+  --st-planned-on: #0c1322;
+  --st-sunsetting-on: #0c1322;
+  --st-removed: #8a94a8;
+  --st-removed-on: #0c1322;
+  --kind-l-min: 0.76;
+  --kind-l-max: 1;
+  --warn-bg: #3a2a0c;
+  --warn-ink: #ffc766;
+  --warn-bd: #6b4d12;
+  --danger-bg: #3d1a1d;
+  --danger-ink: #ff9a94;
+  --ok-bg: #133524;
+  --ok-ink: #7ee2a0;
+  --info-bg: #16294a;
+  --info-ink: #9cc2ff;
+  --violet-bg: #2a2147;
+  --violet-ink: #c7b5ff;
+  --violet-bd: #45397a;
+  --neutral-bg: #263245;
+  --neutral-ink: #b8c4d6;
+}
+:root {
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--canvas);
+  color: var(--ink);
 }
 .toolbar {
   display: flex;
@@ -70,8 +135,9 @@ body {
   gap: 9px;
   font-size: 15px;
   /* zero basis: the brand only takes leftover space (up to its natural width), truncating the
-     tagline first, so it never forces the controls onto a second row */
-  flex: 1 1 0;
+     tagline first, so it never forces the controls onto a second row. The high grow factor lets it
+     claim that space before .spacer does. */
+  flex: 100 1 0;
   min-width: 0;
   max-width: max-content;
   overflow: hidden;
@@ -195,23 +261,35 @@ body {
 
 /* Accessibility: visible keyboard focus + honour reduced-motion */
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--focus, #007391);
   outline-offset: 2px;
   border-radius: 6px;
 }
 .switch input:focus-visible + .switch-track {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
+/* React Flow strips the outline from focused nodes, so draw the ring on what the node renders */
+/* On the teal gradient a teal ring vanishes: white outside, deep teal in the offset gap */
+.toolbar :focus-visible,
+.toolbar .switch input:focus-visible + .switch-track {
+  outline-color: #fff;
+  box-shadow: 0 0 0 2px var(--brand-dark);
+}
+/* ...but popovers opened from the toolbar sit on the panel surface */
+.toolbar .dd-menu :focus-visible,
+.toolbar .health-pop :focus-visible {
+  outline-color: var(--focus);
+  box-shadow: none;
+}
+.react-flow__node:focus-visible .node-card {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.react-flow__node.react-flow__node-region:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 16px;
 }
 .switch {
   display: inline-flex;
@@ -388,7 +466,7 @@ body {
   font: inherit;
   letter-spacing: inherit;
   text-transform: none;
-  color: var(--brand-strong);
+  color: var(--brand-ink);
   cursor: pointer;
 }
 .dd-linkbtn:hover {
@@ -412,7 +490,7 @@ body {
   color: var(--muted);
 }
 .views-row .views-del:hover {
-  color: #b3261e;
+  color: var(--danger-ink);
 }
 .dd-hint {
   font-size: 11px;
@@ -488,7 +566,7 @@ body {
   cursor: default;
 }
 .ctx-item.danger {
-  color: #e5484d;
+  color: var(--danger-ink);
 }
 .ctx-item svg {
   width: 15px;
@@ -504,10 +582,6 @@ body {
   min-width: 86px;
   justify-content: space-between;
 }
-.more-dd {
-  display: none;
-}
-
 /* Inventory table view */
 .table-wrap {
   flex: 1;
@@ -549,7 +623,7 @@ body {
   user-select: none;
 }
 .inv-table th.sorted {
-  color: var(--brand-strong);
+  color: var(--brand-ink);
 }
 .inv-table td {
   padding: 8px 12px;
@@ -566,7 +640,7 @@ body {
   font-weight: 600;
 }
 .inv-table a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .inv-table a:hover {
@@ -578,7 +652,7 @@ body {
   border: none;
   padding: 0;
   font: inherit;
-  color: var(--brand);
+  color: var(--brand-ink);
   cursor: pointer;
 }
 .linklike:hover {
@@ -645,7 +719,7 @@ body {
   background: var(--chip);
   color: var(--ink);
   border: 1px solid var(--bd);
-  border-left: 3px solid #1e8e3e;
+  border-left: 3px solid var(--st-current);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 11.5px;
@@ -655,18 +729,20 @@ body {
   margin-bottom: 0;
 }
 .mx-chip:hover {
-  background: #eafaff;
+  background: var(--brand-tint);
   border-color: var(--brand);
 }
 .mx-chip.st-planned {
-  border-left-color: #1a73e8;
+  border-left-color: var(--st-planned);
   border-style: dotted;
 }
 .mx-chip.st-sunsetting {
-  border-left-color: #e8830c;
+  border-left-color: var(--st-sunsetting);
+  /* a line style per status, so the chip doesn't rely on colour alone (see .node-card.st-*) */
+  border-left-style: dashed;
 }
 .mx-chip.st-removed {
-  border-left-color: #9aa3b5;
+  border-left-color: var(--st-removed);
   opacity: 0.6;
   text-decoration: line-through;
 }
@@ -694,13 +770,13 @@ body {
 .mx-chip.mx-legend:hover {
   background: var(--chip);
   border-color: var(--bd);
-  border-left-color: #1e8e3e;
+  border-left-color: var(--st-current);
 }
 .mx-chip.mx-legend.st-sunsetting:hover {
-  border-left-color: #e8830c;
+  border-left-color: var(--st-sunsetting);
 }
 .mx-chip.mx-legend.st-planned:hover {
-  border-left-color: #1a73e8;
+  border-left-color: var(--st-planned);
 }
 .matrix-note {
   font-size: 11px;
@@ -793,7 +869,7 @@ body {
 }
 .lg-chip.st-sunsetting {
   border-style: dashed;
-  border-color: #e8830c;
+  border-color: var(--st-sunsetting);
 }
 .lg-chip.st-planned {
   border-style: dotted;
@@ -885,7 +961,7 @@ body {
   border-radius: 8px;
   background: var(--canvas);
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -989,13 +1065,6 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: none;
-}
-
 .auth-chip {
   display: flex;
   align-items: center;
@@ -1011,8 +1080,10 @@ body {
   white-space: nowrap;
 }
 
-/* responsive toolbar: drop labels first, then collapse actions into the ⋯ menu */
-@media (max-width: 1200px) {
+/* responsive toolbar: drop labels first, then tighten spacing */
+/* below this the controls leave the brand ~270px: spend it on the title, not a clipped tagline */
+@media (max-width: 1600px) {
+  .brand-sub,
   .gen {
     display: none;
   }
@@ -1037,22 +1108,50 @@ body {
     display: none;
   }
 }
-@media (max-width: 880px) {
-  .actions {
-    display: none;
-  }
-  .more-dd {
-    display: block;
-  }
-}
+/* phones: two rows at most. Separators, the spacer, carets and the search glyph each cost a
+   gap-plus-width that pushed the icons onto a third row. */
 @media (max-width: 560px) {
   .toolbar {
-    gap: 7px;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+  .toolbar .tb-sep,
+  .toolbar .spacer,
+  .toolbar .dd-caret,
+  .toolbar .search-icon {
+    display: none;
   }
   .search {
-    flex: 1 1 90px;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+  }
+  .search-wrap {
+    flex: 1 1 84px;
+    min-width: 0;
+  }
+  .toolbar .dd-btn {
+    padding: 7px 9px;
   }
   .view-dd .dd-btn {
+    min-width: 0;
+  }
+  /* Buttons can land anywhere in the wrapped rows, so popovers span the toolbar instead of hanging
+     off their button, which pushed them off one edge of the screen. */
+  .toolbar {
+    position: relative;
+  }
+  .toolbar .health-wrap,
+  .toolbar .dd {
+    position: static;
+  }
+  .toolbar .health-pop,
+  .toolbar .dd-menu,
+  .toolbar .dd-menu.right {
+    top: calc(100% + 6px);
+    left: 10px;
+    right: 10px;
+    width: auto;
     min-width: 0;
   }
 }
@@ -1098,12 +1197,15 @@ body {
   color: var(--muted);
   margin-bottom: 4px;
 }
+.health-note {
+  font-size: 12px;
+}
 
 .node-stale {
   font-size: 9px;
   font-weight: 700;
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
   border-radius: 4px;
   padding: 0 5px;
   margin-left: 6px;
@@ -1119,36 +1221,49 @@ body {
   text-transform: none;
 }
 .node-flag.new {
-  color: #1a73e8;
-  background: #e3f0ff;
+  color: var(--info-ink);
+  background: var(--info-bg);
 }
 .node-flag.warn {
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
 }
 .stale-pill {
   font-size: 10px;
   font-weight: 700;
-  color: #b26a00;
-  background: #fff3d6;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
   border-radius: 5px;
   padding: 2px 7px;
   margin-left: 8px;
   vertical-align: middle;
 }
 .stale-text {
-  color: #b26a00 !important;
+  color: var(--warn-ink) !important;
 }
 
 /* Component Inventory: status lozenges + per-card status styling */
 .status-chip {
-  color: #fff;
+  background: var(--st-removed);
+  color: var(--st-removed-on);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.3px;
   border-radius: 5px;
   padding: 2px 8px;
   text-transform: uppercase;
+}
+.status-chip.st-current {
+  background: var(--st-current);
+  color: var(--st-current-on);
+}
+.status-chip.st-planned {
+  background: var(--st-planned);
+  color: var(--st-planned-on);
+}
+.status-chip.st-sunsetting {
+  background: var(--st-sunsetting);
+  color: var(--st-sunsetting-on);
 }
 .inv-head {
   display: flex;
@@ -1158,7 +1273,7 @@ body {
   flex-wrap: wrap;
 }
 .inv-abbr {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   color: var(--brand-ink);
@@ -1182,7 +1297,7 @@ body {
   margin-top: 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .inv-edit:hover {
@@ -1202,20 +1317,20 @@ body {
   text-transform: uppercase;
 }
 .node-status.st-sunsetting {
-  color: #8a4400;
-  background: #ffe2b3;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
 }
 .node-status.st-planned {
-  color: #174ea6;
-  background: #d7e6fd;
+  color: var(--info-ink);
+  background: var(--info-bg);
 }
 .node-status.st-removed {
-  color: #5f6671;
-  background: #e4e7eb;
+  color: var(--neutral-ink);
+  background: var(--neutral-bg);
 }
 .node-card.st-sunsetting {
   border-style: dashed;
-  border-color: #e8830c;
+  border-color: var(--st-sunsetting);
 }
 .node-card.st-planned {
   border-style: dotted;
@@ -1245,13 +1360,13 @@ body {
 }
 .endpoints a:hover {
   text-decoration: underline;
-  color: var(--brand);
+  color: var(--brand-ink);
 }
 .swaggerlink {
   display: inline-block;
   font-size: 12px;
   margin-bottom: 6px;
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .swaggerlink:hover {
@@ -1352,20 +1467,20 @@ body {
   border-left: 1px solid var(--bd);
 }
 .seg.on {
-  background: var(--accent, #1e88e5);
+  background: var(--brand-solid);
   color: #fff;
 }
 /* backend chip in the client screens table — tinted to match the Backend tier color */
 .be-chip {
-  background: #fff3e0;
-  color: #9a5a00;
-  border-color: #ffd599;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  border-color: var(--warn-bd);
 }
 /* design-system component chip — tinted to match the dependency-edge color */
 .ui-chip {
-  background: #efe9fb;
-  color: #5b3aa6;
-  border-color: #d6c8f5;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
+  border-color: var(--violet-bd);
 }
 /* design-system adoption mini-table (ui repo Details panel) */
 .adopt-table {
@@ -1398,31 +1513,31 @@ body {
   text-decoration: none;
 }
 .ci-success {
-  background: #e3f5e9;
-  color: #1b7a3d;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
 }
 .ci-failure,
 .ci-timed_out,
 .ci-startup_failure {
-  background: #fde7e7;
-  color: #b3261e;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
 }
 .ci-cancelled,
 .ci-skipped,
 .ci-unknown,
 .ci-in_progress,
 .ci-queued {
-  background: var(--chip-bg, #eceef3);
+  background: var(--neutral-bg);
   color: var(--muted);
 }
 .alerts-bad {
-  color: #b3261e;
+  color: var(--danger-ink);
   font-weight: 600;
 }
 /* at-a-glance health flag on a card (only shown when there's a problem) */
 .node-flag.health-flag {
-  background: #fde7e7;
-  color: #b3261e;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
 }
 /* Figma-style alignment guides painted over the flow while an admin drags a card. */
 .rf-helper-lines {
@@ -1466,9 +1581,9 @@ body {
   padding: 5px 11px;
 }
 .layout-pill .btn.primary {
-  background: var(--brand);
+  background: var(--brand-solid);
   color: #fff;
-  border-color: var(--brand);
+  border-color: var(--brand-solid);
 }
 .layout-pill-txt {
   font-weight: 600;
@@ -1524,7 +1639,12 @@ body {
 .node-card.selected {
   box-shadow:
     0 0 0 2px var(--brand),
-    0 4px 14px rgba(10, 168, 210, 0.25);
+    0 4px 14px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.node-kind,
+.panel-eyebrow,
+.region-label {
+  color: oklch(from var(--kind, var(--muted)) clamp(var(--kind-l-min), l, var(--kind-l-max)) c h);
 }
 .node-kind {
   font-size: 10px;
@@ -1555,7 +1675,9 @@ body {
 }
 .tag {
   color: #fff;
-  font-size: 9px;
+  /* tag fills come from config.json; a dark scrim keeps white text readable on any of them */
+  box-shadow: inset 0 0 0 100px rgb(0 0 0 / 0.25);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.4px;
   border-radius: 4px;
@@ -1707,6 +1829,27 @@ body {
 .panel-resizer:hover::after {
   background: var(--brand);
 }
+/* a focused separator shows as a solid focus-coloured bar along the panel edge */
+.panel-resizer:focus-visible {
+  outline: none;
+}
+.panel-resizer:focus-visible::after {
+  left: 2px;
+  width: 3px;
+  background: var(--focus);
+}
+@media (pointer: coarse) {
+  .panel-resizer {
+    left: -10px;
+    width: 20px;
+  }
+  .panel-resizer::after {
+    left: 9px;
+  }
+  .panel-resizer:focus-visible::after {
+    left: 8px;
+  }
+}
 .panel h2 {
   margin: 0;
   font-size: 18px;
@@ -1724,7 +1867,6 @@ body {
   background: var(--chip);
   padding: 10px 12px;
   border-radius: 9px;
-  border-left: 3px solid var(--kind, var(--brand));
   margin: 12px 0 0;
 }
 .close {
@@ -1780,7 +1922,7 @@ body {
   color: var(--muted);
 }
 .mono {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 .small {
@@ -1795,22 +1937,22 @@ body {
   gap: 4px;
 }
 .ext-chip {
-  background: #ede7f6;
-  color: #4527a0;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
 }
 .comp-chip {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--ok-bg);
+  color: var(--ok-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
 }
 .mod-chip {
-  background: #eceff1;
-  color: #455a64;
+  background: var(--neutral-bg);
+  color: var(--neutral-ink);
   font-size: 11px;
   border-radius: 5px;
   padding: 2px 7px;
@@ -1851,7 +1993,7 @@ body {
 .node-ext {
   margin-top: 5px;
   font-size: 10px;
-  color: #6a1b9a;
+  color: var(--violet-ink);
   opacity: 0.8;
 }
 
@@ -1902,18 +2044,18 @@ body {
   border-color: var(--brand);
 }
 .gate-card .btn.primary {
-  background: var(--brand-strong);
+  background: var(--brand-solid);
   color: #fff;
   border: none;
   padding: 9px 12px;
   font-size: 14px;
 }
 .gate-card .btn.primary:hover {
-  background: var(--brand-ink);
+  background: var(--brand-dark);
 }
 .gate-err {
   font-size: 12px;
-  color: #c62828;
+  color: var(--danger-ink);
 }
 
 .toast {
@@ -1931,7 +2073,7 @@ body {
   max-width: 70%;
 }
 .toast.err {
-  background: #c62828;
+  background: var(--danger-solid);
 }
 
 .region {
@@ -2009,7 +2151,7 @@ body {
 
 /* Azure environments section (details panel) */
 .env-name {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2026,7 +2168,7 @@ body {
   word-break: break-all;
 }
 .env-val a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .env-val a:hover {
@@ -2039,7 +2181,7 @@ body {
   white-space: nowrap;
 }
 .env-age.old {
-  color: #b26a00;
+  color: var(--warn-ink);
 }
 .env-module {
   font-size: 11px;
@@ -2049,7 +2191,7 @@ body {
   word-break: break-all;
 }
 .env-module a {
-  color: var(--brand);
+  color: var(--brand-ink);
   text-decoration: none;
 }
 .env-module a:hover {
@@ -2065,8 +2207,8 @@ body {
 }
 .edge-label {
   position: absolute;
-  background: #ede7f6;
-  color: #5e35b1;
+  background: var(--violet-bg);
+  color: var(--violet-ink);
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 5px;
@@ -2097,7 +2239,7 @@ body {
 }
 .adm-tab.on {
   color: var(--ink);
-  border-bottom-color: #1e88e5;
+  border-bottom-color: var(--brand);
   font-weight: 600;
 }
 .adm-body {
@@ -2141,7 +2283,7 @@ body {
   min-width: 0;
 }
 .adm-in.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 .adm-wide {
@@ -2169,7 +2311,7 @@ body {
   flex: none;
 }
 .adm-x:hover {
-  color: #e53935;
+  color: var(--danger-ink);
 }
 .adm-add {
   display: flex;
@@ -2248,26 +2390,26 @@ body {
   cursor: pointer;
 }
 .adm-chip.on {
-  background: #1e88e5;
+  background: var(--brand-solid);
   color: #fff;
-  border-color: #1e88e5;
+  border-color: var(--brand-solid);
 }
-/* FE→BE wiring provenance (color, not a border): blue = system-defined (committed data),
+/* FE→BE wiring provenance (color, not a border): teal = system-defined (committed data),
    green = hand-added this session, red strike-through = hand-removed this session. */
 .adm-chip.on.added {
-  background: #2e7d32;
-  border-color: #2e7d32;
+  background: var(--ok-solid);
+  border-color: var(--ok-solid);
 }
 .adm-chip.removed {
-  border-color: #e53935;
-  color: #e53935;
+  border-color: var(--danger-ink);
+  color: var(--danger-ink);
   text-decoration: line-through;
 }
 /* manual-edit highlight: fields the user hand-changed from their seeded baseline */
 .adm-in.changed,
 .adm-chip.changed {
-  border-color: var(--accent, #1e88e5);
-  box-shadow: 0 0 0 1px var(--accent, #1e88e5);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
 }
 .adm-tbl {
   width: 100%;
@@ -2295,12 +2437,12 @@ body {
   color: var(--chip-ink);
 }
 .adm-tag.warn {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
 }
 .adm-warn {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
   border-radius: 6px;
   padding: 5px 9px;
   font-size: 12px;
@@ -2322,11 +2464,34 @@ body {
 }
 .adm-msg {
   font-size: 12px;
-  color: #2e7d32;
+  color: var(--ok-ink);
 }
 .adm-msg.muted {
   color: var(--muted);
 }
 .adm-msg.err {
-  color: #e53935;
+  color: var(--danger-ink);
+}
+
+/* Reduced motion: keep colour, shadow and fade feedback, drop anything that moves. Last in the
+   file so it wins over the hover lifts above. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .node-card:hover,
+  .region-label:hover {
+    transform: none;
+  }
+  .switch-thumb {
+    transition: none;
+  }
+  .spinner {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
 }

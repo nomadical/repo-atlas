@@ -1,208 +1,307 @@
-// Backend tooling scanner — reads the cloned backend repos and extracts their stack
-// (build tool, Java version, framework + version, multi-module layout) from build files.
+// Backend tooling scanner: reads the cloned backend repos and extracts their stack (build tool,
+// Java version, framework + version, modules) plus messaging, REST and Golden Path facts.
 //
-// This is the file-scanning counterpart to github-inventory.mjs (which only sees API
-// metadata): tooling versions live inside build.gradle / pom.xml and can only be read from
-// a local checkout. Backends are scanned from ROOT (the same place the FE repos are read),
-// so in CI the regenerate workflow must clone these repos alongside the frontends.
+// Tooling versions live inside build.gradle / pom.xml, so unlike github-inventory.mjs this needs a
+// local checkout. In CI the regenerate workflow must clone the backends alongside the frontends.
 //
-// Writes backend-tooling.json keyed by repo folder. Repos not present on disk are reported
-// under `missing` rather than failing — so a partial checkout degrades gracefully.
+// Writes backend-tooling.json keyed by repo folder. Repos not on disk are listed under `missing`
+// instead of failing, so a partial checkout degrades visibly.
 import fs from 'node:fs'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 import { AUDIT, ROOT, maybeFetch } from './_paths.mjs'
 import { discoverBackendFolders } from './repos.mjs'
 
-// Backend repos to scan: auto-discovered from the clones (git repo + build.gradle/pom.xml, no
-// package.json) plus whatever BACKEND_REPOS names (the canonical CI list, space-separated —
-// the same variable the regenerate workflow uses for cloning). Env-listed repos that aren't
-// on disk are reported under `missing` so a partial checkout degrades visibly, not silently.
-const envBackends = (process.env.BACKEND_REPOS || '').split(/\s+/).filter(Boolean)
-const BACKENDS = [...new Set([...envBackends, ...discoverBackendFolders()])].sort()
+const MAX_WALK_DEPTH = 12
+const SKIPPED_DIRS = new Set(['node_modules', '.git', 'build', 'target', 'dist', '.gradle'])
+const PATH_SEGMENTS_IN_PREFIX = 2
 
-const read = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
-const first = (re, s) => { const m = s.match(re); return m ? m[1] : null }
-const all = (re, s) => [...s.matchAll(re)].map((m) => m[1])
+const readText = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch {
+    return ''
+  }
+}
 
-const gitInfo = (dir) => {
+const firstGroup = (regex, text) => {
+  const match = text.match(regex)
+  return match ? match[1] : null
+}
+
+const allGroups = (regex, text) => [...text.matchAll(regex)].map((match) => match[1])
+
+const splitLines = (text) => text.split(/\r?\n/)
+
+// Backend repos to scan: the auto-discovered clones plus BACKEND_REPOS (the canonical CI list,
+// space-separated). Listed repos that aren't on disk end up under `missing`.
+function listBackends() {
+  const fromEnv = (process.env.BACKEND_REPOS || '').split(/\s+/).filter(Boolean)
+  return [...new Set([...fromEnv, ...discoverBackendFolders()])].sort()
+}
+
+// ---- Git metadata ----------------------------------------------------------------------------
+
+function runGit(dir, command) {
+  try {
+    return execSync(command, {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+function gitInfo(dir) {
   maybeFetch(dir)
-  const g = (cmd) => { try { return execSync(cmd, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { return null } }
-  const branch = g('git rev-parse --abbrev-ref origin/HEAD')?.replace(/^origin\//, '') || g('git rev-parse --abbrev-ref HEAD')
+  const git = (command) => runGit(dir, command)
+  const branch =
+    git('git rev-parse --abbrev-ref origin/HEAD')?.replace(/^origin\//, '') ||
+    git('git rev-parse --abbrev-ref HEAD')
   const ref = branch ? `origin/${branch}` : 'HEAD'
-  // GitHub repo basename from the remote — the folder can lag a rename (e.g. the
-  // skycore-booking-portal-backend checkout of the skycore-booking-portal repo), and the
-  // inventory is keyed by the GitHub name.
-  const repoName = (g('git config --get remote.origin.url') || '').match(/\/([^/]+?)(?:\.git)?$/)?.[1] || null
-  return { defaultBranch: branch, lastCommit: g(`git log -1 --format=%cI ${ref}`) || g('git log -1 --format=%cI') , repoName }
-}
-
-const scanGradle = (dir) => {
-  const props = read(path.join(dir, 'gradle.properties'))
-  const build = read(path.join(dir, 'build.gradle')) || read(path.join(dir, 'build.gradle.kts'))
-  const settings = read(path.join(dir, 'settings.gradle')) || read(path.join(dir, 'settings.gradle.kts'))
-  const quarkus = first(/quarkusPlatformVersion\s*=\s*([\d.]+\w*)/i, props)
+  // The folder can lag a GitHub rename, and the inventory is keyed by the GitHub name.
+  const remoteUrl = git('git config --get remote.origin.url') || ''
+  const repoName = remoteUrl.match(/\/([^/]+?)(?:\.git)?$/)?.[1] || null
   return {
-    // both Groovy (include 'x') and Kotlin DSL (include("x")) forms
-    build: 'Gradle' + (all(/^\s*include\s*[('"]/gim, settings).length ? ' (multi-module)' : ''),
-    java: first(/JavaLanguageVersion\.of\((\d+)\)/i, build) || first(/sourceCompatibility\s*=\s*['"]?(?:JavaVersion\.VERSION_)?(\d+)/i, build),
-    framework: quarkus ? 'Quarkus' : (build.includes('spring-boot') ? 'Spring Boot' : null),
-    frameworkVersion: quarkus,
-    modules: all(/include\s*\(?\s*['"]:?([^'"]+)['"]/gi, settings),
+    defaultBranch: branch,
+    lastCommit: git(`git log -1 --format=%cI ${ref}`) || git('git log -1 --format=%cI'),
+    repoName,
   }
 }
 
-const scanMaven = (dir) => {
-  const pom = read(path.join(dir, 'pom.xml'))
-  const quarkus = first(/<quarkus\.platform\.version>([^<]+)/i, pom)
+// ---- Build stack -----------------------------------------------------------------------------
+
+function scanGradle(dir) {
+  const properties = readText(path.join(dir, 'gradle.properties'))
+  const build = readText(path.join(dir, 'build.gradle')) || readText(path.join(dir, 'build.gradle.kts'))
+  const settings =
+    readText(path.join(dir, 'settings.gradle')) || readText(path.join(dir, 'settings.gradle.kts'))
+  const quarkusVersion = firstGroup(/quarkusPlatformVersion\s*=\s*([\d.]+\w*)/i, properties)
+  // Matches both Groovy (include 'x') and Kotlin DSL (include("x")).
+  const isMultiModule = allGroups(/^\s*include\s*[('"]/gim, settings).length > 0
+  let framework = null
+  if (quarkusVersion) framework = 'Quarkus'
+  else if (build.includes('spring-boot')) framework = 'Spring Boot'
   return {
-    build: 'Maven' + (all(/<module>/gi, pom).length ? ' (multi-module)' : ''),
-    java: first(/<(?:maven\.compiler\.(?:source|release)|java\.version)>(\d+)/i, pom),
-    framework: quarkus ? 'Quarkus' : (/spring-boot-starter-parent/.test(pom) ? 'Spring Boot' : null),
-    frameworkVersion: quarkus,
-    modules: all(/<module>([^<]+)<\/module>/gi, pom),
+    build: 'Gradle' + (isMultiModule ? ' (multi-module)' : ''),
+    java:
+      firstGroup(/JavaLanguageVersion\.of\((\d+)\)/i, build) ||
+      firstGroup(/sourceCompatibility\s*=\s*['"]?(?:JavaVersion\.VERSION_)?(\d+)/i, build),
+    framework,
+    frameworkVersion: quarkusVersion,
+    modules: allGroups(/include\s*\(?\s*['"]:?([^'"]+)['"]/gi, settings),
   }
 }
 
-// Module a source file belongs to: the first path segment under the repo root, unless that is
-// `src` (a single-module repo lays out src/ at the root; multi-module repos like
-// device-data-service put each module in its own top-level folder). Kafka + REST scanners share
-// this so producers/consumers/providers are attributed to the same component ids.
-const moduleOf = (repoDir, file) => {
-  const seg = path.relative(repoDir, file).split(path.sep)[0]
-  return seg === 'src' ? null : seg
+function scanMaven(dir) {
+  const pom = readText(path.join(dir, 'pom.xml'))
+  const quarkusVersion = firstGroup(/<quarkus\.platform\.version>([^<]+)/i, pom)
+  const isMultiModule = allGroups(/<module>/gi, pom).length > 0
+  let framework = null
+  if (quarkusVersion) framework = 'Quarkus'
+  else if (/spring-boot-starter-parent/.test(pom)) framework = 'Spring Boot'
+  return {
+    build: 'Maven' + (isMultiModule ? ' (multi-module)' : ''),
+    java: firstGroup(/<(?:maven\.compiler\.(?:source|release)|java\.version)>(\d+)/i, pom),
+    framework,
+    frameworkVersion: quarkusVersion,
+    modules: allGroups(/<module>([^<]+)<\/module>/gi, pom),
+  }
 }
 
-// Single directory walk shared by every file scanner below (walking a 3000-file backend once, not
-// three times): collects the application*.properties under src/main/resources (Kafka + outbound
-// REST config), the *.java under src/main/java (JAX-RS providers) and every build file (dependency
-// coordinates for the Golden Path facts — subproject build files too, since a multi-module repo
-// declares its datasource in the module, not in the root build). Test trees and test-only
-// modules are skipped.
-const collectSourceFiles = (repoDir) => {
-  const propFiles = [], javaFiles = [], buildFiles = []
-  const walk = (dir, depth = 0) => {
-    if (depth > 12) return
-    let ents
-    try { ents = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
-    for (const e of ents) {
-      if (e.isDirectory()) {
-        if (['node_modules', '.git', 'build', 'target', 'dist', '.gradle'].includes(e.name)) continue
-        walk(path.join(dir, e.name), depth + 1)
+// ---- Source file collection ------------------------------------------------------------------
+
+// The first path segment under the repo root, unless it is `src` (a single-module repo). All
+// scanners use this so producers, consumers and providers get the same component ids.
+function moduleOf(repoDir, file) {
+  const firstSegment = path.relative(repoDir, file).split(path.sep)[0]
+  return firstSegment === 'src' ? null : firstSegment
+}
+
+const RESOURCES_DIR = `src${path.sep}main${path.sep}resources`
+const JAVA_DIR = `src${path.sep}main${path.sep}java`
+
+// Test-only modules (integration-tests/, e2e/…) declare compile-scope H2 etc.
+function isInTestModule(repoDir, dir) {
+  const segments = path.relative(repoDir, dir).split(path.sep)
+  return segments.some((segment) => /^(tests?|e2e|it|.*-tests?)$/i.test(segment))
+}
+
+function listDirectory(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+}
+
+// One walk for all scanners, so a 3000-file backend is read once. Build files are collected from
+// subprojects too: a multi-module repo declares its datasource in the module, not the root.
+export function collectSourceFiles(repoDir) {
+  const propFiles = []
+  const javaFiles = []
+  const buildFiles = []
+
+  const walk = (dir, depth) => {
+    if (depth > MAX_WALK_DEPTH) return
+    for (const entry of listDirectory(dir)) {
+      if (entry.isDirectory()) {
+        if (!SKIPPED_DIRS.has(entry.name)) walk(path.join(dir, entry.name), depth + 1)
         continue
       }
-      const full = path.join(dir, e.name)
-      if (/^application[^/]*\.properties$/.test(e.name) && dir.includes(`src${path.sep}main${path.sep}resources`)) propFiles.push(full)
-      else if (e.name.endsWith('.java') && dir.includes(`src${path.sep}main${path.sep}java`)) javaFiles.push(full)
-      // Test-only modules (integration-tests/, e2e/…) declare compile-scope H2 etc. — skip their build files.
-      else if (
-        /^(pom\.xml|build\.gradle(\.kts)?)$/.test(e.name) &&
-        !path.relative(repoDir, dir).split(path.sep).some((s) => /^(tests?|e2e|it|.*-tests?)$/i.test(s))
-      ) buildFiles.push(full)
+      const file = path.join(dir, entry.name)
+      // Relative, so folders above the repo (a clone under some src/main/java) don't count.
+      const repoRelativeDir = path.relative(repoDir, dir)
+      if (/^application[^/]*\.properties$/.test(entry.name) && repoRelativeDir.includes(RESOURCES_DIR)) {
+        propFiles.push(file)
+      } else if (entry.name.endsWith('.java') && repoRelativeDir.includes(JAVA_DIR)) {
+        javaFiles.push(file)
+      } else if (/^(pom\.xml|build\.gradle(\.kts)?)$/.test(entry.name) && !isInTestModule(repoDir, dir)) {
+        buildFiles.push(file)
+      }
     }
   }
-  walk(repoDir)
+
+  walk(repoDir, 0)
   return { propFiles, javaFiles, buildFiles }
 }
 
-// Resolve `${var:default}` interpolations to their default and strip bare `${prefix}` placeholders
-// — shared by topic names (`${kafka.env.prefix}skycore_logger`) and outbound URLs
-// (`${DEVICE_DATA_ASSET_URL:https://device-data-asset...}`).
-const resolvePlaceholders = (v) =>
-  v.replace(/\$\{[^:}]*:([^}]*)\}/g, '$1').replace(/\$\{[^}]*\}/g, '').trim()
+// `${var:default}` becomes its default and a bare `${prefix}` disappears, e.g. in topic names
+// (`${kafka.env.prefix}skycore_logger`) and URLs (`${ASSET_URL:https://device-data-asset...}`).
+const resolvePlaceholders = (value) =>
+  value
+    .replace(/\$\{[^:}]*:([^}]*)\}/g, '$1')
+    .replace(/\$\{[^}]*\}/g, '')
+    .trim()
 
-// ---- Kafka messaging channels (MicroProfile reactive messaging) --------------------------
-// Records the mp.messaging.incoming.* / outgoing.* channels, attributed to the declaring module.
-// The topic is the `.topic` override when set, else the channel name (the MP default). assemble.mjs
-// matches producers to consumers by topic to derive service-to-service integrations from code.
-const scanMessaging = (propFiles, repoDir) => {
-  const channels = new Map() // module|direction|channel -> { module, direction, channel, topic }
+// ---- Kafka messaging channels (MicroProfile reactive messaging) --------------------------------
+
+const MESSAGING_LINE = /^\s*mp\.messaging\.(incoming|outgoing)\.([^.=\s]+)\.([A-Za-z0-9_.-]+)\s*=\s*(.*)$/
+
+// The topic is the `.topic` override when set, else the channel name (the MicroProfile default).
+function scanMessaging(propFiles, repoDir) {
+  const channels = new Map() // "module|direction|channel" -> { module, direction, channel, topic }
   for (const file of propFiles) {
     const module = moduleOf(repoDir, file)
-    const text = read(file)
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*mp\.messaging\.(incoming|outgoing)\.([^.=\s]+)\.([A-Za-z0-9_.-]+)\s*=\s*(.*)$/)
-      if (!m) continue
-      const [, direction, channel, prop, value] = m
+    for (const line of splitLines(readText(file))) {
+      const match = line.match(MESSAGING_LINE)
+      if (!match) continue
+      const [, direction, channel, property, value] = match
       const key = `${module}|${direction}|${channel}`
-      const cur = channels.get(key) || { module, direction, channel, topic: channel }
-      if (prop === 'topic' && resolvePlaceholders(value)) cur.topic = resolvePlaceholders(value)
-      channels.set(key, cur)
+      if (!channels.has(key)) channels.set(key, { module, direction, channel, topic: channel })
+      const topic = resolvePlaceholders(value)
+      if (property === 'topic' && topic) channels.get(key).topic = topic
     }
   }
   return [...channels.values()]
 }
 
-// ---- REST providers (JAX-RS resource roots) ----------------------------------------------
-// The exposed API roots of a backend = the CLASS-level @Path values (a method-level @Path merely
-// extends its resource's root). We detect class-level by lookahead: the next code line after the
-// annotation block declares a `class`/`interface`. All backends run at @ApplicationPath("/") with
-// no quarkus.http.root-path, so these roots are the real top-level paths. assemble.mjs uses them
-// to refine/confirm the channel label of a derived REST edge (they never gate edge creation).
-const scanRestProvides = (javaFiles, repoDir) => {
-  const byModule = new Map() // module -> Set(root)
+// ---- REST providers (JAX-RS resource roots) ----------------------------------------------------
+
+// Annotations, comments and blank lines between an annotation and its declaration.
+const ANNOTATION_BLOCK_LINE = /^\s*(@|\/\/|\/\*|\*|$)/
+
+// Only a class-level @Path is an API root (a method-level one extends it), so look past the rest
+// of the annotation block and check that a class or interface is declared next.
+function annotatesType(lines, annotationIndex) {
+  let index = annotationIndex + 1
+  while (index < lines.length && ANNOTATION_BLOCK_LINE.test(lines[index])) index++
+  return index < lines.length && /\b(class|interface)\s+\w/.test(lines[index])
+}
+
+// All backends run at @ApplicationPath("/") with no root path, so these are the real top-level
+// paths. assemble.mjs only uses them to refine an edge label; they never create an edge.
+function scanRestProvides(javaFiles, repoDir) {
+  const rootsByModule = new Map() // module -> Set(root)
   for (const file of javaFiles) {
-    const text = read(file)
+    const text = readText(file)
     if (!text.includes('@Path')) continue
-    const lines = text.split(/\r?\n/)
-    for (let i = 0; i < lines.length; i++) {
-      const pm = lines[i].match(/@Path\(\s*"([^"]*)"/)
-      if (!pm) continue
-      let j = i + 1 // skip further annotations, comments and blank lines to the declaration
-      while (j < lines.length && /^\s*(@|\/\/|\/\*|\*|$)/.test(lines[j])) j++
-      if (j >= lines.length || !/\b(class|interface)\s+\w/.test(lines[j])) continue
-      const root = '/' + (pm[1].split('/').filter(Boolean)[0] || '')
+    const lines = splitLines(text)
+    for (let index = 0; index < lines.length; index++) {
+      const pathMatch = lines[index].match(/@Path\(\s*"([^"]*)"/)
+      if (!pathMatch || !annotatesType(lines, index)) continue
+      const root = '/' + (pathMatch[1].split('/').filter(Boolean)[0] || '')
       if (root === '/') continue
       const module = moduleOf(repoDir, file)
-      if (!byModule.has(module)) byModule.set(module, new Set())
-      byModule.get(module).add(root)
+      if (!rootsByModule.has(module)) rootsByModule.set(module, new Set())
+      rootsByModule.get(module).add(root)
     }
   }
-  return [...byModule.entries()].map(([module, roots]) => ({ module, roots: [...roots].sort() }))
+  return [...rootsByModule.entries()].map(([module, roots]) => ({ module, roots: [...roots].sort() }))
 }
 
-// ---- REST consumers (outbound URL config) ------------------------------------------------
-// These backends don't use @RegisterRestClient/WebClient/Feign — they configure an outbound base
-// URL (`sensor.data.access.url=https://sensor-data-access...`) and call it via HttpClient/Retrofit.
-// The HOST is the discriminating part of the URL (identifies the target service); the path is
-// corroboration/label. Records one entry per (module, host, first-path-segment), normalizing the
-// host (drop :port, docker `_api_N` suffix, and env infixes) so assemble.mjs can resolve it to a
-// component. Infrastructure endpoints (auth, config, secrets, storage, health) are not
-// service-to-service REST and are excluded. `notification.*` base-urls are also excluded: they are
-// the deep-link base injected as {{baseUrl}} into notification e-mail bodies (see NotificationSender),
-// i.e. a UI link in a template, not a runtime API call.
-const INFRA_KEY = /(datasource|jdbc|vault|keycloak|oidc|swagger|token-?url|liquibase|flyway|blob|storage|otel|otlp|kafka|schema.registry|notification)/i
+// ---- REST consumers (outbound URL config) ------------------------------------------------------
+// These backends configure an outbound base URL (`sensor.data.access.url=https://...`) and call it
+// with HttpClient/Retrofit. The host identifies the target service; the path is only a label.
+// Infrastructure endpoints (auth, config, secrets, storage, health) aren't service-to-service REST.
+// `notification.*` URLs are the {{baseUrl}} deep link in notification e-mails, not an API call.
+const INFRA_KEY =
+  /(datasource|jdbc|vault|keycloak|oidc|swagger|token-?url|liquibase|flyway|blob|storage|otel|otlp|kafka|schema.registry|notification)/i
 const INFRA_HOST = /(vault|config-server|hashicorp-vault|localhost|microsoftonline|keycloak|schema-registry)/i
 const INFRA_HEAD = new Set(['id', 'vault', 'localhost', 'config-server', 'hashicorp-vault'])
-const scanRestConsumes = (propFiles, repoDir) => {
-  const out = new Map() // module|host|seg -> { module, propKey, host, hostHead, path, rawUrl }
-  for (const file of propFiles) {
-    const module = moduleOf(repoDir, file)
-    for (const line of read(file).split(/\r?\n/)) {
-      const m = line.match(/^\s*(?:%[\w-]+\.)?([\w.-]*(?:url|endpoint))\s*=\s*(.+)$/i)
-      if (!m) continue
-      const propKey = m[1]
-      const um = resolvePlaceholders(m[2]).match(/^https?:\/\/([^/\s"']+)(\/[^\s"']*)?/i)
-      if (!um) continue
-      let host = um[1].toLowerCase().replace(/:\d+$/, '').replace(/_api_\d+$/, '')
-      host = host.replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}')
-      const hostHead = host.split('.')[0]
-      const segs = (um[2] || '/').split('/').filter(Boolean)
-      const pathPrefix = '/' + segs.slice(0, 2).join('/')
-      // Drop infra endpoints and bare IP hosts (a 127.0.0.1 self/loopback default is not a service edge).
-      if (INFRA_KEY.test(propKey) || INFRA_HOST.test(host) || INFRA_HEAD.has(hostHead) || /^\d+$/.test(hostHead) || /\bhealth\b/.test(pathPrefix)) continue
-      const key = `${module}|${host}|${segs[0] || ''}`
-      if (!out.has(key)) out.set(key, { module, propKey, host, hostHead, path: pathPrefix, rawUrl: `https://${um[1]}${um[2] || ''}` })
-    }
-  }
-  return [...out.values()]
+const URL_PROPERTY_LINE = /^\s*(?:%[\w-]+\.)?([\w.-]*(?:url|endpoint))\s*=\s*(.+)$/i
+const HTTP_URL = /^https?:\/\/([^/\s"']+)(\/[^\s"']*)?/i
+const ENV_INFIX = /\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g
+
+// Drops the port, the docker `_api_N` suffix and env infixes so assemble.mjs can resolve the host.
+function normalizeHost(rawHost) {
+  return rawHost
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/_api_\d+$/, '')
+    .replace(ENV_INFIX, '.{env}')
 }
 
-// ---- Golden Path facts: database engine, log sink, tracer ---------------------------------
-// Three states, told apart by PRESENCE of the key, not by value: "Postgres" = determined,
-// null = scanned and sure there is nothing, key absent = could not be determined.
-// A `*Evidence` sibling records the matched token so a verdict can be checked without re-scanning.
+// A bare IP host (e.g. a 127.0.0.1 loopback default) is not a service edge either.
+function isInfraEndpoint({ propKey, host, hostHead, path: pathPrefix }) {
+  return (
+    INFRA_KEY.test(propKey) ||
+    INFRA_HOST.test(host) ||
+    INFRA_HEAD.has(hostHead) ||
+    /^\d+$/.test(hostHead) ||
+    /\bhealth\b/.test(pathPrefix)
+  )
+}
+
+// One entry per (module, host, first path segment).
+export function scanRestConsumes(propFiles, repoDir) {
+  const consumers = new Map() // "module|host|segment" -> { module, propKey, host, hostHead, path, rawUrl }
+  for (const file of propFiles) {
+    const module = moduleOf(repoDir, file)
+    for (const line of splitLines(readText(file))) {
+      const propertyMatch = line.match(URL_PROPERTY_LINE)
+      if (!propertyMatch) continue
+      const propKey = propertyMatch[1]
+      const urlMatch = resolvePlaceholders(propertyMatch[2]).match(HTTP_URL)
+      if (!urlMatch) continue
+      const [rawUrl, rawHost, rawPath] = urlMatch
+      const host = normalizeHost(rawHost)
+      const hostHead = host.split('.')[0]
+      const segments = (rawPath || '/').split('/').filter(Boolean)
+      const entry = {
+        module,
+        propKey,
+        host,
+        hostHead,
+        path: '/' + segments.slice(0, PATH_SEGMENTS_IN_PREFIX).join('/'),
+        rawUrl,
+      }
+      if (isInfraEndpoint(entry)) continue
+      const key = `${module}|${host}|${segments[0] || ''}`
+      if (!consumers.has(key)) consumers.set(key, entry)
+    }
+  }
+  return [...consumers.values()]
+}
+
+// ---- Golden Path facts: database engine, log sink, tracer --------------------------------------
+// Three states, told apart by whether the key is present: "Postgres" = determined, null = scanned
+// and there is nothing, key absent = could not be determined. The `*Evidence` sibling holds the
+// matched token so a verdict can be checked without re-scanning.
 const DB_ENGINES = [
   ['Postgres', /postgresql|jdbc:postgres/i],
   ['MariaDB', /mariadb/i],
@@ -212,14 +311,15 @@ const DB_ENGINES = [
   ['MongoDB', /mongodb/i],
   ['H2', /jdbc:h2|quarkus-jdbc-h2|com\.h2database/i],
 ]
-// Persistence is configured but the engine is not: report nothing rather than guess an engine.
-const DB_ENGINELESS = /quarkus\.datasource\.|quarkus-hibernate|quarkus-agroal|quarkus-liquibase|quarkus-flyway/i
+// Persistence is configured but the engine is not: report nothing rather than guess one.
+const DB_ENGINELESS =
+  /quarkus\.datasource\.|quarkus-hibernate|quarkus-agroal|quarkus-liquibase|quarkus-flyway/i
 const LOG_SINKS = [
   ['Logz.io', /logz\.io|logzio/i],
   ['GELF', /logging-gelf|logstash-gelf/i],
   ['Logstash', /logstash/i],
   ['Logback', /logback/i],
-  // Structured stdout, forwarded by a cluster-side collector — the destination is not in the repo.
+  // Structured stdout, forwarded by a cluster-side collector: the destination is not in the repo.
   ['JSON console', /quarkus-logging-json|quarkus\.log\.console\.json/i],
 ]
 const TRACERS = [
@@ -227,96 +327,173 @@ const TRACERS = [
   ['OpenTracing (deprecated)', /opentracing|jaeger/i],
 ]
 
-// Build files + application*.properties, with test-scoped dependencies and dev/test profile lines
-// dropped — `testImplementation quarkus-jdbc-h2` would otherwise report H2 for a Postgres service.
-const goldenPathText = (buildFiles, propFiles) => [
-  ...buildFiles.map((f) => read(f)
-    .replace(/<dependency>[\s\S]*?<\/dependency>/g, (d) => /<scope>test<\/scope>/.test(d) ? '' : d)
-    .split(/\r?\n/).filter((l) => !/^\s*test[A-Z]/.test(l)).join('\n')),
-  ...propFiles.map((f) => read(f).split(/\r?\n/).filter((l) => !/^\s*%(dev|test)/.test(l)).join('\n')),
-].join('\n')
+const withoutTestDependencies = (buildText) =>
+  splitLines(
+    buildText.replace(/<dependency>[\s\S]*?<\/dependency>/g, (dependency) =>
+      /<scope>test<\/scope>/.test(dependency) ? '' : dependency,
+    ),
+  )
+    .filter((line) => !/^\s*test[A-Z]/.test(line))
+    .join('\n')
 
-const goldenPathFacts = (text) => {
-  if (!text.trim()) return {}   // no build file and no properties: nothing was scanned at all
-  const pick = (list) => {
-    for (const [value, re] of list) { const m = text.match(re); if (m) return { value, evidence: m[0] } }
-    return null
+const withoutDevAndTestProfiles = (propertiesText) =>
+  splitLines(propertiesText)
+    .filter((line) => !/^\s*%(dev|test)/.test(line))
+    .join('\n')
+
+// Test scope is dropped because `testImplementation quarkus-jdbc-h2` would otherwise report H2
+// for a Postgres service.
+function goldenPathText(buildFiles, propFiles) {
+  return [
+    ...buildFiles.map((file) => withoutTestDependencies(readText(file))),
+    ...propFiles.map((file) => withoutDevAndTestProfiles(readText(file))),
+  ].join('\n')
+}
+
+function firstMatchingFact(text, candidates) {
+  for (const [value, regex] of candidates) {
+    const match = text.match(regex)
+    if (match) return { value, evidence: match[0] }
   }
-  const db = pick(DB_ENGINES), log = pick(LOG_SINKS), trace = pick(TRACERS)
-  const engineless = db ? null : text.match(DB_ENGINELESS)
+  return null
+}
+
+function databaseFacts(text) {
+  const engine = firstMatchingFact(text, DB_ENGINES)
+  if (engine) return { db: engine.value, dbEvidence: engine.evidence }
+  // The `db` key is left out on purpose; the evidence says why.
+  const engineless = text.match(DB_ENGINELESS)
+  if (engineless) return { dbEvidence: engineless[0] }
+  return { db: null }
+}
+
+function goldenPathFacts(text) {
+  // No build file and no properties: nothing was scanned at all.
+  if (!text.trim()) return {}
+  const logSink = firstMatchingFact(text, LOG_SINKS)
+  const tracer = firstMatchingFact(text, TRACERS)
   return {
-    ...(db ? { db: db.value, dbEvidence: db.evidence }
-      : engineless ? { dbEvidence: engineless[0] }   // key omitted on purpose, evidence says why
-      : { db: null }),
-    ...(log ? { log: log.value, logEvidence: log.evidence } : { log: null }),
-    ...(trace ? { trace: trace.value, traceEvidence: trace.evidence } : { trace: null }),
+    ...databaseFacts(text),
+    ...(logSink ? { log: logSink.value, logEvidence: logSink.evidence } : { log: null }),
+    ...(tracer ? { trace: tracer.value, traceEvidence: tracer.evidence } : { trace: null }),
   }
 }
 
-// ---- curated internal frameworks (backend-extra.json `frameworkDeps`) ---------------------
-// Which curated internal framework(s) a repo builds on — e.g. a shared platform library, the
-// backend counterpart of the FE design-system dependency. Reports the artifacts pulled and the
-// version (a `<name>Version` build property, else a literal in the coordinate). Pure function so
-// it's unit-testable without cloned backends; the group ids live in DATA, not here.
-const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// ---- Curated internal frameworks (backend-extra.json `frameworkDeps`) ---------------------------
+// The backend counterpart of the FE design-system dependency. Pure, so it can be unit-tested
+// without cloned backends; the group ids live in data, not here.
+
+const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const isLiteralVersion = (version) => /^\d/.test(version)
+
+// Gradle: "group:artifact:version", the version often a ${prop} reference.
+function collectGradleCoordinates(buildText, group, artifacts, literalVersions) {
+  const coordinate = new RegExp(`['"]${escapeRegex(group)}:([\\w.-]+):([^'"]*)['"]`, 'g')
+  for (const [, artifact, version] of buildText.matchAll(coordinate)) {
+    artifacts.add(artifact)
+    if (isLiteralVersion(version)) literalVersions.add(version)
+  }
+}
+
+// Maven: <groupId>group</groupId><artifactId>…</artifactId>[<version>…</version>]
+function collectMavenCoordinates(buildText, group, artifacts, literalVersions) {
+  const coordinate = new RegExp(
+    `<groupId>\\s*${escapeRegex(group)}\\s*</groupId>\\s*<artifactId>([\\w.-]+)</artifactId>(?:\\s*<version>([^<]+)</version>)?`,
+    'g',
+  )
+  for (const [, artifact, version] of buildText.matchAll(coordinate)) {
+    artifacts.add(artifact)
+    if (version && isLiteralVersion(version.trim())) literalVersions.add(version.trim())
+  }
+}
+
+// The version is a `<name>Version` build property (or the configured `versionProp`), else the
+// first literal version found in a coordinate.
 export const extractFrameworkDeps = (buildTexts, propsText, frameworkDeps) => {
-  const out = {}
-  for (const [name, conf] of Object.entries(frameworkDeps || {})) {
+  const frameworks = {}
+  for (const [name, config] of Object.entries(frameworkDeps || {})) {
     if (String(name).startsWith('_')) continue // _comment keys
-    const group = typeof conf === 'string' ? conf : conf?.group
+    const group = typeof config === 'string' ? config : config?.group
     if (!group) continue
-    const artifacts = new Set(), literalVersions = new Set()
-    for (const txt of buildTexts) {
-      // Gradle: "group:artifact:version" (version often a ${prop} reference)
-      for (const m of txt.matchAll(new RegExp(`['"]${esc(group)}:([\\w.-]+):([^'"]*)['"]`, 'g'))) {
-        artifacts.add(m[1])
-        if (/^\d/.test(m[2])) literalVersions.add(m[2])
-      }
-      // Maven: <groupId>group</groupId><artifactId>…</artifactId>[<version>…</version>]
-      for (const m of txt.matchAll(new RegExp(`<groupId>\\s*${esc(group)}\\s*</groupId>\\s*<artifactId>([\\w.-]+)</artifactId>(?:\\s*<version>([^<]+)</version>)?`, 'g'))) {
-        artifacts.add(m[1])
-        if (m[2] && /^\d/.test(m[2].trim())) literalVersions.add(m[2].trim())
-      }
+    const artifacts = new Set()
+    const literalVersions = new Set()
+    for (const buildText of buildTexts) {
+      collectGradleCoordinates(buildText, group, artifacts, literalVersions)
+      collectMavenCoordinates(buildText, group, artifacts, literalVersions)
     }
     if (!artifacts.size) continue
-    const versionProp = (typeof conf === 'object' && conf.versionProp) || `${name}Version`
-    const propVersion = (propsText.match(new RegExp(`${esc(versionProp)}\\s*=\\s*([\\w.-]+)`)) || [])[1]
-    out[name] = { version: propVersion || [...literalVersions][0] || null, artifacts: [...artifacts].sort() }
+    const versionProp = (typeof config === 'object' && config.versionProp) || `${name}Version`
+    const propVersion = propsText.match(new RegExp(`${escapeRegex(versionProp)}\\s*=\\s*([\\w.-]+)`))?.[1]
+    frameworks[name] = {
+      version: propVersion || [...literalVersions][0] || null,
+      artifacts: [...artifacts].sort(),
+    }
   }
-  return out
+  return frameworks
 }
-let FRAMEWORK_DEPS = {}
-try { FRAMEWORK_DEPS = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-extra.json'), 'utf8')).frameworkDeps || {} } catch {}
 
-// ---- CLI (run only when invoked directly, so tests can import extractFrameworkDeps) --------
-import { fileURLToPath } from 'node:url'
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function loadFrameworkDeps() {
+  try {
+    const backendExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-extra.json'), 'utf8'))
+    return backendExtra.frameworkDeps || {}
+  } catch {
+    return {}
+  }
+}
 
-const scanned = {}, missing = []
-for (const folder of BACKENDS) {
-  const dir = path.join(ROOT, folder)
-  if (!fs.existsSync(path.join(dir, '.git'))) { missing.push(folder); continue }
-  const isMaven = fs.existsSync(path.join(dir, 'pom.xml'))
-  const stack = isMaven ? scanMaven(dir) : scanGradle(dir)
+// ---- CLI -------------------------------------------------------------------------------------
+
+function frameworkLabel(stack) {
+  if (stack.framework && stack.frameworkVersion) return `${stack.framework} ${stack.frameworkVersion}`
+  return stack.framework
+}
+
+function scanBackend(dir, frameworkDeps) {
+  const stack = fs.existsSync(path.join(dir, 'pom.xml')) ? scanMaven(dir) : scanGradle(dir)
   const { propFiles, javaFiles, buildFiles } = collectSourceFiles(dir)
-  scanned[folder] = {
+  const java = stack.java ? `Java ${stack.java}` : null
+  return {
     ...gitInfo(dir),
     buildTool: stack.build,
-    java: stack.java ? `Java ${stack.java}` : null,
-    framework: stack.framework && stack.frameworkVersion ? `${stack.framework} ${stack.frameworkVersion}` : stack.framework,
+    java,
+    framework: frameworkLabel(stack),
     modules: stack.modules,
-    // tooling chips for the graph node (matches the FE chip style: short, version-bearing)
-    tooling: [stack.framework && stack.frameworkVersion ? `${stack.framework} ${stack.frameworkVersion}` : stack.framework, stack.java ? `Java ${stack.java}` : null, stack.build].filter(Boolean),
+    // Chips for the graph node, in the FE chip style: short and version-bearing.
+    tooling: [frameworkLabel(stack), java, stack.build].filter(Boolean),
     ...goldenPathFacts(goldenPathText(buildFiles, propFiles)),
-    frameworks: extractFrameworkDeps(buildFiles.map(read), read(path.join(dir, 'gradle.properties')), FRAMEWORK_DEPS),
+    frameworks: extractFrameworkDeps(
+      buildFiles.map(readText),
+      readText(path.join(dir, 'gradle.properties')),
+      frameworkDeps,
+    ),
     messaging: scanMessaging(propFiles, dir),
     restProvides: scanRestProvides(javaFiles, dir),
     restConsumes: scanRestConsumes(propFiles, dir),
   }
 }
 
-fs.writeFileSync(path.join(AUDIT, 'backend-tooling.json'),
-  JSON.stringify({ generatedAt: new Date().toISOString(), scanned, missing }, null, 2))
-console.log(`wrote backend-tooling.json; scanned: ${Object.keys(scanned).length}, missing: ${missing.length}${missing.length ? ' (' + missing.join(', ') + ')' : ''}`)
+function main() {
+  const frameworkDeps = loadFrameworkDeps()
+  const scanned = {}
+  const missing = []
+  for (const folder of listBackends()) {
+    const dir = path.join(ROOT, folder)
+    if (!fs.existsSync(path.join(dir, '.git'))) {
+      missing.push(folder)
+      continue
+    }
+    scanned[folder] = scanBackend(dir, frameworkDeps)
+  }
 
-} // end CLI guard
+  fs.writeFileSync(
+    path.join(AUDIT, 'backend-tooling.json'),
+    JSON.stringify({ generatedAt: new Date().toISOString(), scanned, missing }, null, 2),
+  )
+  const missingList = missing.length ? ' (' + missing.join(', ') + ')' : ''
+  console.log(
+    `wrote backend-tooling.json; scanned: ${Object.keys(scanned).length}, missing: ${missing.length}${missingList}`,
+  )
+}
+
+// Run only when invoked directly, not when imported by a test.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

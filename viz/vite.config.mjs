@@ -35,24 +35,46 @@ const PIPELINE = [
   'scripts/depcruise-accurate.mjs',
   'scripts/extras-assemble.mjs',
 ]
-const SCRATCH = ['scripts/gather-out.json','scripts/workflows-out.json','scripts/modulegraph-out.json','scripts/extras-mid.json','scripts/depcruise-out.json']
+const SCRATCH = [
+  'scripts/gather-out.json',
+  'scripts/workflows-out.json',
+  'scripts/modulegraph-out.json',
+  'scripts/extras-mid.json',
+  'scripts/depcruise-out.json',
+]
 
+const EXEC_MAX_BUFFER = 256 * 1024 * 1024
+const MAX_BODY_CHARS = 8 * 1024 * 1024
+const PIPELINE_OUTPUT_LINES = 2
+const PIPELINE_ERROR_CHARS = 300
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
+
+const readRepoJson = (file) => JSON.parse(fs.readFileSync(path.join(AUDIT, file), 'utf8'))
+
+function readOptionalRepoJson(file) {
+  try {
+    return readRepoJson(file)
+  } catch {
+    return null
+  }
+}
+
+// Same payload as bundle.mjs. The raw inventory-extra and service-map feed the Admin panel's
+// Documentation and Services tabs; config is the admin-curated page title, not pipeline output.
 function readMergedData() {
-  const main = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture.json'), 'utf8'))
-  let extras = null
-  try { extras = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture-extras.json'), 'utf8')) } catch {}
-  let config = null // app config (editable page title) — admin-curated, not pipeline output
-  try { config = JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')) } catch {}
-  // Raw inventory-extra so the Admin panel can edit Documentation in read-only deploys (see bundle.mjs)
-  let inventoryExtra = null
-  try { inventoryExtra = JSON.parse(fs.readFileSync(path.join(AUDIT, 'inventory-extra.json'), 'utf8')) } catch {}
-  // Raw service-map so the Admin panel's Services tab is populated (see bundle.mjs)
-  let serviceMap = null
-  try { serviceMap = JSON.parse(fs.readFileSync(path.join(AUDIT, 'service-map.json'), 'utf8')) } catch {}
+  const main = readRepoJson('fe-architecture.json')
+  const extras = readOptionalRepoJson('fe-architecture-extras.json')
+  const config = readOptionalRepoJson('config.json')
+  const inventoryExtra = readOptionalRepoJson('inventory-extra.json')
+  const serviceMap = readOptionalRepoJson('service-map.json')
   return { ...main, extras, config, inventoryExtra, serviceMap }
 }
 
-const json = (res, code, body) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)) }
+const json = (res, code, body) => {
+  res.statusCode = code
+  res.setHeader('content-type', 'application/json')
+  res.end(JSON.stringify(body))
+}
 
 // Curation files the Admin panel reads/writes. Allowlisted so a crafted request can't write an
 // arbitrary path. JSON files are pretty-printed; the integrations file is raw CSV text.
@@ -63,40 +85,155 @@ const CURATION = {
   config: { file: 'config.json', json: true },
   serviceMap: { file: 'service-map.json', json: true },
 }
-const readJsonBody = (req) => new Promise((resolve, reject) => {
-  let d = ''
-  req.on('data', (c) => { d += c; if (d.length > 8 * 1024 * 1024) { req.destroy(); reject(new Error('body too large')) } })
-  req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}) } catch (e) { reject(e) } })
-  req.on('error', reject)
-})
 
+const readJsonBody = (req) =>
+  new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', (chunk) => {
+      body += chunk
+      if (body.length > MAX_BODY_CHARS) {
+        req.destroy()
+        reject(new Error('body too large'))
+      }
+    })
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {})
+      } catch (error) {
+        reject(error)
+      }
+    })
+    req.on('error', reject)
+  })
+
+const lastLines = (text, count) => text.trim().split('\n').slice(-count).join(' ')
+
+async function runScript(script) {
+  const started = Date.now()
+  try {
+    const { stdout, stderr } = await execFileP('node', [script], {
+      cwd: AUDIT,
+      maxBuffer: EXEC_MAX_BUFFER,
+    })
+    const out = lastLines(stdout || stderr || '', PIPELINE_OUTPUT_LINES)
+    return { script, ok: true, ms: Date.now() - started, out }
+  } catch (error) {
+    const out = String(error.stderr || error.message || error).slice(-PIPELINE_ERROR_CHARS)
+    return { script, ok: false, ms: Date.now() - started, out }
+  }
+}
+
+function removeScratchFiles() {
+  for (const file of SCRATCH) {
+    try {
+      fs.unlinkSync(path.join(AUDIT, file))
+    } catch {}
+  }
+}
+
+// Stops at the first failing script and keeps its scratch files for debugging.
 async function runPipeline() {
   const log = []
   for (const script of PIPELINE) {
-    const started = Date.now()
-    try {
-      const { stdout, stderr } = await execFileP('node', [script], { cwd: AUDIT, maxBuffer: 1024 * 1024 * 256 })
-      log.push({ script, ok: true, ms: Date.now() - started, out: (stdout || stderr || '').trim().split('\n').slice(-2).join(' ') })
-    } catch (e) {
-      log.push({ script, ok: false, ms: Date.now() - started, out: String(e.stderr || e.message || e).slice(-300) })
-      return { ok: false, log }
-    }
+    const step = await runScript(script)
+    log.push(step)
+    if (!step.ok) return { ok: false, log }
   }
-  for (const f of SCRATCH) { try { fs.unlinkSync(path.join(AUDIT, f)) } catch {} }
+  removeScratchFiles()
   return { ok: true, log }
 }
 
+// Builds the static app with the current data baked in, so the published copy needs no server.
 async function publish() {
-  // build the static app
-  await execFileP('npm', ['run', 'build'], { cwd: __dirname, maxBuffer: 1024 * 1024 * 256 })
-  // bake current data into the static bundle so the published copy needs no server
+  await execFileP('npm', ['run', 'build'], { cwd: __dirname, maxBuffer: EXEC_MAX_BUFFER })
   const dist = path.join(__dirname, 'dist')
   fs.writeFileSync(path.join(dist, 'data.json'), JSON.stringify(readMergedData()))
-  // copy dist -> ../published
   const out = path.join(AUDIT, 'published')
   fs.rmSync(out, { recursive: true, force: true })
   fs.cpSync(dist, out, { recursive: true })
   return out
+}
+
+function readCurationFile(file) {
+  try {
+    return fs.readFileSync(path.join(AUDIT, file), 'utf8')
+  } catch {
+    return null
+  }
+}
+
+// Raw curation files, so the Admin panel can edit inventory-extra.json, which is merged away in
+// the served data.
+function getCuration(_req, res) {
+  const curation = {}
+  for (const [key, { file, json: isJson }] of Object.entries(CURATION)) {
+    const raw = readCurationFile(file)
+    if (raw == null) curation[key] = null
+    else curation[key] = isJson ? JSON.parse(raw) : raw
+  }
+  return json(res, 200, curation)
+}
+
+async function saveCuration(req, res) {
+  const body = await readJsonBody(req)
+  const written = []
+  for (const [key, { file, json: isJson }] of Object.entries(CURATION)) {
+    if (body[key] === undefined || body[key] === null) continue
+    const content = isJson ? JSON.stringify(body[key], null, 2) + '\n' : String(body[key])
+    fs.writeFileSync(path.join(AUDIT, file), content)
+    written.push(file)
+  }
+  return json(res, 200, { ok: true, written })
+}
+
+const readGoldenPathJson = (file) => JSON.parse(fs.readFileSync(path.join(GOLDEN_PATH, file), 'utf8'))
+
+/* Same store and validation as production, so a decision written in dev is one production
+   would have accepted. No curator check: there is no verified token here. GP_DEV_VIEWER=true
+   answers mayCurate false, to see what a reader without the right sees. */
+function listExceptions(_req, res) {
+  const entries = [...decisionLog.list(), ...devDecisionLog.list()]
+  return json(res, 200, { entries, mayCurate: process.env.GP_DEV_VIEWER !== 'true' })
+}
+
+async function appendException(req, res) {
+  const body = await readJsonBody(req)
+  const invalid = validateEntry(body)
+  if (invalid) return json(res, 400, { error: invalid })
+  return json(res, 201, devDecisionLog.append(buildEntry(body, process.env.USER || 'unknown')))
+}
+
+async function regenerate(_req, res) {
+  const result = await runPipeline()
+  return json(res, result.ok ? 200 : 500, result)
+}
+
+async function publishRoute(_req, res) {
+  const out = await publish()
+  return json(res, 200, { ok: true, path: out })
+}
+
+// "METHOD url" -> handler. The golden-path routes are token-gated in server/server.mjs; here they
+// are files on disk.
+const ROUTES = new Map([
+  ['GET /api/data', (_req, res) => json(res, 200, readMergedData())],
+  ['GET /api/curation', getCuration],
+  ['POST /api/save-curation', saveCuration],
+  ['GET /golden-path/history', (_req, res) => json(res, 200, readGoldenPathJson('history.json'))],
+  ['GET /golden-path/rules', (_req, res) => json(res, 200, readGoldenPathJson('rules.json'))],
+  ['GET /api/exceptions', listExceptions],
+  ['POST /api/exceptions', appendException],
+  ['POST /api/regenerate', regenerate],
+  ['POST /api/publish', publishRoute],
+])
+
+// CSRF gate: the write/exec endpoints are otherwise reachable by a "simple" cross-site POST (no
+// preflight) from any page open in the developer's browser. Browsers always send Origin on POST;
+// absent Origin means a non-browser client (curl), which is fine for local dev.
+function isCrossSitePost(req) {
+  if (req.method !== 'POST') return false
+  const origin = req.headers.origin
+  return !!origin && !LOCAL_ORIGIN.test(origin)
 }
 
 function apiPlugin() {
@@ -105,68 +242,15 @@ function apiPlugin() {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         try {
-          // CSRF gate: the write/exec endpoints below are otherwise reachable by a "simple"
-          // cross-site POST (no preflight) from any page open in the developer's browser —
-          // overwriting curation files or spawning the pipeline. Browsers always send Origin on
-          // POST; absent Origin means a non-browser client (curl), which is fine for local dev.
-          if (req.method === 'POST') {
-            const origin = req.headers.origin
-            if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-              return json(res, 403, { error: `cross-origin request rejected (origin ${origin})` })
-            }
+          if (isCrossSitePost(req)) {
+            return json(res, 403, {
+              error: `cross-origin request rejected (origin ${req.headers.origin})`,
+            })
           }
-          if (req.url === '/api/data' && req.method === 'GET') return json(res, 200, readMergedData())
-          // Admin panel: raw curation files (so it can edit inventory-extra.json, which is merged
-          // away in the served data) and a write-back endpoint.
-          if (req.url === '/api/curation' && req.method === 'GET') {
-            const read = (f) => { try { return fs.readFileSync(path.join(AUDIT, f), 'utf8') } catch { return null } }
-            const out = {}
-            for (const [key, { file, json: isJson }] of Object.entries(CURATION)) {
-              const raw = read(file)
-              out[key] = raw == null ? null : isJson ? JSON.parse(raw) : raw
-            }
-            return json(res, 200, out)
-          }
-          if (req.url === '/api/save-curation' && req.method === 'POST') {
-            const body = await readJsonBody(req)
-            const written = []
-            for (const [key, { file, json: isJson }] of Object.entries(CURATION)) {
-              if (body[key] === undefined || body[key] === null) continue
-              const content = isJson ? JSON.stringify(body[key], null, 2) + '\n' : String(body[key])
-              fs.writeFileSync(path.join(AUDIT, file), content)
-              written.push(file)
-            }
-            return json(res, 200, { ok: true, written })
-          }
-          // In production these are token-gated routes in server/server.mjs; here, files on disk.
-          if (req.url === '/golden-path/history' && req.method === 'GET') {
-            return json(res, 200, JSON.parse(fs.readFileSync(path.join(GOLDEN_PATH, 'history.json'), 'utf8')))
-          }
-          if (req.url === '/golden-path/rules' && req.method === 'GET') {
-            return json(res, 200, JSON.parse(fs.readFileSync(path.join(GOLDEN_PATH, 'rules.json'), 'utf8')))
-          }
-          /* Same store and validation as production, so a decision written in dev is one production
-             would have accepted. No curator check: there is no verified token here. GP_DEV_VIEWER=true
-             answers mayCurate false, to see what a reader without the right sees. */
-          if (req.url === '/api/exceptions' && req.method === 'GET') {
-            return json(res, 200, { entries: [...decisionLog.list(), ...devDecisionLog.list()], mayCurate: process.env.GP_DEV_VIEWER !== 'true' })
-          }
-          if (req.url === '/api/exceptions' && req.method === 'POST') {
-            const body = await readJsonBody(req)
-            const invalid = validateEntry(body)
-            if (invalid) return json(res, 400, { error: invalid })
-            return json(res, 201, devDecisionLog.append(buildEntry(body, process.env.USER || 'unknown')))
-          }
-          if (req.url === '/api/regenerate' && req.method === 'POST') {
-            const result = await runPipeline()
-            return json(res, result.ok ? 200 : 500, result)
-          }
-          if (req.url === '/api/publish' && req.method === 'POST') {
-            const out = await publish()
-            return json(res, 200, { ok: true, path: out })
-          }
-        } catch (e) {
-          return json(res, 500, { ok: false, error: String(e.message || e) })
+          const handler = ROUTES.get(`${req.method} ${req.url}`)
+          if (handler) return await handler(req, res)
+        } catch (error) {
+          return json(res, 500, { ok: false, error: String(error.message || error) })
         }
         next()
       })

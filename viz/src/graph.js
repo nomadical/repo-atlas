@@ -1,31 +1,34 @@
 import dagre from '@dagrejs/dagre'
 import { MarkerType } from '@xyflow/react'
 
-// The design-system package names that all resolve to the single `ui` hub card, from config.json
-// `uiPackages`. List every name consumers might pin — a package mid-rename is referenced under both
-// its old and new name, and both should collapse onto the one hub. Empty => no hub card is drawn.
+const nonEmptyOr = (list, fallback) => (Array.isArray(list) && list.length ? list : fallback)
+
+function addToListMap(map, key, value) {
+  if (!map.has(key)) map.set(key, [])
+  map.get(key).push(value)
+}
+
+// Design-system package names (config.json `uiPackages`) that all collapse onto the single hub
+// card. List both names of a package mid-rename. Empty means no hub card is drawn.
 // Kept in sync with UI_PACKAGES in scripts/assemble.mjs.
 export const DEFAULT_UI_PACKAGES = []
-export const uiPackagesOf = (config) => new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
+export const uiPackagesOf = (config) =>
+  new Set(Array.isArray(config?.uiPackages) ? config.uiPackages : DEFAULT_UI_PACKAGES)
 
-// Repo folder(s) the design-system hub card can appear under (config.json `uiHubFolders`).
-export const uiHubFoldersOf = (config) => (Array.isArray(config?.uiHubFolders) && config.uiHubFolders.length ? config.uiHubFolders : ['ui'])
+// Repo folders the design-system hub card can appear under (config.json `uiHubFolders`).
+export const uiHubFoldersOf = (config) => nonEmptyOr(config?.uiHubFolders, ['ui'])
 
-// Component node identity: the inventory serviceId (stable across repo-folder renames), falling
-// back to the repo folder when the pipeline hasn't emitted a serviceId yet — so the graph is
-// byte-invariant against data that predates it. The folder stays a PERMANENT back-compat alias for
-// old ?sel= links / saved views / config.json layout keys, resolved at read (see applyOverrides and
-// App.jsx's matchSelNode). backend-extra.json feBe stays folder-keyed and is resolved at read too.
-export const nodeIdOf = (r) => r.serviceId || r.folder
+// A card's node id is the inventory serviceId, falling back to the repo folder for data that
+// predates serviceIds. The folder stays a permanent alias for old ?sel= links, saved views and
+// config.json layout keys; see applyLayoutOverrides and App.jsx's matchSelNode.
+export const nodeIdOf = (repo) => repo.serviceId || repo.folder
 
 export const KIND = {
   client: { label: 'Client', color: '#1e88e5' },
   library: { label: 'Library', color: '#7c4dff' },
   service: { label: 'Service', color: '#00897b' },
-  // `backend`/`extsvc` are topology kinds (layout, pruning + edge routing still key off them), but to
-  // a curator they're just their Component-Inventory Type: a backend IS a Service, an external API IS
-  // a Third-Party Service. So they share the canonical Type's label + color on every user-facing
-  // surface (cards, Details, minimap, legend). See KIND_ALIAS / canonKind for the by-kind aggregations.
+  // `backend` and `extsvc` drive layout and pruning, but to a curator they are just their inventory
+  // Type, so they share that Type's label and color everywhere a user sees them.
   backend: { label: 'Service', color: '#00897b' },
   extsvc: { label: 'Third-Party Service', color: '#5e35b1' },
   storage: { label: 'Storage (blob)', color: '#546e7a' },
@@ -43,70 +46,47 @@ export const KIND = {
   data: { label: 'Data', color: '#ffb300' },
   config: { label: 'Config', color: '#9ccc65' },
   bus: { label: 'Event bus', color: '#455a64' },
-  // per-client drill-down view (clientGraph.js): screen → endpoint → backend (blue → teal → orange,
-  // backend reusing the map's Backend service color so the tiers read as one trace)
+  // Per-client drill-down (clientGraph.js); the backend tier reuses the Service color.
   screen: { label: 'Screen', color: '#1e88e5' },
   endpoint: { label: 'Endpoint', color: '#00838f' },
 }
 
-// Collapse the topology kinds onto the single Component-Inventory Type they represent. Used wherever
-// nodes are GROUPED/counted by kind (legend, region breakdown) so a backend and a service don't show
-// up as two separate "Service" buckets. Direct KIND[kind] lookups already read the shared label/color.
+// Wherever nodes are grouped or counted by kind, a backend and a service must land in one
+// "Service" bucket, not two.
 export const KIND_ALIAS = { backend: 'service', extsvc: 'external' }
-export const canonKind = (k) => KIND_ALIAS[k] || k
+export const canonKind = (kind) => KIND_ALIAS[kind] || kind
 
-// Cross-cutting product tags — derived from each component's applications (GitHub app-* topics),
-// so one chip can span several applications ("everything in the billing line"). Both maps are
-// config.json `productTags` (application → tag) and `tagColors` (tag → color); with none set no
-// chips render. The merge + tagsFor live inside buildGraph (which has data.config).
+// Chip color per product tag, merged with config.json `tagColors`.
 export const TAG_COLOR = {}
-const PRODUCT_TAGS = {}
 
-// Backend / service / storage topology is not hardcoded here. The curated overlay (hosts, kind,
-// FE→BE wiring, backend→external SaaS, deploy targets, service edges, content repos) lives in
-// backend-extra.json and arrives as data.backendTopology; backend→backend edges live in
-// integrations.csv. buildGraph merges the overlay with the live backend scan
-// (data.extras.backends.scanned) so a newly-cloned backend appears automatically — see the
-// `topo`/`BE_NODES` block inside buildGraph. Editable via the in-app Admin panel.
-
-// Deploy-target nodes (the Deployments layer) + how a repo's workflow target text routes to them
-// (`match` is a case-insensitive regex over the deployment target strings; `testsFallback` marks
-// the node test-harness repos without a deploy target link to). A fork overrides the whole list
-// via config.json `deployTargets`.
+// Deploy-target nodes. `match` is a case-insensitive regex over a repo's workflow deployment
+// targets; `testsFallback` marks the node that test-harness repos without a target link to.
+// config.json `deployTargets` replaces the whole list.
 const DEFAULT_DEPLOY_TARGETS = [
   { id: 'inf-blob', label: 'Azure Storage $web\n+ Front Door/CDN', match: 'blob|\\$web|front door' },
   { id: 'inf-acr', label: 'Azure Container Registry\n+ docker-compose', match: 'container' },
   { id: 'inf-ci', label: 'GitHub Actions\n(CI)', testsFallback: true },
 ]
-const deployTargetsOf = (config) => (Array.isArray(config?.deployTargets) && config.deployTargets.length ? config.deployTargets : DEFAULT_DEPLOY_TARGETS)
+const deployTargetsOf = (config) => nonEmptyOr(config?.deployTargets, DEFAULT_DEPLOY_TARGETS)
 
-// Detail-layer registry — the single definition the toolbar, the URL codec and buildGraph share.
-// Layers are ADDITIVE: each one draws an extra class of node. `param` is the URL query key
-// (stable — shared/embedded links depend on it); `default` is the state before any toggle.
+// Detail layers, shared by the toolbar, the URL codec and buildGraph. Each layer adds a class of
+// node. `param` is the URL query key: shared and embedded links depend on it, so never rename it.
 export const LAYERS = [
   { key: 'backends', param: 'be', label: 'Resources', default: true },
   { key: 'integrations', param: 'int', label: 'Integrations', default: false },
   { key: 'deploy', param: 'dpl', label: 'Deployments', default: true },
-  // NB: not "Components" — everything on the map is a component. This layer draws the REST of the
-  // Component Inventory (entries not already wired onto the map) as a catalog grid. `param`/`key` stay
-  // stable so existing shared/embedded links keep working.
+  // Not "Components": everything on the map is a component. This draws the rest of the inventory.
   { key: 'components', param: 'comp', label: 'Inventory catalog', default: false },
   { key: 'serviceLinks', param: 'links', label: 'Service links', default: false },
 ]
-export const DEFAULT_LAYERS = Object.fromEntries(LAYERS.map((l) => [l.key, l.default]))
+export const DEFAULT_LAYERS = Object.fromEntries(LAYERS.map((layer) => [layer.key, layer.default]))
 
-// Edge-type registry — the arrow classes a user can show/hide on the graph. `key` is the stable id
-// used by the hide-by-type filter (and the `hedge` URL param); color/dash mirror the canvas arrow
-// style so the Legend swatch matches what's drawn. Only types actually present on the current map
-// are offered as toggles (see buildGraph's edgeTypesPresent + Legend).
-// The two design-system edge labels name YOUR package (config.json `uiPackages`) — see
-// edgeTypesFor below, which fills them in. The generic wording here is the fallback for an estate
-// with no design system configured.
+// Arrow classes a user can show or hide. `key` is the id used by the hide-by-type filter and the
+// `hedge` URL param; color and dash mirror the drawn arrow so the Legend swatch matches.
 export const EDGE_TYPES = [
   { key: 'dependency', color: '#7c4dff', dash: 'solid', label: 'Design-system dependency' },
-  // Red variant of a dependency edge: the consumer references a version behind the highest one in
-  // use (see buildGraph `behind`). A distinct type so it reads in the legend and can be toggled on
-  // its own; classified off edge.data.drift, not the id (it shares the dep- id prefix).
+  // A dependency edge whose version is behind the highest one in use. Classified by
+  // edge.data.drift, not by id: it shares the dep- prefix.
   { key: 'drift', color: '#e53935', dash: 'dashed', label: 'Design-system version lag' },
   { key: 'febe', color: '#fb8c00', dash: 'solid', label: 'FE → resource' },
   { key: 'bebe', color: '#6d4c41', dash: 'dashed', label: 'Backend ↔ backend' },
@@ -119,800 +99,1038 @@ export const EDGE_TYPES = [
   { key: 'content', color: '#8d6e63', dash: 'solid', label: 'Content source' },
 ]
 
-// EDGE_TYPES with the design-system labels resolved against config, so the legend names the package
-// people actually recognise ("@acme/ui dependency") instead of a generic phrase. Falls back to the
-// generic labels when no `uiPackages` are configured — there is no package to name in that case.
+// EDGE_TYPES with the design-system labels naming the configured package ("@acme/ui dependency").
 export const edgeTypesFor = (config) => {
-  const pkg = [...uiPackagesOf(config)][0]
-  if (!pkg) return EDGE_TYPES
-  return EDGE_TYPES.map((e) => (e.key === 'dependency' ? { ...e, label: `${pkg} dependency` } : e.key === 'drift' ? { ...e, label: `${pkg} version lag` } : e))
+  const uiPackage = [...uiPackagesOf(config)][0]
+  if (!uiPackage) return EDGE_TYPES
+  const labelByKey = { dependency: `${uiPackage} dependency`, drift: `${uiPackage} version lag` }
+  return EDGE_TYPES.map((type) => (labelByKey[type.key] ? { ...type, label: labelByKey[type.key] } : type))
 }
 
-// Classify a built edge by its id prefix (see the push sites in buildGraph). NOTE: backend↔backend
-// ids ('bebe-') must be tested before FE→resource ('be-') would be, but the distinct prefixes make
-// the order incidental here; kept explicit for clarity.
+// Edge id prefix -> edge type. 'bebe-' must be checked before 'be-'.
+const EDGE_TYPE_BY_PREFIX = [
+  ['dep-', 'dependency'],
+  ['bebe-', 'bebe'],
+  ['be-', 'febe'],
+  ['dpl-', 'deploy'],
+  ['ext-', 'external'],
+  ['svc-', 'service'],
+  ['asset-', 'assets'],
+  ['content-', 'content'],
+  ['link-k-', 'kafka'],
+  ['link-r-', 'rest'],
+]
+
 export function edgeTypeOf(id = '', edge) {
-  if (edge?.data?.drift) return 'drift' // red version-lag variant of a dependency edge
-  if (id.startsWith('dep-')) return 'dependency'
-  if (id.startsWith('bebe-')) return 'bebe'
-  if (id.startsWith('be-')) return 'febe'
-  if (id.startsWith('dpl-')) return 'deploy'
-  if (id.startsWith('ext-')) return 'external'
-  if (id.startsWith('svc-')) return 'service'
-  if (id.startsWith('asset-')) return 'assets'
-  if (id.startsWith('content-')) return 'content'
-  if (id.startsWith('link-k-')) return 'kafka'
-  if (id.startsWith('link-r-')) return 'rest'
-  return 'other'
+  if (edge?.data?.drift) return 'drift'
+  const match = EDGE_TYPE_BY_PREFIX.find(([prefix]) => id.startsWith(prefix))
+  return match ? match[1] : 'other'
 }
 
-function chipsFor(r) {
-  const t = r.toolingVersions || {}
+function chipsFor(repo) {
+  const tooling = repo.toolingVersions || {}
   const chips = []
-  if (t.react) chips.push('React ' + t.react)
-  if (t.mui) chips.push('MUI ' + t.mui)
-  if (t.buildTool) chips.push(t.buildTool.includes('CRA') ? 'CRA' : t.buildTool)
+  if (tooling.react) chips.push('React ' + tooling.react)
+  if (tooling.mui) chips.push('MUI ' + tooling.mui)
+  if (tooling.buildTool) chips.push(tooling.buildTool.includes('CRA') ? 'CRA' : tooling.buildTool)
   return chips
 }
 
-// Cluster taxonomy — the lanes the graph draws and the Group filter's values. Define yours in
-// config.json `clusters`; DEFAULT_CLUSTERS is the safety net when none are configured: a single
-// centre lane holding everything, so an unconfigured map still renders. Descriptor fields:
+// Cluster lanes, and the values of the Group filter (config.json `clusters`). Descriptor fields:
 //   match:     owner-* topic prefixes routed to this cluster (first match wins)
 //   color:     region outline color
-//   defaultOn: initial filter state (whether the cluster is shown before any toggle)
-//   fallback:  the bucket for repos matching no cluster (and explicit `cluster-<fallback>`); the
-//              centre column. clusterOf returns null for it, so "unassigned" reads as no cluster.
-//   anchor/dir/center/after: layout hints, in graph units. Pin a lane with `anchor: -690` (left of
-//              centre) or `anchor: 'after:Backend'` (just past that lane), `dir: -1|1` for which way
-//              it grows. Omit them and lanes auto-distribute left→right in list order — a good
-//              starting point; add hints only once you want a specific arrangement (clusterLayout).
-export const DEFAULT_CLUSTERS = [{ label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true }]
-export const resolveClusters = (config) => (Array.isArray(config?.clusters) && config.clusters.length ? config.clusters : DEFAULT_CLUSTERS)
-const fallbackLabelOf = (clusters) => clusters.find((c) => c.fallback)?.label ?? null
+//   defaultOn: whether the cluster is shown before any toggle
+//   fallback:  the centre bucket for repos matching no cluster; clusterOf returns null for it
+//   anchor/dir: layout hints. `anchor: -690` pins an x, `anchor: 'after:Backend'` sits just past
+//              that lane, `dir: -1|1` is the way extra columns grow. Without hints, lanes
+//              auto-distribute left to right in list order.
+// The default is a single centre lane holding everything, so an unconfigured map still renders.
+export const DEFAULT_CLUSTERS = [
+  { label: 'Components', match: [], color: '#6a1b9a', defaultOn: true, fallback: true, center: true },
+]
+export const resolveClusters = (config) => nonEmptyOr(config?.clusters, DEFAULT_CLUSTERS)
+const fallbackLabelOf = (clusters) => clusters.find((cluster) => cluster.fallback)?.label ?? null
 
-// Cluster of an inventory entry: an explicit `cluster-*` topic wins — resolved against the cluster
-// list by label or `match` (so a fork remapping `cluster-CSS` → "Frontend" still routes correctly),
-// with the fallback cluster mapping to null (the centre bucket, preserving legacy "Shared =
-// unassigned"). Otherwise the first cluster whose `match` prefixes the owner team; otherwise null.
-const clusterMatching = (clusters, value) => clusters.find((c) => c.label === value || (c.match || []).some((p) => value.startsWith(p)))
+const startsWithAny = (prefixes, value) => (prefixes || []).some((prefix) => value.startsWith(prefix))
+
+// An explicit `cluster-*` topic is resolved by label or by `match`, so a fork remapping
+// `cluster-CSS` to "Frontend" still routes. The fallback cluster maps to null (the centre bucket).
+function clusterOfOverride(override, clusters) {
+  const cluster = clusters.find((c) => c.label === override || startsWithAny(c.match, override))
+  if (cluster) return cluster.fallback ? null : cluster.label
+  return override === fallbackLabelOf(clusters) ? null : override
+}
+
 export const clusterOfInv = (inv, clusters = DEFAULT_CLUSTERS) => {
   const override = inv?.cluster
-  if (override) {
-    const c = clusterMatching(clusters, override)
-    if (c) return c.fallback ? null : c.label
-    return override === fallbackLabelOf(clusters) ? null : override
-  }
+  if (override) return clusterOfOverride(override, clusters)
   const owner = inv?.owner || ''
-  const hit = clusters.find((c) => !c.fallback && (c.match || []).some((p) => owner.startsWith(p)))
-  return hit ? hit.label : null
+  const cluster = clusters.find((c) => !c.fallback && startsWithAny(c.match, owner))
+  return cluster ? cluster.label : null
 }
-const clusterOf = (r, clusters = DEFAULT_CLUSTERS) => clusterOfInv(r.inventory, clusters)
+const clusterOf = (repo, clusters = DEFAULT_CLUSTERS) => clusterOfInv(repo.inventory, clusters)
 
-// A repo is "at risk" if it has open high/critical Dependabot alerts or a non-green latest CI run.
-// Shared by the card badge (CardNode), the Details/table columns, and the At-risk filter.
-export const isAtRisk = (health) =>
-  !!health && ((health.alerts?.high || 0) + (health.alerts?.critical || 0) > 0 || (!!health.ci?.conclusion && health.ci.conclusion !== 'success'))
+// Open high/critical Dependabot alerts, or a latest CI run that didn't succeed. Shared by the card
+// badge, the Details and table columns, and the At-risk filter.
+export const isAtRisk = (health) => {
+  if (!health) return false
+  const severeAlerts = (health.alerts?.high || 0) + (health.alerts?.critical || 0)
+  const ciFailed = !!health.ci?.conclusion && health.ci.conclusion !== 'success'
+  return severeAlerts > 0 || ciFailed
+}
 
-// Faceted filters. Each dimension is a Set of allowed values: an empty (or absent) Set imposes no
-// constraint. Within a dimension the values OR together; across dimensions they AND. Dimensions:
-//   group  — the repo's team cluster (ISS / CSS / IoT / Shared)
-//   status — lifecycle stage (Current / Planned / Sunsetting / Removed)
-//   health — 'at-risk' (open high/critical alerts or a failing latest CI run)
-// The graph applies `group` per-repo inside buildGraph (so cluster lanes and region boxes wrap the
-// survivors) and `status`/`health` as a post-build node filter; the Table / Matrix apply ALL of
-// them to inventory rows via matchInventory, so every view narrows by the same rules.
-export const facetsActive = (f) => !!(f && (f.group?.size || f.status?.size || f.health?.size || f.hidden?.size))
-// A multi-select facet whose selection covers EVERY available option imposes no constraint — so
-// "select all" behaves identically to "select none" (both = show everything). Without this, ticking
-// every status drops status-less nodes (the event bus, deploy targets, external services) that an
-// empty selection keeps, so all-selected ≠ none-selected. Keeps each filter kind symmetric.
-export const coversAll = (set, options) => !!(set && set.size) && options.length > 0 && options.every((o) => set.has(o))
-// status-only match for the graph's post-build node filter (group is already applied per-repo).
-export const matchStatus = (inv, f) => !f?.status?.size || (!!inv && f.status.has(inv.status))
-// full row match (group + status + health) for the Table / Matrix, which filter inventory entries.
-export const matchInventory = (inv, f, clusters = DEFAULT_CLUSTERS) => {
+// Facets: each dimension (group, status, health, hidden) is a Set of allowed values; an empty or
+// absent Set means no constraint. Values OR within a dimension and AND across dimensions. The graph
+// applies `group` per repo before building (so lanes wrap the survivors) and the rest after; the
+// Table and Matrix apply all of them through matchInventory, so every view narrows the same way.
+export const facetsActive = (facets) =>
+  !!(facets && (facets.group?.size || facets.status?.size || facets.health?.size || facets.hidden?.size))
+
+// Selecting every option must behave like selecting none. Otherwise ticking every status would
+// drop the status-less nodes (event bus, deploy targets, externals) that an empty selection keeps.
+export const coversAll = (set, options) =>
+  !!(set && set.size) && options.length > 0 && options.every((option) => set.has(option))
+
+// The graph's post-build status filter (group is already applied per repo).
+export const matchStatus = (inv, facets) => !facets?.status?.size || (!!inv && facets.status.has(inv.status))
+
+// Full row match for the Table and Matrix. `hidden` is keyed by lowercased inventory name.
+export const matchInventory = (inv, facets, clusters = DEFAULT_CLUSTERS) => {
   if (!inv) return false
-  if (f?.group?.size) {
-    const g = clusterOfInv(inv, clusters) || fallbackLabelOf(clusters)
-    if (!f.group.has(g)) return false
+  if (facets?.group?.size) {
+    const group = clusterOfInv(inv, clusters) || fallbackLabelOf(clusters)
+    if (!facets.group.has(group)) return false
   }
-  if (f?.status?.size && !f.status.has(inv.status)) return false
-  if (f?.health?.size && !(f.health.has('at-risk') && isAtRisk(inv.health))) return false
-  // hidden = per-component show/hide list, keyed by lowercased inventory name (Table/Matrix rows)
-  if (f?.hidden?.size && f.hidden.has(String(inv.name).toLowerCase())) return false
+  if (facets?.status?.size && !facets.status.has(inv.status)) return false
+  if (facets?.health?.size && !(facets.health.has('at-risk') && isAtRisk(inv.health))) return false
+  if (facets?.hidden?.size && facets.hidden.has(String(inv.name).toLowerCase())) return false
   return true
 }
 
-// buildGraph(data, { layers, facets, mode, layout }) →
-//   { nodes, edges, facetOptions: { status } }
-//
-//   layers — { backends, integrations, deploy, components, serviceLinks } booleans (see LAYERS)
-//   facets — { group, status, health } Sets; an empty/absent Set imposes no constraint.
-//            `group` is applied per-repo BEFORE the node build (cluster lanes wrap survivors);
-//            `health` then `status` are post-build node filters. facetOptions.status reports the
-//            statuses present before the status filter ran, so the Filters menu can scope its
-//            options to the current view without a second build.
-// Lane colors for DERIVED groupings (Group by: Application / Platform) — the team clusters carry
-// their own curated colors, but application/platform lanes are data-derived, so they cycle this.
-const GROUP_PALETTE = ['#3949ab', '#00838f', '#558b2f', '#6a1b9a', '#c62828', '#ef6c00', '#00897b', '#5e35b1', '#827717', '#ad1457']
+// Lane colors for data-derived groupings; team clusters carry their own curated colors.
+const GROUP_PALETTE = [
+  '#3949ab',
+  '#00838f',
+  '#558b2f',
+  '#6a1b9a',
+  '#c62828',
+  '#ef6c00',
+  '#00897b',
+  '#5e35b1',
+  '#827717',
+  '#ad1457',
+]
+const OTHER_LANE_COLOR = '#9e9e9e'
 
-// Alternate lane grouping (Group by: Team | Application | Platform). Grouping only changes which
-// LANE a card is laid out in — the team clusters stay the filtering taxonomy (facets.group), so
-// you can group by platform while still filtering by team. Derived lanes carry no anchors, so
-// clusterLayout auto-distributes them left→right; components in several applications ride their
-// FIRST application's lane; anything unmapped lands in a plain 'Other' lane (kept out of the
-// fallback/centre bucket so package-column logic keeps its team semantics).
-export const groupingFor = (data, groupBy) => {
-  if (groupBy !== 'application' && groupBy !== 'platform') return null
-  const appToPlat = {}
-  for (const [plat, apps] of Object.entries(data.config?.platforms || {})) {
-    if (plat.startsWith('_')) continue
-    for (const a of apps || []) appToPlat[a] = plat
+// Keys starting with '_' in config.json are comments.
+const isConfigComment = (key) => key.startsWith('_')
+
+function platformByApplication(platforms) {
+  const byApplication = new Map()
+  for (const [platform, applications] of Object.entries(platforms)) {
+    if (isConfigComment(platform)) continue
+    for (const application of applications || []) byApplication.set(application, platform)
   }
-  const labelOfInv = (inv) => {
-    const app = inv?.applications?.[0]
-    if (!app) return null
-    return groupBy === 'application' ? app : appToPlat[app] || null
-  }
-  // platform lanes follow config.platforms order; application lanes are alphabetical
-  const labels =
-    groupBy === 'platform'
-      ? Object.keys(data.config?.platforms || {}).filter((k) => !k.startsWith('_'))
-      : [...new Set((data.inventory || []).map(labelOfInv).filter(Boolean))].sort()
-  const clusters = [
-    ...labels.map((label, i) => ({ label, color: GROUP_PALETTE[i % GROUP_PALETTE.length] })),
-    { label: 'Other', color: '#9e9e9e' },
-    { label: 'Unassigned', fallback: true, center: true }, // never receives members — see memberOf
-  ]
-  return { clusters, memberOf: (inv) => labelOfInv(inv) || 'Other' }
+  return byApplication
 }
 
-export function buildGraph(data, opts = {}) {
-  const { facets = null, mode = 'dev', layout = {} } = opts
-  const grouping = groupingFor(data, opts.groupBy)
-  // Arrow classes the user has hidden (by edge-type key). Accepts a Set or array; empty = show all.
-  const hiddenEdges = opts.hiddenEdges instanceof Set ? opts.hiddenEdges : new Set(opts.hiddenEdges || [])
-  const layers = { ...DEFAULT_LAYERS, ...opts.layers }
-  const clusters = resolveClusters(data.config)
-  const fallbackLabel = fallbackLabelOf(clusters)
-  // Design-system package names resolving to the `ui` hub card (config-overridable).
-  const uiPkgs = uiPackagesOf(data.config)
-  const isUiPkg = (name) => uiPkgs.has(name)
-  // null/empty group facet = no constraint (every group shown). A non-empty set is a positive
-  // selection: a repo shows only if its cluster is ticked (OR within the group dimension).
-  const groupSel = facets?.group
-  // ...unless every cluster is ticked, which (like an empty set) means "no group constraint".
-  const groupOptions = clusters.map((c) => c.label)
-  const activeSet = groupSel && (groupSel.size ?? groupSel.length) && !coversAll(groupSel, groupOptions) ? new Set(groupSel) : null
-  // Product tag chips shown on the cards (AT / CI); no longer a filter dimension — a repo's tags are
-  // the unique product tags across the applications its inventory entry serves.
-  const productTags = { ...PRODUCT_TAGS, ...data.config?.productTags }
-  const tagColor = { ...TAG_COLOR, ...data.config?.tagColors } // chip color per tag; unknowns → grey
-  const tagsFor = (r) => [...new Set((r.inventory?.applications || []).map((a) => productTags[a]).filter(Boolean))]
-  const tagObjs = (r) => tagsFor(r).map((label) => ({ label, color: tagColor[label] || '#888' }))
-  // Group filter (team cluster): applied per-repo before node build so cluster lanes and region boxes
-  // wrap exactly the survivors. Status is a separate post-build facet (see below).
-  const hidden = new Set()
-  if (activeSet)
-    for (const r of data.repos || []) {
-      const g = clusterOf(r, clusters) || fallbackLabel // null cluster = fallback bucket
-      if (!activeSet.has(g)) hidden.add(r.folder)
-    }
-  // in-org repos only — repos outside the configured org are out of scope; honor the group filter
-  const repos = (data.repos || []).filter((r) => r.kind !== 'personal' && r.inOrg !== false && !hidden.has(r.folder))
-  // folder -> card node id, for aliasing curated references authored by repo FOLDER (serviceEdges,
-  // assetConsumers, contentRepos.parent, the isScd hub target) to the card's real node id once it
-  // is a serviceId. Byte-invariant: without a serviceId nodeIdOf(r)===r.folder, so resolveRef is the
-  // identity and non-folder refs (backend ids) pass through unchanged.
-  const nodeIdByFolder = Object.fromEntries(repos.map((r) => [r.folder, nodeIdOf(r)]))
-  const resolveRef = (x) => nodeIdByFolder[x] ?? x
-  let nodes = []
-  let edges = []
-  const ids = new Set()
-  const add = (n) => {
-    if (!ids.has(n.id)) {
-      ids.add(n.id)
-      nodes.push(n)
-    }
+// Group by Application or Platform. This only changes which lane a card sits in: the team
+// clusters remain the filter taxonomy. A component in several applications rides its first one's
+// lane; unmapped ones go to 'Other', which is kept out of the fallback bucket so the package-column
+// logic keeps its team meaning.
+export const groupingFor = (data, groupBy) => {
+  if (groupBy !== 'application' && groupBy !== 'platform') return null
+  const platforms = data.config?.platforms || {}
+  const platformOf = platformByApplication(platforms)
+  const laneOf = (inv) => {
+    const application = inv?.applications?.[0]
+    if (!application) return null
+    return groupBy === 'application' ? application : platformOf.get(application) || null
   }
+  // Platform lanes follow config order; application lanes are alphabetical.
+  const labels =
+    groupBy === 'platform'
+      ? Object.keys(platforms).filter((key) => !isConfigComment(key))
+      : [...new Set((data.inventory || []).map(laneOf).filter(Boolean))].sort()
+  const clusters = [
+    ...labels.map((label, i) => ({ label, color: GROUP_PALETTE[i % GROUP_PALETTE.length] })),
+    { label: 'Other', color: OTHER_LANE_COLOR },
+    // Never receives members (memberOf falls back to 'Other'); it only anchors the centre.
+    { label: 'Unassigned', fallback: true, center: true },
+  ]
+  return { clusters, memberOf: (inv) => laneOf(inv) || 'Other' }
+}
 
-  // Component Inventory lookups (embedded in the data). Match backend nodes by their GitHub repo
-  // basename; a couple of aliases cover components whose repo column is empty/differs.
-  const invByRepo = {},
-    invByName = {}
-  for (const e of data.inventory || []) {
-    if (e.repoName) (invByRepo[e.repoName] = invByRepo[e.repoName] || []).push(e)
-    invByName[e.name.toLowerCase()] = e
+// ---- graph building blocks --------------------------------------------------------------------
+
+const MS_PER_DAY = 86400000
+const DEFAULT_STALE_DAYS = 120
+const KAFKA_NAME = 'Kafka'
+const KAFKA_BUS_ID = 'bus:kafka'
+const PACKAGE_SCOPE = /^@[^/]+\//
+const UNKNOWN_TAG_COLOR = '#888'
+// Resource, deploy and external nodes are dropped when nothing links to them.
+const PRUNABLE_KINDS = ['backend', 'extsvc', 'storage', 'infra', 'external']
+
+const isInScope = (repo) => repo.kind !== 'personal' && repo.inOrg !== false
+
+const cardNode = (id, data) => ({ id, type: 'card', position: { x: 0, y: 0 }, data })
+
+function createGraph() {
+  const nodes = []
+  const edges = []
+  const ids = new Set()
+  return {
+    nodes,
+    edges,
+    has: (id) => ids.has(id),
+    addNode(node) {
+      if (ids.has(node.id)) return
+      ids.add(node.id)
+      nodes.push(node)
+    },
+    addEdge(edge) {
+      edges.push(edge)
+    },
   }
-  const invForBackend = (be) =>
-    (be.invAlias && invByName[be.invAlias.toLowerCase()]) ||
-    (be.repo && (invByRepo[be.repo] || [])[0]) ||
-    (be.repoName && (invByRepo[be.repoName] || [])[0]) || // scanned GitHub name when the folder lags a rename
-    (be.canonicalName && (invByRepo[be.canonicalName] || [])[0]) ||
+}
+
+const inventoryKindOf = (entry) => {
+  if (entry.type === 'Client') return 'client'
+  return /third/i.test(entry.type) ? 'external' : 'component'
+}
+
+function inventoryCard(entry) {
+  return cardNode('inv:' + entry.name, {
+    title: entry.name,
+    subtitle: entry.owner + (entry.abbr ? ' · ' + entry.abbr : ''),
+    kind: inventoryKindOf(entry),
+    inventory: entry,
+    status: entry.status,
+    chips: [],
+  })
+}
+
+function indexInventory(entries) {
+  const byRepo = new Map()
+  const byName = new Map()
+  for (const entry of entries || []) {
+    if (entry.repoName) addToListMap(byRepo, entry.repoName, entry)
+    byName.set(entry.name.toLowerCase(), entry)
+  }
+  return { byRepo, byName }
+}
+
+// null when no group is selected, or when every group is (both mean "no constraint").
+function selectedGroups(facets, clusters) {
+  const selection = facets?.group
+  if (!selection || !(selection.size ?? selection.length)) return null
+  const allGroups = clusters.map((cluster) => cluster.label)
+  if (coversAll(selection, allGroups)) return null
+  return new Set(selection)
+}
+
+function foldersOutsideGroups(repos, groups, clusters) {
+  const hidden = new Set()
+  if (!groups) return hidden
+  const fallbackLabel = fallbackLabelOf(clusters)
+  for (const repo of repos || []) {
+    const group = clusterOf(repo, clusters) || fallbackLabel
+    if (!groups.has(group)) hidden.add(repo.folder)
+  }
+  return hidden
+}
+
+function productTagger(config) {
+  const tagByApplication = { ...config?.productTags }
+  const colorByTag = { ...TAG_COLOR, ...config?.tagColors }
+  return (repo) => {
+    const applications = repo.inventory?.applications || []
+    const tags = [
+      ...new Set(applications.map((application) => tagByApplication[application]).filter(Boolean)),
+    ]
+    return tags.map((label) => ({ label, color: colorByTag[label] || UNKNOWN_TAG_COLOR }))
+  }
+}
+
+// Staleness is measured against the data's generation date, not today.
+function stalenessOf(data) {
+  const asOf = data.generatedAt ? new Date(data.generatedAt).getTime() : Date.now()
+  const configuredDays = Number(data.config?.staleDays)
+  const staleAfterDays = configuredDays > 0 ? configuredDays : DEFAULT_STALE_DAYS
+  const daysSinceCommit = (repo) =>
+    repo.lastCommit ? Math.round((asOf - new Date(repo.lastCommit).getTime()) / MS_PER_DAY) : null
+  const isStale = (repo) => {
+    const days = daysSinceCommit(repo)
+    return days != null && days > staleAfterDays
+  }
+  return { daysSinceCommit, isStale }
+}
+
+// Card badges for newly discovered repos and half-curated ones (missing owner, status or desc).
+function curationFlagger(validation) {
+  const newFolders = new Set(validation.newlyDiscovered || [])
+  const incompleteFolders = new Set([
+    ...(validation.uncuratedRepos || []),
+    ...(validation.incompleteCuration || []).map((entry) => String(entry).split(' — ')[0]),
+  ])
+  return (folder) => {
+    const flags = {}
+    if (newFolders.has(folder)) flags.isNew = true
+    if (incompleteFolders.has(folder)) flags.incomplete = true
+    return flags
+  }
+}
+
+// ---- backends ---------------------------------------------------------------------------------
+
+const scanNamesOf = (scan) => [scan.folder, scan.repoName, scan.canonicalName].filter(Boolean)
+
+// A scanned backend that no curated entry covers is added automatically, flagged needsCuration so
+// the missing host and wiring show up in the Admin panel. Any of the scan's names (clone folder,
+// remote basename, post-rename name) matching a curated `repo` counts as covered, so a stale-named
+// clone doesn't spawn a duplicate.
+function uncuratedBackends(scanned, curated) {
+  const curatedRepos = new Set(curated.map((backend) => backend.repo).filter(Boolean))
+  return scanned
+    .filter((scan) => !scanNamesOf(scan).some((name) => curatedRepos.has(name)))
+    .map((scan) => {
+      const name = scan.canonicalName || scan.folder
+      return {
+        id: name,
+        label: name,
+        kind: 'backend',
+        repo: name,
+        repoName: scan.repoName,
+        canonicalName: scan.canonicalName,
+        host: null,
+        derived: true,
+        needsCuration: true,
+      }
+    })
+}
+
+// Integration rows whose two ends both resolve to (different) backends.
+function backendToBackendLinks(integrations, backendIdOf) {
+  const links = []
+  for (const row of integrations || []) {
+    const source = backendIdOf(row.source)
+    const target = backendIdOf(row.target)
+    if (source && target && source !== target) links.push({ source, target, row })
+  }
+  return links
+}
+
+// "Used by" in the Details panel. The id lets the panel navigate to the consumer's card.
+function consumersByBackend(repos, feBe) {
+  const consumers = new Map()
+  for (const repo of repos) {
+    for (const backendId of feBe[repo.folder] || []) {
+      addToListMap(consumers, backendId, { id: nodeIdOf(repo), label: repo.displayName || repo.folder })
+    }
+  }
+  return consumers
+}
+
+// "Talks to" in the Details panel, from integrations in either direction.
+function partnersByBackend(links, backendsById) {
+  const partners = new Map()
+  const addPartner = (backendId, partnerId, name, channel) => {
+    if (!partners.has(backendId)) partners.set(backendId, [])
+    const list = partners.get(backendId)
+    if (name && !list.some((partner) => partner.id === partnerId)) {
+      list.push({ id: partnerId, name, channel: channel || null })
+    }
+  }
+  for (const { source, target, row } of links) {
+    addPartner(source, target, backendsById.get(target)?.label || row.target, row.channel)
+    addPartner(target, source, backendsById.get(source)?.label || row.source, row.channel)
+  }
+  return partners
+}
+
+// Backend topology = the curated overlay (backend-extra.json) merged with the live backend scan.
+function indexBackends(data, repos, inventory, topology) {
+  const scanned = data.extras?.backends?.scanned || []
+  const curated = topology.backends || []
+  const list = [...curated, ...uncuratedBackends(scanned, curated)]
+  const byId = new Map(list.map((backend) => [backend.id, backend]))
+
+  const firstInventoryOfRepo = (repoName) => repoName && inventory.byRepo.get(repoName)?.[0]
+  const inventoryOf = (backend) =>
+    (backend.invAlias && inventory.byName.get(backend.invAlias.toLowerCase())) ||
+    firstInventoryOfRepo(backend.repo) ||
+    // the scanned GitHub name, for when the clone folder lags a rename
+    firstInventoryOfRepo(backend.repoName) ||
+    firstInventoryOfRepo(backend.canonicalName) ||
     null
 
-  // Backend topology = curated overlay (backend-extra.json → data.backendTopology) MERGED with the
-  // live backend scan. A scanned backend not covered by the overlay is auto-added (kind 'backend',
-  // no host) so a newly-cloned backend appears without a source edit — flagged needsCuration so the
-  // gap (host/wiring) shows up in the Admin panel. Edge-less backend nodes are pruned at the end,
-  // so auto-derived backends only render once something (FE→BE or an integration) wires them.
-  const topo = data.backendTopology || {}
-  const feBe = topo.feBe || {}
-  const backendExternals = topo.backendExternals || {}
-  const assetConsumers = topo.assetConsumers || []
-  const assetsSource = topo.assetsSource || null // the shared asset-bucket card the consumers point at (backend-extra.json 'assetsSource')
-  const serviceEdges = topo.serviceEdges || [] // curated node↔node service relationships
-  const contentRepos = topo.contentRepos || [] // repo-less content sources drawn next to their parent
-  const scannedBE = data.extras?.backends?.scanned || []
-  const curatedBE = topo.backends || []
-  const curatedRepos = new Set(curatedBE.map((b) => b.repo).filter(Boolean))
-  // a scanned repo is "the same as" a curated backend if any of its names (clone folder, remote
-  // basename, or canonical post-rename name) matches a curated `repo` — so a stale-named clone
-  // (pharma-backend) doesn't spawn a duplicate of the curated node (repo intervention-backend).
-  const scanNames = (s) => [s.folder, s.repoName, s.canonicalName].filter(Boolean)
-  const derivedBE = scannedBE
-    .filter((s) => !scanNames(s).some((n) => curatedRepos.has(n)))
-    .map((s) => ({
-      id: s.canonicalName || s.folder,
-      label: s.canonicalName || s.folder,
-      kind: 'backend',
-      repo: s.canonicalName || s.folder,
-      repoName: s.repoName,
-      canonicalName: s.canonicalName,
-      host: null,
-      derived: true,
-      needsCuration: true,
-    }))
-  const BE_NODES = [...curatedBE, ...derivedBE]
-  const BE_BY_ID = Object.fromEntries(BE_NODES.map((b) => [b.id, b]))
-  // resolve a backend by any of its names (id / repo / GitHub repo name / label / inventory alias
-  // or name), so integrations rows (keyed by inventory/repo name) and feBe wiring (by id) all land.
-  const beIdByKey = {}
-  for (const be of BE_NODES) {
-    const inv = invForBackend(be)
-    for (const k of [be.id, be.repo, be.repoName, be.canonicalName, be.label, be.invAlias, inv?.name].filter(Boolean))
-      beIdByKey[String(k).toLowerCase()] = be.id
-  }
-  const beId = (name) => beIdByKey[String(name).toLowerCase()] || null
-
-  // Connections per backend — surfaced in the Details panel ("Used by" / "Talks to"). FE consumers
-  // come from the FE→BE wiring; service partners from integrations.csv (either direction).
-  const beConsumers = {} // beId -> [{ id, label }]  (id lets the Details panel navigate to the card)
-  // same scope rule as `repos` above — out-of-org repos aren't on the map, so a
-  // "Used by" chip for one would be a dead click
-  for (const r of data.repos || [])
-    if (r.kind !== 'personal' && r.inOrg !== false && !hidden.has(r.folder))
-      for (const id of feBe[r.folder] || []) (beConsumers[id] = beConsumers[id] || []).push({ id: nodeIdOf(r), label: r.displayName || r.folder })
-  const bePartners = {} // beId -> [{ id, name, channel }]
-  const addPartner = (host, partnerId, name, channel) => {
-    const list = (bePartners[host] = bePartners[host] || [])
-    if (name && !list.some((p) => p.id === partnerId)) list.push({ id: partnerId, name, channel: channel || null })
-  }
-  for (const it of data.integrations || []) {
-    const s = beId(it.source),
-      t = beId(it.target)
-    if (s && t && s !== t) {
-      addPartner(s, t, BE_BY_ID[t]?.label || it.target, it.channel)
-      addPartner(t, s, BE_BY_ID[s]?.label || it.source, it.channel)
-    }
+  // Tooling and freshness attach even when the clone folder differs from the curated `repo`.
+  const scanOf = (backend) => {
+    const names = new Set([backend.repo, backend.repoName, backend.canonicalName].filter(Boolean))
+    return scanned.find((scan) => scanNamesOf(scan).some((name) => names.has(name)))
   }
 
-  // add a backend/service/storage node. Description + tooling come live from the scan
-  // (backend-scan.mjs reads each cloned repo's build.gradle/pom.xml) and the linked inventory
-  // entry's GitHub description; both fall back to the curated overlay values for repos that
-  // aren't cloned (archived skycore-keycloak, the repo-less assets blob). host/wiring stay curated.
-  // match a scanned entry to a backend node by any shared name (folder / remote basename /
-  // canonical name / curated repo), so tooling + freshness attach even when the clone folder
-  // differs from the curated `repo` (stale-named local clone vs canonical CI clone).
-  const scanForBackend = (be) => {
-    const keys = new Set([be.repo, be.repoName, be.canonicalName].filter(Boolean))
-    return scannedBE.find((s) => scanNames(s).some((n) => keys.has(n)))
+  // Integrations name backends by inventory or repo name, feBe wiring by id: accept any of them.
+  const idByName = new Map()
+  for (const backend of list) {
+    const inv = inventoryOf(backend)
+    const names = [
+      backend.id,
+      backend.repo,
+      backend.repoName,
+      backend.canonicalName,
+      backend.label,
+      backend.invAlias,
+      inv?.name,
+    ]
+    for (const name of names.filter(Boolean)) idByName.set(String(name).toLowerCase(), backend.id)
   }
-  const addBackend = (id) => {
-    const be = BE_BY_ID[id]
-    if (!be) return
-    const inv = invForBackend(be)
-    const scan = scanForBackend(be)
-    const tooling = (scan?.tooling?.length ? scan.tooling : be.tooling) || []
-    add({
-      id,
-      type: 'card',
-      position: { x: 0, y: 0 },
-      data: {
-        title: be.label,
-        subtitle: inv?.description || be.desc,
-        kind: be.kind,
-        chips: tooling,
-        resource: {
-          ...be,
-          tooling,
-          modules: scan?.modules || [],
-          lastCommit: scan?.lastCommit,
-          consumers: beConsumers[id] || [],
-          partners: bePartners[id] || [],
-        },
-        inventory: inv,
-        status: inv?.status || null,
-        flags: be.needsCuration ? { incomplete: true } : flagsFor(be.repo),
+  const idOf = (name) => idByName.get(String(name).toLowerCase()) || null
+
+  const links = backendToBackendLinks(data.integrations, idOf)
+  return {
+    list,
+    byId,
+    inventoryOf,
+    scanOf,
+    idOf,
+    links,
+    consumers: consumersByBackend(repos, topology.feBe),
+    partners: partnersByBackend(links, byId),
+  }
+}
+
+// Description and tooling come from the scan and the inventory entry, falling back to the curated
+// values for repos that aren't cloned. Host and wiring are always curated.
+function addBackendCard(ctx, id) {
+  const { backends } = ctx
+  const backend = backends.byId.get(id)
+  if (!backend) return
+  const inventory = backends.inventoryOf(backend)
+  const scan = backends.scanOf(backend)
+  const tooling = (scan?.tooling?.length ? scan.tooling : backend.tooling) || []
+  ctx.graph.addNode(
+    cardNode(id, {
+      title: backend.label,
+      subtitle: inventory?.description || backend.desc,
+      kind: backend.kind,
+      chips: tooling,
+      resource: {
+        ...backend,
+        tooling,
+        modules: scan?.modules || [],
+        lastCommit: scan?.lastCommit,
+        consumers: backends.consumers.get(id) || [],
+        partners: backends.partners.get(id) || [],
       },
-    })
-  }
+      inventory,
+      status: inventory?.status || null,
+      flags: backend.needsCuration ? { incomplete: true } : ctx.flagsFor(backend.repo),
+    }),
+  )
+}
 
-  // staleness: a repo not committed to in > STALE_DAYS (relative to the data's generation date).
-  // Configurable via config.json `staleDays`; defaults to 120.
-  const asOf = data.generatedAt ? new Date(data.generatedAt).getTime() : Date.now()
-  const STALE_DAYS = Number(data.config?.staleDays) > 0 ? Number(data.config.staleDays) : 120
-  const staleDays = (r) => (r.lastCommit ? Math.round((asOf - new Date(r.lastCommit).getTime()) / 86400000) : null)
-  const isStale = (r) => {
-    const d = staleDays(r)
-    return d != null && d > STALE_DAYS
-  }
+// ---- repo cards and dependency edges ----------------------------------------------------------
 
-  // pipeline-health flags, surfaced as small badges on the cards (detail lives in the ⚠ popover):
-  // newly-discovered repos (not yet curated) and half-curated repos (missing owner/status/desc).
-  const v = data.validation || {}
-  const newSet = new Set(v.newlyDiscovered || [])
-  const incompleteSet = new Set([...(v.uncuratedRepos || []), ...(v.incompleteCuration || []).map((s) => String(s).split(' — ')[0])])
-  const flagsFor = (folder) => {
-    const f = {}
-    if (newSet.has(folder)) f.isNew = true
-    if (incompleteSet.has(folder)) f.incomplete = true
-    return f
+function addRepoCards(ctx) {
+  const { staleness } = ctx
+  for (const repo of ctx.repos) {
+    ctx.graph.addNode(
+      cardNode(nodeIdOf(repo), {
+        // the inventory name, so the card matches the Table and Matrix
+        title: repo.inventory?.name || repo.displayName || repo.folder,
+        subtitle: repo.name || '',
+        kind: repo.kind,
+        chips: ctx.mode === 'dev' ? chipsFor(repo) : [],
+        tags: ctx.tagsFor(repo),
+        repo,
+        inventory: repo.inventory || null,
+        status: repo.inventory?.status || null,
+        stale: staleness.isStale(repo),
+        staleDays: staleness.daysSinceCommit(repo),
+        flags: ctx.flagsFor(repo.folder),
+      }),
+    )
   }
+}
 
-  for (const r of repos) {
-    add({
-      id: nodeIdOf(r),
-      type: 'card',
-      position: { x: 0, y: 0 },
-      data: {
-        // prefer the curated inventory name so the card matches the Table/Matrix (e.g. the repo
-        // folder `device-data-service` shows as its inventory name `device-data-ingestion`).
-        title: r.inventory?.name || r.displayName || r.folder,
-        subtitle: r.name || '',
-        kind: r.kind,
-        chips: mode === 'dev' ? chipsFor(r) : [],
-        tags: tagObjs(r),
-        repo: r,
-        inventory: r.inventory || null,
-        status: r.inventory?.status || null,
-        stale: isStale(r),
-        staleDays: staleDays(r),
-        flags: flagsFor(r.folder),
-      },
-    })
+const versionParts = (version) =>
+  String(version || '')
+    .replace(/^[\^~>=<\s]+/, '')
+    .split(/[.\-+]/)
+    .map((part) => parseInt(part, 10) || 0)
+
+function compareVersions(a, b) {
+  const partsA = versionParts(a)
+  const partsB = versionParts(b)
+  const length = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < length; i++) {
+    const difference = (partsA[i] || 0) - (partsB[i] || 0)
+    if (difference !== 0) return difference
   }
+  return 0
+}
 
-  // design-system version drift: "latest" is the highest version any consumer references (the ui
-  // repo's own package.json version lags the published versions, so it's not a reliable baseline).
-  const verParts = (v) =>
-    String(v || '')
-      .replace(/^[\^~>=<\s]+/, '')
-      .split(/[.\-+]/)
-      .map((x) => parseInt(x, 10) || 0)
-  const cmpVer = (a, b) => {
-    const A = verParts(a),
-      B = verParts(b)
-    for (let i = 0; i < Math.max(A.length, B.length); i++) {
-      if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0)
+// "Latest" is the highest version any consumer references: the design-system repo's own
+// package.json lags the published versions. It spans all in-scope repos, not the group-filtered
+// ones, so hiding a cluster never re-colors the remaining drift edges.
+function latestUiVersion(data, isUiPackage) {
+  const versions = (data.repos || [])
+    .filter(isInScope)
+    .flatMap((repo) =>
+      isUiPackage(repo.name)
+        ? []
+        : (repo.internalDeps || []).filter((dep) => isUiPackage(dep.name)).map((dep) => dep.version),
+    )
+  return versions.filter(Boolean).sort(compareVersions).at(-1) ?? null
+}
+
+// A package listed as both a prod and a dev dependency would collide on edge id, so keep one entry
+// per name, preferring the prod one.
+function uniqueDeps(deps) {
+  const byName = new Map()
+  for (const dep of deps || []) {
+    const seen = byName.get(dep.name)
+    if (!seen || (seen.dev && !dep.dev)) byName.set(dep.name, dep)
+  }
+  return [...byName.values()]
+}
+
+// A package can be curated under its short name; its cluster override places it (a cross-cutting
+// lib in the fallback cluster lands in the centre, not the package column).
+function packageCard(id, packageName, inventory, fallbackLabel) {
+  const shortName = packageName.replace(PACKAGE_SCOPE, '')
+  const entry = inventory.byName.get(shortName.toLowerCase()) || null
+  const subtitle = packageName.startsWith('@')
+    ? packageName.slice(0, packageName.indexOf('/')) + ' pkg'
+    : 'internal pkg'
+  return cardNode(id, {
+    title: shortName,
+    subtitle,
+    kind: 'package',
+    inventory: entry,
+    sharedPkg: !!entry?.cluster && entry.cluster === fallbackLabel,
+  })
+}
+
+// Point at the package's real card when one exists; otherwise draw a "pkg:" card for it.
+function dependencyTarget(ctx, dep, isUi, cardIdByPackage, hubId) {
+  if (isUi) return hubId
+  const repoCardId = cardIdByPackage.get(dep.name)
+  if (repoCardId) return repoCardId
+  const id = 'pkg:' + dep.name
+  ctx.graph.addNode(packageCard(id, dep.name, ctx.inventory, fallbackLabelOf(ctx.clusters)))
+  return id
+}
+
+function dependencyEdge({ sourceId, targetId, dep, isUi, behind, latestUi }) {
+  return {
+    id: `dep-${sourceId}-${targetId}`,
+    source: sourceId,
+    target: targetId,
+    label: behind ? `${dep.version} ⚠` : dep.version,
+    animated: isUi,
+    data: { drift: !!behind, scdLatest: latestUi },
+    style: {
+      stroke: behind ? '#e53935' : '#7c4dff',
+      strokeWidth: isUi ? 2 : 1,
+      strokeDasharray: behind ? '6 3' : undefined,
+    },
+    labelStyle: { fontSize: 10, fill: behind ? '#c62828' : '#5e35b1' },
+    labelBgStyle: { fill: behind ? '#ffebee' : '#ede7f6' },
+  }
+}
+
+// Internal dependency edges: the design system and every other first-party package.
+function addDependencyEdges(ctx) {
+  const { graph, isUiPackage } = ctx
+  const cardIdByPackage = new Map()
+  for (const repo of ctx.repos) if (repo.name) cardIdByPackage.set(repo.name, nodeIdOf(repo))
+  const latestUi = latestUiVersion(ctx.data, isUiPackage)
+  const hubId = uiHubFoldersOf(ctx.data.config)
+    .map(ctx.resolveRef)
+    .find((id) => graph.has(id))
+
+  for (const repo of ctx.repos) {
+    const sourceId = nodeIdOf(repo)
+    for (const dep of uniqueDeps(repo.internalDeps)) {
+      const isUi = isUiPackage(dep.name)
+      const targetId = dependencyTarget(ctx, dep, isUi, cardIdByPackage, hubId)
+      // the design system yalc-links its own package during local dev
+      if (targetId === sourceId) continue
+      if (!graph.has(targetId)) continue
+      const behind = isUi && latestUi && dep.version && compareVersions(dep.version, latestUi) < 0
+      graph.addEdge(dependencyEdge({ sourceId, targetId, dep, isUi, behind, latestUi }))
     }
-    return 0
   }
-  // Baseline over ALL in-scope repos, not the group-filtered survivors: hiding the cluster that
-  // happens to contain the most current consumer must not lower "latest" and re-color the
-  // remaining drift edges.
-  const scdVersions = (data.repos || [])
-    .filter((r) => r.kind !== 'personal' && r.inOrg !== false)
-    .flatMap((r) => (isUiPkg(r.name) ? [] : (r.internalDeps || []).filter((d) => isUiPkg(d.name)).map((d) => d.version)))
-  const scdLatest = scdVersions.sort(cmpVer).slice(-1)[0] || null
+}
 
-  // map an internal package name -> its curated repo card, so an internal-dep edge points at the
-  // real card instead of spawning a duplicate "pkg:" node (rich-table, theme, etc. are now cards).
-  const repoByPkg = {}
-  for (const r of repos) if (r.name) repoByPkg[r.name] = nodeIdOf(r)
-  // internal dependency edges (the design system + every other first-party package)
-  for (const r of repos) {
-    // one edge per package: a pkg listed as both prod + dev dep would collide on edge id, so
-    // dedupe by name (prefer the prod entry / its version).
-    const rid = nodeIdOf(r) // repo card node id (serviceId||folder) — dep-edge source + self-loop check
-    const deps = []
-    const byDepName = {}
-    for (const d of r.internalDeps || []) {
-      if (!byDepName[d.name]) {
-        byDepName[d.name] = d
-        deps.push(d)
-      } else if (byDepName[d.name].dev && !d.dev) Object.assign(byDepName[d.name], d)
-    }
-    for (const d of deps) {
-      let target
-      const isScd = isUiPkg(d.name)
-      if (isScd) target = nodeIdByFolder['ui'] ?? 'ui'
-      else if (repoByPkg[d.name])
-        target = repoByPkg[d.name] // curated card — no duplicate pkg node
-      else {
-        target = 'pkg:' + d.name
-        // a package can be curated (by its short name, scope stripped) — pick up its cluster
-        // override so a cross-cutting lib (cluster-shared) lands in Shared, not the pkg column.
-        const short = d.name.replace(/^@[^/]+\//, '')
-        const pinv = invByName[short.toLowerCase()] || null
-        add({
-          id: target,
-          type: 'card',
-          position: { x: 0, y: 0 },
-          data: {
-            title: short,
-            subtitle: d.name.startsWith('@') ? d.name.slice(0, d.name.indexOf('/')) + ' pkg' : 'internal pkg',
-            kind: 'package',
-            inventory: pinv,
-            sharedPkg: pinv?.cluster === 'Shared',
-            cssPkg: pinv?.cluster === 'CSS', // CSS-shared pkg (e.g. kb-core) — placed in the CSS lane
-          },
-        })
-      }
-      const behind = isScd && scdLatest && cmpVer(d.version, scdLatest) < 0
-      // skip self-loops: the design system yalc-links its own package during local dev
-      if (target === rid) continue
-      if (ids.has(target))
-        edges.push({
-          id: `dep-${rid}-${target}`,
-          source: rid,
-          target,
-          label: behind ? `${d.version} ⚠` : d.version,
-          animated: isScd,
-          data: { drift: !!behind, scdLatest },
-          style: { stroke: behind ? '#e53935' : '#7c4dff', strokeWidth: isScd ? 2 : 1, strokeDasharray: behind ? '6 3' : undefined },
-          labelStyle: { fontSize: 10, fill: behind ? '#c62828' : '#5e35b1' },
-          labelBgStyle: { fill: behind ? '#ffebee' : '#ede7f6' },
-        })
-    }
+// ---- layers -----------------------------------------------------------------------------------
+
+function addResourceLayer(ctx) {
+  const { graph, backends } = ctx
+  const { feBe } = ctx.topology
+  const wanted = new Set()
+  for (const repo of ctx.repos) for (const id of feBe[repo.folder] || []) wanted.add(id)
+  for (const link of backends.links) {
+    wanted.add(link.source)
+    wanted.add(link.target)
   }
+  for (const backend of backends.list) if (wanted.has(backend.id)) addBackendCard(ctx, backend.id)
 
-  if (layers.backends) {
-    const want = new Set()
-    for (const r of repos) (feBe[r.folder] || []).forEach((id) => want.add(id))
-    // backend↔backend edges now come from integrations.csv (both endpoints resolve to backend nodes),
-    // replacing the old hardcoded BE_BE array.
-    const beInternal = []
-    for (const it of data.integrations || []) {
-      const s = beId(it.source),
-        t = beId(it.target)
-      if (s && t && s !== t) {
-        want.add(s)
-        want.add(t)
-        beInternal.push({ s, t, it })
-      }
-    }
-    for (const be of BE_NODES) if (want.has(be.id)) addBackend(be.id)
-    // FE -> backend/service/storage
-    for (const r of repos)
-      for (const t of feBe[r.folder] || [])
-        if (ids.has(t))
-          edges.push({
-            id: `be-${nodeIdOf(r)}-${t}`,
-            source: nodeIdOf(r),
-            target: t,
-            style: { stroke: '#fb8c00', strokeWidth: 1, opacity: 0.4 },
-          })
-    // backend -> backend / service, sourced from integrations.csv (deduped by node pair). Unverified
-    // rows (seeded from a description, not confirmed) render finer + dimmer, matching service links.
-    const seenBe = new Set()
-    for (const { s, t, it } of beInternal) {
-      const key = s + '>' + t
-      if (seenBe.has(key) || !ids.has(s) || !ids.has(t)) continue
-      seenBe.add(key)
-      const unverified = it.verified === false
-      edges.push({
-        id: `bebe-${s}-${t}`,
-        source: s,
-        target: t,
-        label: it.channel || undefined,
-        data: it.channelFull ? { channelFull: it.channelFull } : undefined,
-        style: { stroke: '#6d4c41', strokeDasharray: unverified ? '1 4' : '2 3', strokeWidth: 1, opacity: unverified ? 0.4 : 0.55 },
-        labelStyle: { fontSize: 9, fill: '#4e342e' },
-        labelBgStyle: { fill: '#efebe9' },
+  for (const repo of ctx.repos) {
+    for (const backendId of feBe[repo.folder] || []) {
+      if (!graph.has(backendId)) continue
+      graph.addEdge({
+        id: `be-${nodeIdOf(repo)}-${backendId}`,
+        source: nodeIdOf(repo),
+        target: backendId,
+        style: { stroke: '#fb8c00', strokeWidth: 1, opacity: 0.4 },
       })
     }
   }
+  addBackendToBackendEdges(ctx)
+}
 
-  if (layers.deploy) {
-    const deployTargets = deployTargetsOf(data.config)
-    for (const inf of deployTargets)
-      add({ id: inf.id, type: 'card', position: { x: 0, y: 0 }, data: { title: inf.label, subtitle: 'deploy target', kind: 'infra' } })
-    // backends flagged deployArtifact are deployment artifacts, but they're still backend nodes:
-    // the Resources layer is authoritative for whether they render, so don't resurrect one here
-    // while Resources is off (that left pharma-backend visible inside a hidden Resources cluster).
-    if (layers.backends) for (const be of BE_NODES) if (be.deployArtifact && !ids.has(be.id)) addBackend(be.id)
-    const dpl = (id, target) =>
-      edges.push({ id: `dpl-${target}-${id}`, source: id, target, style: { stroke: '#ef5350', strokeDasharray: '2 2', strokeWidth: 1, opacity: 0.4 } })
-    // repo deploy edges from real workflow targets (descriptor `match` regexes); test harnesses
-    // with no deploy target link to the CI node.
-    const matchers = deployTargets.filter((t) => t.match).map((t) => [new RegExp(t.match, 'i'), t.id])
-    const ciTarget = deployTargets.find((t) => t.testsFallback)?.id
-    for (const r of repos) {
-      const tgt = (r.deployment || [])
-        .flatMap((d) => d.target || [])
-        .join(' ')
-        .toLowerCase()
-      for (const [re, id] of matchers) if (re.test(tgt)) dpl(nodeIdOf(r), id)
-      if (!tgt && r.kind === 'tests' && ciTarget) dpl(nodeIdOf(r), ciTarget)
+// One edge per backend pair. Unverified rows (seeded from a description) render finer and dimmer.
+function addBackendToBackendEdges(ctx) {
+  const { graph } = ctx
+  const seenPairs = new Set()
+  for (const { source, target, row } of ctx.backends.links) {
+    const pair = source + '>' + target
+    if (seenPairs.has(pair) || !graph.has(source) || !graph.has(target)) continue
+    seenPairs.add(pair)
+    const unverified = row.verified === false
+    graph.addEdge({
+      id: `bebe-${source}-${target}`,
+      source,
+      target,
+      label: row.channel || undefined,
+      data: row.channelFull ? { channelFull: row.channelFull } : undefined,
+      style: {
+        stroke: '#6d4c41',
+        strokeDasharray: unverified ? '1 4' : '2 3',
+        strokeWidth: 1,
+        opacity: unverified ? 0.4 : 0.55,
+      },
+      labelStyle: { fontSize: 9, fill: '#4e342e' },
+      labelBgStyle: { fill: '#efebe9' },
+    })
+  }
+}
+
+const deployEdge = (sourceId, targetId) => ({
+  id: `dpl-${targetId}-${sourceId}`,
+  source: sourceId,
+  target: targetId,
+  style: { stroke: '#ef5350', strokeDasharray: '2 2', strokeWidth: 1, opacity: 0.4 },
+})
+
+const deploymentTargetText = (repo) =>
+  (repo.deployment || [])
+    .flatMap((deployment) => deployment.target || [])
+    .join(' ')
+    .toLowerCase()
+
+function addDeploymentLayer(ctx) {
+  const { graph, backends } = ctx
+  const targets = deployTargetsOf(ctx.data.config)
+  for (const target of targets) {
+    graph.addNode(cardNode(target.id, { title: target.label, subtitle: 'deploy target', kind: 'infra' }))
+  }
+  // Deploy-artifact backends are still backend nodes: the Resources layer decides whether they
+  // render, so never resurrect one here while it is off.
+  if (ctx.layers.backends) {
+    for (const backend of backends.list) {
+      if (backend.deployArtifact && !graph.has(backend.id)) addBackendCard(ctx, backend.id)
     }
-    // backend/service deploy targets — curated per backend (backend-extra.json `deployTarget`)
-    for (const be of BE_NODES) if (be.deployTarget && ids.has(be.id)) dpl(be.id, be.deployTarget)
   }
 
-  // External / SaaS integration cards (optional layer)
-  if (layers.integrations) {
-    const addExt = (name) => {
-      const id = 'ext:' + name
-      add({ id, type: 'card', position: { x: 0, y: 0 }, data: { title: name, subtitle: 'external service', kind: 'external' } })
-      return id
+  const matchers = targets
+    .filter((target) => target.match)
+    .map((target) => ({ pattern: new RegExp(target.match, 'i'), id: target.id }))
+  const ciTargetId = targets.find((target) => target.testsFallback)?.id
+  for (const repo of ctx.repos) {
+    const workflowTargets = deploymentTargetText(repo)
+    for (const { pattern, id } of matchers) {
+      if (pattern.test(workflowTargets)) graph.addEdge(deployEdge(nodeIdOf(repo), id))
     }
-    const extEdge = (src, name) => {
-      const id = addExt(name)
-      edges.push({ id: `ext-${src}-${name}`, source: src, target: id, style: { stroke: '#5e35b1', strokeDasharray: '4 3', strokeWidth: 1, opacity: 0.5 } })
-    }
-    for (const r of repos) for (const e of r.externals || []) extEdge(nodeIdOf(r), e.name)
-    // backend integrations (pharma-backend -> OpenAI, GoComet); ensure the backend node exists so the edge shows
-    for (const [be, names] of Object.entries(backendExternals)) {
-      if (!names.length) continue
-      if (!ids.has(be)) addBackend(be)
-      for (const name of names) extEdge(be, name)
+    if (!workflowTargets && repo.kind === 'tests' && ciTargetId) {
+      graph.addEdge(deployEdge(nodeIdOf(repo), ciTargetId))
     }
   }
+  for (const backend of backends.list) {
+    if (backend.deployTarget && graph.has(backend.id)) {
+      graph.addEdge(deployEdge(backend.id, backend.deployTarget))
+    }
+  }
+}
 
-  // Curated service edges (backend-extra.json `serviceEdges`) — node-to-node relationships that
-  // can't be auto-derived (FE→FE embeds, design-token feeds, backend→FE-service calls). Drawn only
-  // when both endpoints are on the map, so a backend-touching edge is naturally gated by the
-  // Resources/Deployments layers. Backend-touching edges render brown-dashed (matching the
-  // backend↔backend style); pure FE edges render teal.
-  for (const { source: rawS, target: rawT, label } of serviceEdges) {
-    const s = resolveRef(rawS),
-      t = resolveRef(rawT) // curated by folder; alias to the card node id
-    if (!s || !t || !ids.has(s) || !ids.has(t)) continue
-    const touchesBackend = BE_BY_ID[s] || BE_BY_ID[t]
-    edges.push({
-      id: `svc-${s}-${t}`,
-      source: s,
-      target: t,
+function addExternalLayer(ctx) {
+  const { graph } = ctx
+  const linkToExternal = (sourceId, name) => {
+    const externalId = 'ext:' + name
+    graph.addNode(cardNode(externalId, { title: name, subtitle: 'external service', kind: 'external' }))
+    graph.addEdge({
+      id: `ext-${sourceId}-${name}`,
+      source: sourceId,
+      target: externalId,
+      style: { stroke: '#5e35b1', strokeDasharray: '4 3', strokeWidth: 1, opacity: 0.5 },
+    })
+  }
+  for (const repo of ctx.repos) {
+    for (const external of repo.externals || []) linkToExternal(nodeIdOf(repo), external.name)
+  }
+  // Make sure the backend card exists so its external edges have a source. A curated id that
+  // names no backend draws nothing, like the other curated references.
+  for (const [backendId, names] of Object.entries(ctx.topology.backendExternals)) {
+    if (!names.length) continue
+    if (!graph.has(backendId)) addBackendCard(ctx, backendId)
+    if (!graph.has(backendId)) continue
+    for (const name of names) linkToExternal(backendId, name)
+  }
+}
+
+// Curated node-to-node relationships that can't be derived (FE embeds, token feeds, backend to FE
+// service calls). Drawn only when both ends are on the map, so the layers gate them naturally.
+function addCuratedServiceEdges(ctx) {
+  const { graph, backends } = ctx
+  for (const { source: rawSource, target: rawTarget, label } of ctx.topology.serviceEdges) {
+    const source = ctx.resolveRef(rawSource)
+    const target = ctx.resolveRef(rawTarget)
+    if (!source || !target || !graph.has(source) || !graph.has(target)) continue
+    const touchesBackend = backends.byId.has(source) || backends.byId.has(target)
+    graph.addEdge({
+      id: `svc-${source}-${target}`,
+      source,
+      target,
       label: label || undefined,
-      style: touchesBackend ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 } : { stroke: '#0097a7', strokeWidth: 1.6 },
+      style: touchesBackend
+        ? { stroke: '#6d4c41', strokeDasharray: '2 3', strokeWidth: 1.2, opacity: 0.6 }
+        : { stroke: '#0097a7', strokeWidth: 1.6 },
       labelStyle: touchesBackend ? { fontSize: 10, fill: '#4e342e' } : { fontSize: 10, fill: '#00838f' },
       labelBgStyle: { fill: touchesBackend ? '#efebe9' : '#e0f7fa' },
     })
   }
+}
 
-  // Consumer apps -> the shared asset bucket (backend-extra.json `assetConsumers` / `assetsSource`)
-  for (const rawR of assetConsumers) {
-    const r = resolveRef(rawR) // consumer curated by folder; alias to the card node id
-    if (ids.has(r) && ids.has(assetsSource))
-      edges.push({
-        id: `asset-${r}`,
-        source: r,
-        target: assetsSource,
-        style: { stroke: '#546e7a', strokeDasharray: '5 3', strokeWidth: 1.2, opacity: 0.6 },
-      })
-  }
-
-  // Repo-less content sources (backend-extra.json `contentRepos`) — drawn next to their parent
-  // card with a labeled edge (e.g. knowledge-base ← knowledge-base-articles, pushed from Stoplight).
-  for (const c of contentRepos) {
-    const parent = resolveRef(c.parent) // parent curated by folder; alias to the card node id
-    if (!c.id || !c.parent || !ids.has(parent)) continue
-    add({
-      id: c.id,
-      type: 'card',
-      position: { x: 0, y: 0 },
-      data: { title: c.label || c.id, subtitle: c.subtitle || 'content', kind: 'content', parentId: parent },
+function addAssetEdges(ctx) {
+  const { graph } = ctx
+  const { assetsSource } = ctx.topology
+  for (const rawConsumer of ctx.topology.assetConsumers) {
+    const consumer = ctx.resolveRef(rawConsumer)
+    if (!graph.has(consumer) || !graph.has(assetsSource)) continue
+    graph.addEdge({
+      id: `asset-${consumer}`,
+      source: consumer,
+      target: assetsSource,
+      style: { stroke: '#546e7a', strokeDasharray: '5 3', strokeWidth: 1.2, opacity: 0.6 },
     })
-    edges.push({
-      id: `content-${parent}-${c.id}`,
+  }
+}
+
+// Repo-less content sources, drawn next to their parent card.
+function addContentRepos(ctx) {
+  const { graph } = ctx
+  for (const content of ctx.topology.contentRepos) {
+    const parent = ctx.resolveRef(content.parent)
+    if (!content.id || !content.parent || !graph.has(parent)) continue
+    graph.addNode(
+      cardNode(content.id, {
+        title: content.label || content.id,
+        subtitle: content.subtitle || 'content',
+        kind: 'content',
+        parentId: parent,
+      }),
+    )
+    graph.addEdge({
+      id: `content-${parent}-${content.id}`,
       source: parent,
-      target: c.id,
-      label: c.edgeLabel || undefined,
+      target: content.id,
+      label: content.edgeLabel || undefined,
       style: { stroke: '#8d6e63', strokeWidth: 1.4 },
       labelStyle: { fontSize: 10, fill: '#4e342e' },
       labelBgStyle: { fill: '#efebe9' },
     })
   }
+}
 
-  // Component catalog (optional): every inventory component not already drawn as a node, as a
-  // grouped grid. Service -> 'component' (new kind), Client -> 'client', Third-Party -> 'external'.
-  if (layers.components && (data.inventory || []).length) {
-    const represented = new Set(nodes.filter((n) => n.data?.inventory).map((n) => n.data.inventory.name))
-    for (const e of data.inventory) {
-      if (represented.has(e.name)) continue
-      const kind = e.type === 'Client' ? 'client' : /third/i.test(e.type) ? 'external' : 'component'
-      add({
-        id: 'inv:' + e.name,
-        type: 'card',
-        position: { x: 0, y: 0 },
-        data: { title: e.name, subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''), kind, inventory: e, status: e.status, chips: [] },
-      })
-    }
-  }
-
-  // Service-to-service integrations (REST / Kafka). Endpoints are inventory component names;
-  // "Kafka" resolves to a shared event-bus node. Endpoint components that aren't on the map yet
-  // are MATERIALIZED as inventory cards — switching this layer on must show the services a link
-  // touches, not silently drop the edge because the full Components catalog happens to be off
-  // ("services don't show despite being selected"). The bus node is only added when a row that
-  // uses it actually draws, so it can never appear as an orphan.
-  if (layers.serviceLinks && (data.integrations || []).length) {
-    const idByInv = {}
-    for (const n of nodes) if (n.data?.inventory) idByInv[n.data.inventory.name] = n.id
-    let kafka = false
-    const addBus = () => {
-      if (!kafka) {
-        add({ id: 'bus:kafka', type: 'card', position: { x: 0, y: 0 }, data: { title: 'Kafka', subtitle: 'event bus', kind: 'bus' } })
-        kafka = true
-      }
-      return 'bus:kafka'
-    }
-    // Can this endpoint name resolve at all (bus / drawn node / known inventory component)?
-    const resolvable = (name) => name === 'Kafka' || !!idByInv[name] || !!invByName[String(name).toLowerCase()]
-    const resolve = (name) => {
-      if (name === 'Kafka') return addBus()
-      if (idByInv[name]) return idByInv[name]
-      const e = invByName[String(name).toLowerCase()]
-      if (!e) return null
-      // materialize the missing component as a catalog-style card (same shape the Components layer draws)
-      const kind = e.type === 'Client' ? 'client' : /third/i.test(e.type) ? 'external' : 'component'
-      const id = 'inv:' + e.name
-      add({
-        id,
-        type: 'card',
-        position: { x: 0, y: 0 },
-        data: { title: e.name, subtitle: e.owner + (e.abbr ? ' · ' + e.abbr : ''), kind, inventory: e, status: e.status, chips: [] },
-      })
-      idByInv[e.name] = id
-      return id
-    }
-    for (const it of data.integrations) {
-      // backend↔backend rows are drawn in the backends layer (as topology edges), not here.
-      if (beId(it.source) && beId(it.target)) continue
-      // resolve only when BOTH endpoints can land, so one resolvable side never materializes
-      // a card (or the bus) for an edge that then can't draw.
-      if (!resolvable(it.source) || !resolvable(it.target)) continue
-      const s = resolve(it.source),
-        t = resolve(it.target)
-      if (!s || !t || !ids.has(s) || !ids.has(t)) continue
-      const kafkaEdge = it.protocol === 'Kafka'
-      // Unverified links (seeded from a description, not confirmed from code) render faint + finely
-      // dotted with a ⚠ on the label, so they read as inferred rather than fact.
-      const unverified = it.verified === false
-      const text = kafkaEdge ? it.channel || 'Kafka' : it.channel || ''
-      edges.push({
-        // protocol in the id: a pair can talk BOTH REST and Kafka (two rows, same node pair), so
-        // keying on s-t alone would collide (duplicate React keys / one edge dropped).
-        id: `link-${kafkaEdge ? 'k' : 'r'}-${s}-${t}`,
-        source: s,
-        target: t,
-        label: (unverified ? '⚠ ' : '') + text || undefined,
-        data: it.channelFull ? { channelFull: it.channelFull } : undefined,
-        style: unverified
-          ? { stroke: kafkaEdge ? '#fb8c00' : '#00838f', strokeDasharray: '1 4', strokeWidth: 1.2, opacity: 0.45 }
-          : kafkaEdge
-            ? { stroke: '#fb8c00', strokeDasharray: '5 3', strokeWidth: 1.6 }
-            : { stroke: '#00838f', strokeWidth: 1.6 },
-        labelStyle: { fontSize: 9, fill: unverified ? '#9aa3b5' : kafkaEdge ? '#e65100' : '#00838f' },
-        labelBgStyle: { fill: unverified ? '#f0f1f3' : kafkaEdge ? '#fff3e0' : '#e0f7fa' },
-      })
-    }
-  }
-
-  // Edge-type visibility: keep the pre-hide edge list (so a HIDDEN class stays re-checkable in the
-  // Legend), then drop any the user has hidden — before the orphan-prune + layout so a node left
-  // edge-less by a hidden arrow class is pruned and the lanes reflow (same contract as facets).
-  // The offered classes themselves are computed at the END of the build (post-facets), so the
-  // Filters/Legend never list an arrow class with zero arrows actually remaining on the map.
-  const edgesPreHide = edges
-  if (hiddenEdges.size) edges = edges.filter((e) => !hiddenEdges.has(edgeTypeOf(e.id, e)))
-
-  // drop backend/service/storage/infra nodes left with no edges (e.g., after hiding a cluster).
-  // Catalog nodes ('inv:') are intentionally edge-less, so never prune them.
-  const BOTTOM_KINDS = ['backend', 'extsvc', 'storage', 'infra', 'external']
-  const used = new Set()
-  edges.forEach((e) => {
-    used.add(e.source)
-    used.add(e.target)
-  })
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i]
-    if (!n.id.startsWith('inv:') && BOTTOM_KINDS.includes(n.data.kind) && !used.has(n.id)) nodes.splice(i, 1)
-  }
-
-  // floating edges + arrowheads
-  for (const e of edges) {
-    e.type = 'floating'
-    const c = e.style?.stroke || '#888'
-    e.markerEnd = { type: MarkerType.ArrowClosed, color: c, width: 16, height: 16 }
-  }
-
-  // Post-build facets — true filters: non-matching cards are removed (not dimmed), and both run
-  // before layout so region boxes wrap only the survivors and empty clusters drop out.
-  const dropNodes = (keep) => {
-    const kept = nodes.filter(keep)
-    const keptIds = new Set(kept.map((n) => n.id))
-    nodes = kept
-    edges = edges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target))
-  }
-  // Health facet first: keep only cards whose repo has alerts/failing CI (+ the bus node).
-  if (facets?.health?.size) dropNodes((n) => n.data.kind === 'bus' || isAtRisk(n.data.inventory?.health || n.data.repo?.inventory?.health))
-  // Status options for the Filters menu = the statuses actually present on the (health- and
-  // group-filtered, status-UNfiltered) map, so ticking one always narrows a visible set and a live
-  // selection never blanks the whole canvas.
-  const statusOptions = [...new Set(nodes.map((n) => n.data?.inventory?.status).filter(Boolean))].sort()
-  // Status facet: nodes without inventory (e.g. the Kafka bus) carry no status, so an active
-  // status filter removes them.
-  if (facets?.status?.size && !coversAll(facets.status, statusOptions)) dropNodes((n) => matchStatus(n.data?.inventory, facets))
-
-  // Component toggle-list — EVERY card drawn on the map is listable & hideable, keyed by its
-  // lowercased display name (the inventory name when inventory-backed, else the card title with any
-  // line breaks flattened). That makes diagram-context cards — content repos, internal packages,
-  // deploy targets, the event bus, storage, external services — filterable too, so "shown on the
-  // map" and "in the Components list" stay in lockstep. Options are captured BEFORE the drop so a
-  // hidden card stays listed (re-checkable) in the Filters menu.
-  const filterName = (n) => (n.data?.inventory?.name || n.data?.title || '').replace(/\s+/g, ' ').trim() || null
-  const componentOptions = [...new Set(nodes.map(filterName).filter(Boolean))].sort()
-  // Symmetry (see coversAll): unchecking every card must behave like checking every card — both
-  // impose no constraint (show all). Without this, clearing the whole list would blank the canvas.
-  if (
-    facets?.hidden?.size &&
-    !coversAll(
-      facets.hidden,
-      componentOptions.map((o) => o.toLowerCase()),
-    )
+// Every inventory component not already on the map, as an edge-less grid.
+function addInventoryCatalog(ctx) {
+  const { graph } = ctx
+  const represented = new Set(
+    graph.nodes.filter((node) => node.data?.inventory).map((node) => node.data.inventory.name),
   )
-    dropNodes((n) => {
-      const k = filterName(n)
-      return !k || !facets.hidden.has(k.toLowerCase())
-    })
+  for (const entry of ctx.data.inventory) {
+    if (!represented.has(entry.name)) graph.addNode(inventoryCard(entry))
+  }
+}
 
-  // `filtered` = the user intentionally removed nodes (group/health/status selection). It tells
-  // clusterLayout to keep the lane layout even when a filter happens to drop the design-system hub —
-  // vs. treating a missing hub as the stale-data symptom that warrants the dagre fallback.
-  const filtered = facetsActive(facets)
-  // Arrow classes offered as Legend/Filters toggles: classes whose edges survive the facet passes
-  // (both endpoints still drawn), taken from the PRE-hide list so a hidden class stays listed.
-  const finalIds = new Set(nodes.map((n) => n.id))
-  const edgeTypesPresent = [...new Set(edgesPreHide.filter((e) => finalIds.has(e.source) && finalIds.has(e.target)).map((e) => edgeTypeOf(e.id, e)))].filter(
-    (t) => t !== 'other',
-  )
+function serviceLinkStyle(isKafka, unverified) {
+  if (unverified) {
+    return {
+      stroke: isKafka ? '#fb8c00' : '#00838f',
+      strokeDasharray: '1 4',
+      strokeWidth: 1.2,
+      opacity: 0.45,
+    }
+  }
+  if (isKafka) return { stroke: '#fb8c00', strokeDasharray: '5 3', strokeWidth: 1.6 }
+  return { stroke: '#00838f', strokeWidth: 1.6 }
+}
+
+function serviceLinkLabelColors(isKafka, unverified) {
+  if (unverified) return { text: '#9aa3b5', background: '#f0f1f3' }
+  if (isKafka) return { text: '#e65100', background: '#fff3e0' }
+  return { text: '#00838f', background: '#e0f7fa' }
+}
+
+// Unverified links (seeded from a description, not confirmed from code) render faint and dotted
+// with a ⚠ label, so they read as inferred rather than fact.
+function serviceLinkEdge(source, target, row) {
+  const isKafka = row.protocol === 'Kafka'
+  const unverified = row.verified === false
+  const text = isKafka ? row.channel || 'Kafka' : row.channel || ''
+  const colors = serviceLinkLabelColors(isKafka, unverified)
   return {
-    ...clusterLayout(nodes, edges, layout, data.config, filtered, grouping),
+    // A pair can talk both REST and Kafka, so the protocol is part of the id.
+    id: `link-${isKafka ? 'k' : 'r'}-${source}-${target}`,
+    source,
+    target,
+    label: (unverified ? '⚠ ' : '') + text || undefined,
+    data: row.channelFull ? { channelFull: row.channelFull } : undefined,
+    style: serviceLinkStyle(isKafka, unverified),
+    labelStyle: { fontSize: 9, fill: colors.text },
+    labelBgStyle: { fill: colors.background },
+  }
+}
+
+// REST and Kafka links between inventory components. An endpoint that isn't on the map yet is
+// materialized as an inventory card: turning this layer on must show the services a link touches
+// even when the catalog layer is off. The Kafka bus is only added when an edge to it draws.
+function addServiceLinks(ctx) {
+  const { graph, inventory, backends } = ctx
+  const nodeIdByInventoryName = new Map()
+  for (const node of graph.nodes) {
+    if (node.data?.inventory) nodeIdByInventoryName.set(node.data.inventory.name, node.id)
+  }
+  const inventoryEntryOf = (name) => inventory.byName.get(String(name).toLowerCase())
+  const canResolve = (name) =>
+    name === KAFKA_NAME || !!nodeIdByInventoryName.get(name) || !!inventoryEntryOf(name)
+  const resolve = (name) => {
+    if (name === KAFKA_NAME) {
+      graph.addNode(cardNode(KAFKA_BUS_ID, { title: 'Kafka', subtitle: 'event bus', kind: 'bus' }))
+      return KAFKA_BUS_ID
+    }
+    const existingId = nodeIdByInventoryName.get(name)
+    if (existingId) return existingId
+    const entry = inventoryEntryOf(name)
+    if (!entry) return null
+    const card = inventoryCard(entry)
+    graph.addNode(card)
+    nodeIdByInventoryName.set(entry.name, card.id)
+    return card.id
+  }
+
+  for (const row of ctx.data.integrations) {
+    // backend↔backend rows are drawn by the Resources layer
+    if (backends.idOf(row.source) && backends.idOf(row.target)) continue
+    // Check both ends first, so one resolvable side never materializes a card for an edge that
+    // then can't draw.
+    if (!canResolve(row.source) || !canResolve(row.target)) continue
+    const source = resolve(row.source)
+    const target = resolve(row.target)
+    if (!source || !target || !graph.has(source) || !graph.has(target)) continue
+    graph.addEdge(serviceLinkEdge(source, target, row))
+  }
+}
+
+// ---- post-build filtering ---------------------------------------------------------------------
+
+function withoutUnlinkedResources(nodes, edges) {
+  const linked = new Set()
+  for (const edge of edges) {
+    linked.add(edge.source)
+    linked.add(edge.target)
+  }
+  // catalog cards are edge-less by design
+  return nodes.filter(
+    (node) => node.id.startsWith('inv:') || !PRUNABLE_KINDS.includes(node.data.kind) || linked.has(node.id),
+  )
+}
+
+function makeFloating(edge) {
+  edge.type = 'floating'
+  const color = edge.style?.stroke || '#888'
+  edge.markerEnd = { type: MarkerType.ArrowClosed, color, width: 16, height: 16 }
+}
+
+// Facets remove nodes (not dim them) before layout, so region boxes wrap only the survivors.
+function keepNodes(view, keep) {
+  view.nodes = view.nodes.filter(keep)
+  const keptIds = new Set(view.nodes.map((node) => node.id))
+  view.edges = view.edges.filter((edge) => keptIds.has(edge.source) && keptIds.has(edge.target))
+}
+
+// The name a card is listed and hidden under in the Components filter.
+const listedNameOf = (node) =>
+  (node.data?.inventory?.name || node.data?.title || '').replace(/\s+/g, ' ').trim() || null
+
+const sortedUnique = (values) => [...new Set(values.filter(Boolean))].sort()
+
+// buildGraph(data, { layers, facets, mode, layout, groupBy, hiddenEdges }) →
+//   { nodes, edges, facetOptions: { status, components }, edgeTypesPresent }
+// facetOptions are taken before their own filter runs, so a picked option stays listed.
+export function buildGraph(data, opts = {}) {
+  const { facets = null, mode = 'dev', layout = {} } = opts
+  const grouping = groupingFor(data, opts.groupBy)
+  const hiddenEdgeTypes = opts.hiddenEdges instanceof Set ? opts.hiddenEdges : new Set(opts.hiddenEdges || [])
+  const layers = { ...DEFAULT_LAYERS, ...opts.layers }
+  const clusters = resolveClusters(data.config)
+  const uiPackages = uiPackagesOf(data.config)
+
+  const hiddenFolders = foldersOutsideGroups(data.repos, selectedGroups(facets, clusters), clusters)
+  const repos = (data.repos || []).filter((repo) => isInScope(repo) && !hiddenFolders.has(repo.folder))
+
+  // Curated references (serviceEdges, assetConsumers, contentRepos.parent) name repos by folder;
+  // map them to the card's node id. Anything else (backend ids) passes through.
+  const nodeIdByFolder = new Map(repos.map((repo) => [repo.folder, nodeIdOf(repo)]))
+  const resolveRef = (ref) => nodeIdByFolder.get(ref) ?? ref
+
+  const rawTopology = data.backendTopology || {}
+  const topology = {
+    backends: rawTopology.backends,
+    feBe: rawTopology.feBe || {},
+    backendExternals: rawTopology.backendExternals || {},
+    assetConsumers: rawTopology.assetConsumers || [],
+    assetsSource: rawTopology.assetsSource || null,
+    serviceEdges: rawTopology.serviceEdges || [],
+    contentRepos: rawTopology.contentRepos || [],
+  }
+  const inventory = indexInventory(data.inventory)
+
+  const ctx = {
+    data,
+    mode,
+    layers,
+    clusters,
+    repos,
+    topology,
+    inventory,
+    resolveRef,
+    graph: createGraph(),
+    backends: indexBackends(data, repos, inventory, topology),
+    isUiPackage: (name) => uiPackages.has(name),
+    tagsFor: productTagger(data.config),
+    staleness: stalenessOf(data),
+    flagsFor: curationFlagger(data.validation || {}),
+  }
+
+  addRepoCards(ctx)
+  addDependencyEdges(ctx)
+  if (layers.backends) addResourceLayer(ctx)
+  if (layers.deploy) addDeploymentLayer(ctx)
+  if (layers.integrations) addExternalLayer(ctx)
+  addCuratedServiceEdges(ctx)
+  addAssetEdges(ctx)
+  addContentRepos(ctx)
+  if (layers.components && (data.inventory || []).length) addInventoryCatalog(ctx)
+  if (layers.serviceLinks && (data.integrations || []).length) addServiceLinks(ctx)
+
+  // Hidden arrow classes go before pruning and layout, so a node left edge-less by them is dropped
+  // and the lanes reflow. The unfiltered list still decides which classes the Legend offers.
+  const allEdges = ctx.graph.edges
+  const edges = hiddenEdgeTypes.size
+    ? allEdges.filter((edge) => !hiddenEdgeTypes.has(edgeTypeOf(edge.id, edge)))
+    : allEdges
+  const view = { nodes: withoutUnlinkedResources(ctx.graph.nodes, edges), edges }
+  for (const edge of view.edges) makeFloating(edge)
+
+  if (facets?.health?.size) {
+    keepNodes(
+      view,
+      (node) =>
+        node.data.kind === 'bus' ||
+        isAtRisk(node.data.inventory?.health || node.data.repo?.inventory?.health),
+    )
+  }
+  // Only statuses present on the current map, so ticking one always narrows a visible set.
+  const statusOptions = sortedUnique(view.nodes.map((node) => node.data?.inventory?.status))
+  // Nodes without inventory (the Kafka bus) have no status, so an active status filter drops them.
+  if (facets?.status?.size && !coversAll(facets.status, statusOptions)) {
+    keepNodes(view, (node) => matchStatus(node.data?.inventory, facets))
+  }
+  // Every card is listable and hideable, including context cards like deploy targets and the bus.
+  const componentOptions = sortedUnique(view.nodes.map(listedNameOf))
+  const hidden = facets?.hidden
+  const allComponentKeys = componentOptions.map((option) => option.toLowerCase())
+  if (hidden?.size && !coversAll(hidden, allComponentKeys)) {
+    keepNodes(view, (node) => {
+      const name = listedNameOf(node)
+      return !name || !hidden.has(name.toLowerCase())
+    })
+  }
+
+  // Tells clusterLayout a missing design-system hub was filtered out on purpose, not lost.
+  const filtered = facetsActive(facets)
+  const finalIds = new Set(view.nodes.map((node) => node.id))
+  const edgeTypesPresent = [
+    ...new Set(
+      allEdges
+        .filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target))
+        .map((edge) => edgeTypeOf(edge.id, edge)),
+    ),
+  ].filter((type) => type !== 'other')
+  return {
+    ...clusterLayout(view.nodes, view.edges, layout, data.config, filtered, grouping),
     facetOptions: { status: statusOptions, components: componentOptions },
     edgeTypesPresent,
   }
 }
 
-// Card tile size — whole multiples of the 16px drag grid (14 × 6 cells), matching .node-card CSS.
-const NODE_W = 224,
-  NODE_H = 96
+// ---- layout -----------------------------------------------------------------------------------
 
-// Vertical order of app cards within their cluster lanes (config.json `layoutOrder`): folders are
-// placed top-to-bottom in this order, and anything not listed appends below in data order. Hand-tune
-// it when the automatic order puts the cards you compare most at opposite ends of a lane.
+// Card tile size: whole multiples of the 16px drag grid, matching .node-card CSS.
+const NODE_W = 224
+const NODE_H = 96
+const ROW_GAP = 112
+const COL_GAP = NODE_W + 64
+const MAX_PER_COLUMN = 8
+const LANE_GAP = 120
+const FIRST_AUTO_LANE_X = 760
+const AFTER_ANCHOR = 'after:'
+const LOOSE_PACKAGES_DEFAULT_X = -690
+const UNCLASSIFIED_X = -1520
+const EXTERNALS_BOTTOM_Y = -430
+const RESOURCES_Y = 470
+const DEPLOYMENTS_Y = 690
+const BUS_Y = 850
+const CATALOG_TOP_Y = 980
+const CATALOG_COLUMNS = 7
+// sorts after any real layoutOrder index
+const UNORDERED = 999
+const RESOURCE_KINDS = ['backend', 'extsvc', 'storage']
+const UNCLASSIFIABLE_KINDS = ['backend', 'extsvc', 'storage', 'infra', 'component', 'bus']
+
+// Vertical order of app cards within a lane (config.json `layoutOrder`, by repo folder); anything
+// not listed follows in data order.
 const DEFAULT_LAYOUT_ORDER = []
 
-// Apply admin-curated position overrides (config.json `layout`) on top of the computed layout, so
-// dragged cards keep their spot across rebuilds. Region boxes are computed afterwards, so a moved
-// card stays inside its cluster outline.
-function applyOverrides(nodes, layout) {
+// Admin-dragged positions (config.json `layout`). An old folder-keyed entry still positions a node
+// whose id is now its serviceId.
+function applyLayoutOverrides(nodes, layout) {
   if (!layout) return
-  for (const n of nodes) {
-    // alias: an old folder-keyed layout entry (config.json / a saved drag) still positions a node
-    // whose id is now the serviceId. Without a serviceId n.id === folder, so this is byte-invariant.
-    const o = layout[n.id] ?? layout[n.data?.repo?.folder]
-    if (o && Number.isFinite(o.x) && Number.isFinite(o.y)) n.position = { x: o.x, y: o.y }
+  for (const node of nodes) {
+    const override = layout[node.id] ?? layout[node.data?.repo?.folder]
+    if (override && Number.isFinite(override.x) && Number.isFinite(override.y)) {
+      node.position = { x: override.x, y: override.y }
+    }
   }
 }
 
-// Structural region bands (the layer/topology boxes, not team clusters). These are
-// derivation-fixed labels, so they carry their own colors here. Team-cluster colors are NOT
-// hardcoded — they come from each cluster descriptor's `color` (DEFAULT_CLUSTERS / config.clusters),
-// merged in below. STRUCTURAL_REGIONS is the subset a curator can annotate (see the Admin panel);
-// 'Unclassified' is an internal catch-all and is intentionally excluded from it.
+// Structural region bands (not team clusters) with fixed colors. STRUCTURAL_REGIONS is the subset a
+// curator can annotate in the Admin panel; 'Unclassified' is an internal catch-all.
 export const STRUCTURAL_REGIONS = ['Resources', 'Deployments', 'Integrations', 'Inventory catalog']
 const STRUCTURAL_REGION_COLOR = {
   Resources: '#ef6c00',
@@ -922,264 +1140,321 @@ const STRUCTURAL_REGION_COLOR = {
   Unclassified: '#9e9e9e',
 }
 
-// Logical team clusters: ISS (left) | Shared+ui (center) | CSS (right); backends in a row along the bottom.
-// `grouping` (optional, from groupingFor) swaps the lane taxonomy for a derived one (application /
-// platform) — same layout machinery, different membership function.
+function stackColumn(nodes, centerX) {
+  const height = (nodes.length - 1) * ROW_GAP
+  nodes.forEach((node, i) => {
+    node.position = { x: centerX - NODE_W / 2, y: i * ROW_GAP - height / 2 - NODE_H / 2 }
+  })
+}
+
+// A vertical stack that wraps into balanced columns growing in `dir` (+1 right, -1 left). Returns
+// the column count so neighbours can clear it.
+function stackColumns(nodes, startX, dir) {
+  if (!nodes.length) return 0
+  const columns = Math.ceil(nodes.length / MAX_PER_COLUMN)
+  // balanced: 16 nodes make 2 columns of 8, 9 make 5 + 4
+  const perColumn = Math.ceil(nodes.length / columns)
+  nodes.forEach((node, i) => {
+    const column = Math.floor(i / perColumn)
+    const row = i % perColumn
+    const inColumn = Math.min(perColumn, nodes.length - column * perColumn)
+    const height = (inColumn - 1) * ROW_GAP
+    node.position = {
+      x: startX + dir * column * COL_GAP - NODE_W / 2,
+      y: row * ROW_GAP - height / 2 - NODE_H / 2,
+    }
+  })
+  return columns
+}
+
+// Mean x of the cards pointing at a node.
+function consumerMeanX(node, edges, nodesById) {
+  const consumers = edges
+    .filter((edge) => edge.target === node.id)
+    .map((edge) => nodesById.get(edge.source))
+    .filter(Boolean)
+  if (!consumers.length) return 0
+  return consumers.reduce((sum, consumer) => sum + consumer.position.x, 0) / consumers.length
+}
+
+const byConsumerX = (nodes, meanX) =>
+  nodes.map((node) => ({ node, x: meanX(node) })).sort((a, b) => a.x - b.x)
+
+// One row, each node under its consumers, then pushed right until nothing overlaps.
+function placeUnderConsumers(nodes, y, meanX) {
+  const minGap = NODE_W + 40
+  let previousX = -Infinity
+  for (const { node, x: consumerX } of byConsumerX(nodes, meanX)) {
+    const x = Math.max(consumerX, previousX + minGap)
+    previousX = x
+    node.position = { x, y: y - NODE_H / 2 }
+  }
+}
+
+// A compact grid centred on centerX, growing up from bottomY, so wide fan-outs don't sprawl into
+// a single very wide row.
+function placeGridAbove(nodes, { bottomY, columns, centerX }, meanX) {
+  const gapX = NODE_W + 36
+  const gapY = 96
+  const ordered = byConsumerX(nodes, meanX).map((entry) => entry.node)
+  const rows = Math.ceil(ordered.length / columns)
+  ordered.forEach((node, i) => {
+    const row = Math.floor(i / columns)
+    const inRow = Math.min(columns, ordered.length - row * columns)
+    const rowWidth = (inRow - 1) * gapX
+    const column = i % columns
+    node.position = {
+      x: centerX - rowWidth / 2 + column * gapX - NODE_W / 2,
+      y: bottomY - (rows - 1 - row) * gapY - NODE_H / 2,
+    }
+  })
+}
+
+// Edge-less inventory components, grouped by owner, in their own band below everything else.
+function placeCatalog(components) {
+  const gapX = NODE_W + 30
+  const gapY = 104
+  const ordered = [...components].sort(
+    (a, b) =>
+      (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') ||
+      a.id.localeCompare(b.id),
+  )
+  ordered.forEach((node, i) => {
+    const row = Math.floor(i / CATALOG_COLUMNS)
+    const column = i % CATALOG_COLUMNS
+    const inRow = Math.min(CATALOG_COLUMNS, ordered.length - row * CATALOG_COLUMNS)
+    node.position = {
+      x: -((inRow - 1) * gapX) / 2 + column * gapX - NODE_W / 2,
+      y: CATALOG_TOP_Y + row * gapY - NODE_H / 2,
+    }
+  })
+}
+
+// A number is an absolute x; 'after:<label>' sits just past that lane; otherwise lanes
+// auto-distribute left to right. Places each lane's members and records its anchor and width.
+function layOutLanes(laneClusters, membersOf) {
+  const anchorByLabel = new Map()
+  const columnsByLabel = new Map()
+  const membersByLabel = new Map()
+  let nextAutoAnchor = FIRST_AUTO_LANE_X
+  for (const cluster of laneClusters) {
+    let anchor
+    if (typeof cluster.anchor === 'number') {
+      anchor = cluster.anchor
+    } else if (typeof cluster.anchor === 'string' && cluster.anchor.startsWith(AFTER_ANCHOR)) {
+      const previous = cluster.anchor.slice(AFTER_ANCHOR.length)
+      anchor = (anchorByLabel.get(previous) ?? 0) + (columnsByLabel.get(previous) ?? 1) * COL_GAP + LANE_GAP
+    } else {
+      anchor = nextAutoAnchor
+      nextAutoAnchor += COL_GAP * 2 + LANE_GAP
+    }
+    anchorByLabel.set(cluster.label, anchor)
+    const members = membersOf(cluster.label)
+    membersByLabel.set(cluster.label, members)
+    columnsByLabel.set(cluster.label, stackColumns(members, anchor, cluster.dir ?? 1))
+  }
+  return { anchorByLabel, columnsByLabel, membersByLabel }
+}
+
+// Outlier-tolerant bounds per axis, so a card dragged far away doesn't balloon its cluster box:
+// Tukey fences for sizeable clusters, a generous fixed reach for small ones.
+function fence(values) {
+  const sorted = [...values].sort((a, b) => a - b)
+  const count = sorted.length
+  const median = count % 2 ? sorted[(count - 1) / 2] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+  if (count < 5) return [median - 2200, median + 2200]
+  const quantile = (p) => sorted[Math.floor((count - 1) * p)]
+  const spread = Math.max(quantile(0.75) - quantile(0.25), 250)
+  return [quantile(0.25) - spread * 2.5, quantile(0.75) + spread * 2.5]
+}
+
+// Members outside the fences still render; they just sit outside the box.
+function coreMembers(members) {
+  const [minX, maxX] = fence(members.map((member) => member.position.x))
+  const [minY, maxY] = fence(members.map((member) => member.position.y))
+  const core = members.filter(
+    ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
+  )
+  return core.length ? core : members
+}
+
+function boundsAround(members) {
+  const xs = members.map((member) => member.position.x)
+  const ys = members.map((member) => member.position.y)
+  const minX = Math.min(...xs) - 34
+  const maxX = Math.max(...xs) + NODE_W + 34
+  const minY = Math.min(...ys) - 52
+  const maxY = Math.max(...ys) + NODE_H + 30
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
+// An admin move/resize of the region wins over the computed bounds.
+function regionOverride(layout, label) {
+  const override = layout?.['region-' + label]
+  if (!override || !Number.isFinite(override.x) || !Number.isFinite(override.w)) return null
+  return { x: override.x, y: override.y, w: override.w, h: override.h }
+}
+
+function regionNode(label, members, layout, colorByLabel) {
+  const present = members.filter(Boolean)
+  if (!present.length) return null
+  const { x, y, w, h } = regionOverride(layout, label) || boundsAround(coreMembers(present))
+  return {
+    id: 'region-' + label,
+    type: 'region',
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: -10,
+    position: { x, y },
+    style: { width: w, height: h },
+    data: { label, color: colorByLabel[label] || '#888', w, h, members: present.map((member) => member.id) },
+  }
+}
+
+// Team-cluster lanes left to right, the fallback cluster in the centre, externals above, resources
+// and deploy targets in rows below, the inventory catalog at the bottom. `grouping` (groupingFor)
+// swaps the lane taxonomy for a derived one.
 function clusterLayout(nodes, edges, layout, config = {}, filtered = false, grouping = null) {
   const clusters = grouping?.clusters || resolveClusters(config)
-  // lane membership: the grouping's own function, else the team cluster of the repo's inventory
   const laneOf = (repo) => (grouping ? grouping.memberOf(repo?.inventory) : clusterOf(repo, clusters))
   const fallbackLabel = fallbackLabelOf(clusters)
-  // Cluster outline colors: structural bands (STRUCTURAL_REGION_COLOR) + per-cluster descriptor
-  // colors, overridable per-label via config.json `clusterColors`.
-  const clusterColor = {
+  const colorByLabel = {
     ...STRUCTURAL_REGION_COLOR,
     ...Object.fromEntries(clusters.filter((c) => c.color).map((c) => [c.label, c.color])),
     ...config?.clusterColors,
   }
-  // The lane layout is driven entirely by the cluster descriptors + node data, so it doesn't need
-  // the design-system card itself. Its absence only matters as a stale-data symptom: a lagging data
-  // source that dropped the hub likely dropped much else, so we flatten to dagre and warn. But when
-  // a filter is active the hub may have been *intentionally* removed — keep the lanes in that case.
-  // An estate with no design system configured has no hub at all; that's not a symptom of anything.
+
+  // The lanes don't need the design-system hub, but a missing hub is the tell-tale of a lagging
+  // data source that dropped much else, so flatten to dagre and warn. Not when a filter removed it
+  // on purpose, and not when no design system is configured.
   const hubFolders = uiHubFoldersOf(config)
-  const hasHub = uiPackagesOf(config).size > 0
-  const hub = nodes.find((n) => hubFolders.includes(n.id) || hubFolders.includes(n.data?.repo?.folder))
-  if (hasHub && !hub && !filtered) {
-    console.warn(`clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`)
+  const expectsHub = uiPackagesOf(config).size > 0
+  const hub = nodes.find(
+    (node) => hubFolders.includes(node.id) || hubFolders.includes(node.data?.repo?.folder),
+  )
+  if (expectsHub && !hub && !filtered) {
+    console.warn(
+      `clusterLayout: design-system hub node not found (looked for ${hubFolders.join('/')}) — falling back to dagre layout`,
+    )
     return dagreLayout(nodes, edges, layout)
   }
-  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
-  const allPkgs = nodes.filter((n) => n.data.kind === 'package')
-  // A package's cluster comes from its inventory `cluster` (e.g. kb-core → CSS). Packages routed to a
-  // lane ride that lane; fallback-cluster packages sit in the centre; the rest form the loose column.
-  const pkgClusterOf = (p) => p.data.inventory?.cluster || null
-  const centerPkgs = allPkgs.filter((p) => pkgClusterOf(p) === fallbackLabel)
-  const loosePkgs = allPkgs.filter((p) => !pkgClusterOf(p)) // no cluster → loose column left of the leftmost lane
-  const backends = nodes.filter((n) => ['backend', 'extsvc', 'storage'].includes(n.data.kind))
-  const infra = nodes.filter((n) => n.data.kind === 'infra')
 
-  const stack = (arr, x, cy = 0, gap = 112) => {
-    const total = (arr.length - 1) * gap
-    arr.forEach((n, i) => {
-      n.position = { x: x - NODE_W / 2, y: cy + i * gap - total / 2 - NODE_H / 2 }
-    })
+  const nodesById = new Map(nodes.map((node) => [node.id, node]))
+  const meanX = (node) => consumerMeanX(node, edges, nodesById)
+  const ofKind = (...kinds) => nodes.filter((node) => kinds.includes(node.data.kind))
+
+  // A package's inventory `cluster` routes it into that lane; fallback-cluster packages go to the
+  // centre; packages with no cluster form a loose column left of the leftmost lane.
+  const packages = ofKind('package')
+  const packageCluster = (pkg) => pkg.data.inventory?.cluster || null
+  const centrePackages = packages.filter((pkg) => packageCluster(pkg) === fallbackLabel)
+  const loosePackages = packages.filter((pkg) => !packageCluster(pkg))
+  const resources = ofKind(...RESOURCE_KINDS)
+  const deployTargets = ofKind('infra')
+
+  const layoutOrder = nonEmptyOr(config?.layoutOrder, DEFAULT_LAYOUT_ORDER)
+  const orderHint = (node) => {
+    const index = layoutOrder.indexOf(node.data.repo?.folder ?? node.id)
+    return index < 0 ? UNORDERED : index
   }
-  // vertical stack that wraps into balanced columns once it would get too tall; extra columns
-  // grow in `dir` (+1 right / -1 left) from x0. Returns the column count so neighbours can clear it.
-  const COL_GAP = NODE_W + 64
-  const stackCols = (arr, x0, { dir = 1, perCol = 8, gap = 112, cy = 0 } = {}) => {
-    if (!arr.length) return 0
-    const cols = Math.ceil(arr.length / perCol)
-    const per = Math.ceil(arr.length / cols) // balance: e.g. 16 -> 2 cols of 8, not 8+8 vs 8+0
-    arr.forEach((n, i) => {
-      const col = Math.floor(i / per),
-        row = i % per
-      const colCount = Math.min(per, arr.length - col * per)
-      const total = (colCount - 1) * gap
-      n.position = { x: x0 + dir * col * COL_GAP - NODE_W / 2, y: cy + row * gap - total / 2 - NODE_H / 2 }
-    })
-    return cols
-  }
-  // mean-x of a node's consumers (the cards that point at it)
-  const consumerMeanX = (n) => {
-    const cons = edges
-      .filter((e) => e.target === n.id)
-      .map((e) => byId[e.source])
-      .filter(Boolean)
-    return cons.length ? cons.reduce((s, c) => s + c.position.x, 0) / cons.length : 0
-  }
-  // place each node under the mean-x of its consumers, then de-overlap left->right (single row)
-  const placeUnder = (arr, y) => {
-    const withX = arr.map((n) => ({ n, mx: consumerMeanX(n) })).sort((a, b) => a.mx - b.mx)
-    const GAP = NODE_W + 40
-    let prev = -Infinity
-    withX.forEach(({ n, mx }) => {
-      const x = Math.max(mx, prev + GAP)
-      prev = x
-      n.position = { x, y: y - NODE_H / 2 }
-    })
-  }
-  // lay nodes in a compact grid centred on x=cx0, growing UP from bottomY (keeps wide
-  // fan-outs like the integration layer from sprawling into a single 4000px-wide row).
-  const placeGrid = (arr, { bottomY, cols, cx0 = 0, gapX = NODE_W + 36, gapY = 96 }) => {
-    const ordered = arr
-      .map((n) => ({ n, mx: consumerMeanX(n) }))
-      .sort((a, b) => a.mx - b.mx)
-      .map((o) => o.n)
-    const rows = Math.ceil(ordered.length / cols)
-    ordered.forEach((n, i) => {
-      const row = Math.floor(i / cols)
-      const inRow = Math.min(cols, ordered.length - row * cols)
-      const rowW = (inRow - 1) * gapX
-      const col = i % cols
-      n.position = { x: cx0 - rowW / 2 + col * gapX - NODE_W / 2, y: bottomY - (rows - 1 - row) * gapY - NODE_H / 2 }
-    })
+  const membersOf = (label) => {
+    const apps = nodes
+      .filter((node) => node.data.repo && laneOf(node.data.repo) === label)
+      .sort((a, b) => orderHint(a) - orderHint(b))
+    // content repos follow their parent card's lane
+    const content = nodes.filter(
+      (node) =>
+        node.data.kind === 'content' &&
+        node.data.parentId &&
+        laneOf(nodesById.get(node.data.parentId)?.data?.repo || {}) === label,
+    )
+    const lanePackages = packages.filter((pkg) => packageCluster(pkg) === label)
+    return [...apps, ...content, ...lanePackages]
   }
 
-  // Lane app columns: membership derived from the owning team (clusterOf), ordered by a curated
-  // hint so a hand-tuned vertical order is preserved and unknown repos append below (config.json
-  // `layoutOrder`; unset, everything sorts equal and falls back to data order).
-  const layoutOrder = Array.isArray(config?.layoutOrder) && config.layoutOrder.length ? config.layoutOrder : DEFAULT_LAYOUT_ORDER
-  const orderHint = (n) => {
-    // layoutOrder is keyed by repo FOLDER (DEFAULT_LAYOUT_ORDER / config.layoutOrder), so resolve a
-    // node's order by its repo folder — the node id is now the serviceId, which needn't match.
-    const i = layoutOrder.indexOf(n.data.repo?.folder ?? n.id)
-    return i < 0 ? 999 : i
-  }
-  const clusterApps = (label) => nodes.filter((n) => n.data.repo && laneOf(n.data.repo) === label).sort((a, b) => orderHint(a) - orderHint(b))
+  const laneClusters = clusters.filter((cluster) => !cluster.fallback)
+  const { anchorByLabel, columnsByLabel, membersByLabel } = layOutLanes(laneClusters, membersOf)
+  const leftmostLabel = laneClusters.length
+    ? laneClusters.reduce((leftmost, cluster) =>
+        anchorByLabel.get(cluster.label) < anchorByLabel.get(leftmost.label) ? cluster : leftmost,
+      ).label
+    : null
+  const loosePackagesX = leftmostLabel
+    ? anchorByLabel.get(leftmostLabel) - (columnsByLabel.get(leftmostLabel) || 0) * COL_GAP - 40
+    : LOOSE_PACKAGES_DEFAULT_X
+  stackColumn(loosePackages, loosePackagesX)
 
-  // Team-cluster lanes, driven by the cluster descriptors. Each non-fallback cluster is a vertical
-  // lane of its apps (+ packages routed to it). Anchors: a number is an absolute x; 'after:<label>'
-  // sits just past that lane; no anchor → auto-distribute left→right by list order, which is the
-  // sane default until you want a specific arrangement.
-  const laneClusters = clusters.filter((c) => !c.fallback)
-  const anchorByLabel = {}
-  const colsByLabel = {}
-  const memberByLabel = {}
-  let autoX = 760
-  for (const c of laneClusters) {
-    if (typeof c.anchor === 'number') anchorByLabel[c.label] = c.anchor
-    else if (typeof c.anchor === 'string' && c.anchor.startsWith('after:')) {
-      const ref = c.anchor.slice(6)
-      anchorByLabel[c.label] = (anchorByLabel[ref] ?? 0) + (colsByLabel[ref] ?? 1) * COL_GAP + 120
-    } else {
-      anchorByLabel[c.label] = autoX
-      autoX += COL_GAP * 2 + 120
-    }
-    const apps = clusterApps(c.label)
-    const lanePkgs = allPkgs.filter((p) => pkgClusterOf(p) === c.label)
-    // content-repo nodes (backend-extra.json `contentRepos`) follow their parent card's lane
-    const laneContent = nodes.filter((n) => n.data.kind === 'content' && n.data.parentId && laneOf(byId[n.data.parentId]?.data?.repo || {}) === c.label)
-    const members = [...apps, ...laneContent, ...lanePkgs]
-    memberByLabel[c.label] = members
-    colsByLabel[c.label] = stackCols(members, anchorByLabel[c.label], { dir: c.dir ?? 1 })
-  }
-  // loose packages (no cluster) sit just left of the leftmost lane, in their own column
-  const leftmostLabel = laneClusters.length ? laneClusters.reduce((a, c) => (anchorByLabel[c.label] < anchorByLabel[a.label] ? c : a)).label : null
-  const leftmostX = leftmostLabel ? anchorByLabel[leftmostLabel] - (colsByLabel[leftmostLabel] || 0) * COL_GAP - 40 : -690
-  stack(loosePkgs, leftmostX)
-
-  // Fallback cluster (centre): genuinely suite-wide repos (inventory cluster = fallback) + fallback
-  // packages, in a centre column. When nothing is suite-wide it's empty and no box renders.
-  const sharedExtras = [...nodes.filter((n) => n.data.repo?.inventory?.cluster === fallbackLabel), ...centerPkgs]
-  sharedExtras.forEach((n, i) => {
-    n.position = { x: -40 - NODE_W / 2, y: -160 + i * 104 - NODE_H / 2 }
+  // Suite-wide repos and packages in the centre column; empty (and boxless) when there are none.
+  const centreNodes = [
+    ...nodes.filter((node) => node.data.repo?.inventory?.cluster === fallbackLabel),
+    ...centrePackages,
+  ]
+  centreNodes.forEach((node, i) => {
+    node.position = { x: -40 - NODE_W / 2, y: -160 + i * 104 - NODE_H / 2 }
   })
-  const sharedNodes = sharedExtras
 
-  // external integration cards in a compact grid along the TOP, centred over the apps.
-  // bottomY sits clear above the main row's tallest box (Shared) so the boxes never overlap.
-  const externals = nodes.filter((n) => n.data.kind === 'external')
-  if (externals.length) placeGrid(externals, { bottomY: -430, cols: 5, cx0: 0 })
+  // Externals in a grid above the main row, clear of its tallest box.
+  const externals = ofKind('external')
+  if (externals.length)
+    placeGridAbove(externals, { bottomY: EXTERNALS_BOTTOM_Y, columns: 5, centerX: 0 }, meanX)
 
-  // any repo not assigned to a known cluster (e.g., a newly added repo after a regen)
-  const laneNodes = laneClusters.flatMap((c) => memberByLabel[c.label] || [])
-  const known = new Set([...laneNodes, ...loosePkgs, ...sharedNodes, ...externals].map((n) => n.id))
-  const unclassified = nodes.filter(
-    (n) =>
-      !known.has(n.id) &&
-      !n.id.startsWith('inv:') &&
-      !n.id.startsWith('bus:') &&
-      !['backend', 'extsvc', 'storage', 'infra', 'component', 'bus'].includes(n.data.kind),
+  // Anything left over, e.g. a repo newly added since the clusters were configured.
+  const laneNodes = laneClusters.flatMap((cluster) => membersByLabel.get(cluster.label) || [])
+  const placedIds = new Set(
+    [...laneNodes, ...loosePackages, ...centreNodes, ...externals].map((node) => node.id),
   )
-  if (unclassified.length) stack(unclassified, -1520)
-  // Backends row along the bottom (ordered under their consumers); infra below it.
-  // y-offsets give each band a clear gap from the main row above so boxes never overlap.
-  if (backends.length) placeUnder(backends, 470)
-  if (infra.length) placeUnder(infra, 690)
+  const unclassified = nodes.filter(
+    (node) =>
+      !placedIds.has(node.id) &&
+      !node.id.startsWith('inv:') &&
+      !node.id.startsWith('bus:') &&
+      !UNCLASSIFIABLE_KINDS.includes(node.data.kind),
+  )
+  if (unclassified.length) stackColumn(unclassified, UNCLASSIFIED_X)
+  if (resources.length) placeUnderConsumers(resources, RESOURCES_Y, meanX)
+  if (deployTargets.length) placeUnderConsumers(deployTargets, DEPLOYMENTS_Y, meanX)
 
-  // Component catalog: edge-less inventory components, grouped by owner team, in a grid below
-  // everything else (its own band, so it never overlaps the relationship graph above).
-  const kafka = byId['bus:kafka']
-  if (kafka) kafka.position = { x: -NODE_W / 2, y: 850 - NODE_H / 2 } //  center, just above the catalog band
-  const components = nodes.filter((n) => n.id.startsWith('inv:'))
-  if (components.length) {
-    const ordered = [...components].sort((a, b) => (a.data.inventory?.owner || '').localeCompare(b.data.inventory?.owner || '') || a.id.localeCompare(b.id))
-    const cols = 7,
-      gapX = NODE_W + 30,
-      gapY = 104,
-      top = 980
-    ordered.forEach((n, i) => {
-      const row = Math.floor(i / cols),
-        col = i % cols
-      const inRow = Math.min(cols, ordered.length - row * cols)
-      n.position = { x: -((inRow - 1) * gapX) / 2 + col * gapX - NODE_W / 2, y: top + row * gapY - NODE_H / 2 }
-    })
-  }
+  // The bus sits centred just above the catalog band.
+  const kafkaBus = nodesById.get(KAFKA_BUS_ID)
+  if (kafkaBus) kafkaBus.position = { x: -NODE_W / 2, y: BUS_Y - NODE_H / 2 }
+  const components = nodes.filter((node) => node.id.startsWith('inv:'))
+  if (components.length) placeCatalog(components)
 
-  // admin drag overrides land before the cluster boxes are measured, so boxes wrap moved cards
-  applyOverrides(nodes, layout)
+  // Before the boxes are measured, so boxes wrap moved cards.
+  applyLayoutOverrides(nodes, layout)
 
   const regions = []
-  // outlier-tolerant bounds: a card dragged far out of its cluster shouldn't balloon the outline
-  // across the canvas. Use Tukey fences (per axis) for sizeable clusters; a generous fixed cap for
-  // small ones. Members outside the fence still render — they just sit outside the cluster box.
-  const fence = (vals) => {
-    const s = [...vals].sort((a, b) => a - b)
-    const n = s.length
-    const mid = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2
-    if (n < 5) return [mid - 2200, mid + 2200]
-    const q = (p) => s[Math.floor((n - 1) * p)]
-    const iqr = Math.max(q(0.75) - q(0.25), 250)
-    return [q(0.25) - iqr * 2.5, q(0.75) + iqr * 2.5]
+  const addRegion = (label, members) => {
+    const region = regionNode(label, members, layout, colorByLabel)
+    if (region) regions.push(region)
   }
-  const box = (label, members) => {
-    const ms = members.filter(Boolean)
-    if (!ms.length) return
-    const [xlo, xhi] = fence(ms.map((m) => m.position.x))
-    const [ylo, yhi] = fence(ms.map((m) => m.position.y))
-    let core = ms.filter((m) => m.position.x >= xlo && m.position.x <= xhi && m.position.y >= ylo && m.position.y <= yhi)
-    if (!core.length) core = ms
-    const xs = core.map((m) => m.position.x)
-    const ys = core.map((m) => m.position.y)
-    const minX = Math.min(...xs) - 34,
-      maxX = Math.max(...xs) + NODE_W + 34
-    const minY = Math.min(...ys) - 52,
-      maxY = Math.max(...ys) + NODE_H + 30
-    // admin geometry override (move/resize) wins over the computed bounds
-    const ov = layout && layout['region-' + label]
-    const hasOv = ov && Number.isFinite(ov.x) && Number.isFinite(ov.w)
-    const px = hasOv ? ov.x : minX,
-      py = hasOv ? ov.y : minY,
-      w = hasOv ? ov.w : maxX - minX,
-      h = hasOv ? ov.h : maxY - minY
-    regions.push({
-      id: 'region-' + label,
-      type: 'region',
-      draggable: false,
-      selectable: false,
-      focusable: false,
-      zIndex: -10,
-      position: { x: px, y: py },
-      style: { width: w, height: h },
-      data: { label, color: clusterColor[label] || '#888', w, h, members: ms.map((m) => m.id) },
-    })
+  // The leftmost lane's box also wraps the loose package column.
+  for (const cluster of laneClusters) {
+    const loose = cluster.label === leftmostLabel ? loosePackages : []
+    addRegion(cluster.label, [...loose, ...(membersByLabel.get(cluster.label) || [])])
   }
-  // one outline per team-cluster lane (the leftmost lane's box also wraps the loose pkg column),
-  // plus the fallback/centre cluster
-  for (const c of laneClusters) box(c.label, [...(c.label === leftmostLabel ? loosePkgs : []), ...(memberByLabel[c.label] || [])])
-  box(fallbackLabel, sharedNodes)
-  if (externals.length) box('Integrations', externals)
-  if (unclassified.length) box('Unclassified', unclassified)
-  if (backends.length) box('Resources', backends)
-  if (infra.length) box('Deployments', infra)
-  if (components.length) box('Inventory catalog', components)
+  addRegion(fallbackLabel, centreNodes)
+  if (externals.length) addRegion('Integrations', externals)
+  if (unclassified.length) addRegion('Unclassified', unclassified)
+  if (resources.length) addRegion('Resources', resources)
+  if (deployTargets.length) addRegion('Deployments', deployTargets)
+  if (components.length) addRegion('Inventory catalog', components)
 
   return { nodes: [...regions, ...nodes], edges }
 }
 
 function dagreLayout(nodes, edges, layout) {
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'LR', nodesep: 28, ranksep: 120, marginx: 20, marginy: 20 })
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }))
-  edges.forEach((e) => g.setEdge(e.source, e.target))
-  dagre.layout(g)
-  nodes.forEach((n) => {
-    const p = g.node(n.id)
-    n.position = { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }
-  })
-  applyOverrides(nodes, layout)
+  const graph = new dagre.graphlib.Graph()
+  graph.setDefaultEdgeLabel(() => ({}))
+  graph.setGraph({ rankdir: 'LR', nodesep: 28, ranksep: 120, marginx: 20, marginy: 20 })
+  for (const node of nodes) graph.setNode(node.id, { width: NODE_W, height: NODE_H })
+  for (const edge of edges) graph.setEdge(edge.source, edge.target)
+  dagre.layout(graph)
+  for (const node of nodes) {
+    const { x, y } = graph.node(node.id)
+    node.position = { x: x - NODE_W / 2, y: y - NODE_H / 2 }
+  }
+  applyLayoutOverrides(nodes, layout)
   return { nodes, edges }
 }

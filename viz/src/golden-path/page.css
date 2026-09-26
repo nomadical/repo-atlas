@@ -188,7 +188,10 @@
   background: none;
   color: var(--mut);
   cursor: pointer;
-  padding: 6px 8px;
+  /* 32px is the smallest comfortable hit area; the icon stays 15px. */
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
   display: grid;
   place-items: center;
 }
@@ -227,6 +230,11 @@
   max-width: 1460px;
   margin: 0 auto;
   padding: 18px 22px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.view {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -348,6 +356,7 @@
   display: block;
 }
 .ms-opt {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -359,6 +368,19 @@
 }
 .ms-opt:hover {
   background: var(--canvas);
+}
+/* The native checkbox keeps focus and state; .ms-box is what shows. */
+.ms-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.ms-opt:has(input:focus-visible) {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
 }
 .ms-opt .cnt {
   margin-left: auto;
@@ -380,12 +402,12 @@
   height: 10px;
   opacity: 0;
 }
-.ms-opt[aria-selected='true'] .ms-box {
+.ms-opt input:checked + .ms-box {
   background: var(--acc);
   border-color: var(--acc);
   color: #fff;
 }
-.ms-opt[aria-selected='true'] .ms-box svg {
+.ms-opt input:checked + .ms-box svg {
   opacity: 1;
 }
 .ms-clear {
@@ -532,8 +554,8 @@
 }
 
 /* No scroll container above 1200px: the fixed layout fits, so the column header can stick to
-   the page under the app bar. Below that the wrapper scrolls horizontally and sticky is moot
-   (a scrollport would re-anchor the sticky offset and push the header over the first row). */
+   the page under the app bar. Below that the wrapper scrolls horizontally, which makes it the
+   header's scrollport: the header can no longer follow the page, so it stays in its own slot. */
 .tablewrap {
   overflow-x: auto;
   border-radius: var(--r);
@@ -578,6 +600,10 @@ thead th {
 /* Name and total are the two anchors: pin them to the edges of the scrollport so the checks
    can scroll between them without either end leaving the screen. */
 @media (max-width: 1199px) {
+  /* The wrapper never scrolls vertically, so the page offset would only push the header over the rows. */
+  thead th {
+    top: 0;
+  }
   thead th:first-child,
   tbody td:first-child {
     position: sticky;
@@ -687,7 +713,7 @@ tbody tr[data-repo]:hover td {
   background: var(--hov);
 }
 /* Nothing dims, so the open row says so itself. */
-tbody tr[data-repo][aria-expanded='true'] td {
+tbody tr[data-repo].open td {
   background: var(--acc-soft);
 }
 tbody tr[data-repo] {
@@ -717,6 +743,15 @@ tr.grp .gm {
   color: var(--acc);
 }
 .nm {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   font-weight: 560;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1015,6 +1050,10 @@ tr.grp .gm {
   width: 100%;
   height: auto;
   overflow: visible;
+}
+/* Horizontal drags scrub the readout; vertical ones still scroll the page. */
+#hit {
+  touch-action: pan-y;
 }
 .chart text {
   font-family: var(--sans);
@@ -1353,7 +1392,8 @@ tr.grp .gm {
   resize: vertical;
   min-height: 56px;
 }
-.form .err {
+.form .err,
+.rowedit .err {
   color: var(--bad);
   font-size: 12px;
   margin-top: 7px;

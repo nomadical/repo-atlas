@@ -7,28 +7,49 @@ import { buildClientGraph, clientScreens, clientBackendResolver, screenBackendLa
 import { Icon } from './icons.jsx'
 
 const nodeTypes = { card: CardNode, region: RegionNode }
+const FIT_VIEW_OPTIONS = { padding: 0.12 }
+const MIN_ZOOM = 0.1
+const BACKGROUND_GAP = 18
+const BACKGROUND_COLOR_DARK = '#223052'
+const BACKGROUND_COLOR_LIGHT = '#e6e8ee'
+const MINIMAP_FALLBACK_COLOR = '#bbb'
 
-// Endpoint chips — clickable when a swagger deep-link exists for the path.
-function EndpointChips({ endpoints, links }) {
-  if (!endpoints?.length) return <span className="muted">—</span>
+const Dash = () => <span className="muted">—</span>
+
+function ChipList({ items, chipClassName }) {
+  if (!items?.length) return <Dash />
   return (
     <div className="chiprow">
-      {endpoints.map((e) =>
-        links?.[e] ? (
+      {items.map((item) => (
+        <span key={item} className={chipClassName}>
+          {item}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Clickable when a swagger deep link exists for the endpoint.
+function EndpointChips({ endpoints, links }) {
+  if (!endpoints?.length) return <Dash />
+  return (
+    <div className="chiprow">
+      {endpoints.map((endpoint) =>
+        links?.[endpoint] ? (
           <a
-            key={e}
+            key={endpoint}
             className="ext-chip mono"
-            href={links[e]}
+            href={links[endpoint]}
             target="_blank"
             rel="noreferrer"
-            title={`Open API docs for ${e}`}
-            onClick={(ev) => ev.stopPropagation()}
+            title={`Open API docs for ${endpoint}`}
+            onClick={(event) => event.stopPropagation()}
           >
-            {e}
+            {endpoint}
           </a>
         ) : (
-          <span key={e} className="ext-chip mono" title={e}>
-            {e}
+          <span key={endpoint} className="ext-chip mono" title={endpoint}>
+            {endpoint}
           </span>
         ),
       )}
@@ -36,41 +57,98 @@ function EndpointChips({ endpoints, links }) {
   )
 }
 
-// Table of a client's screens — the comfortable default for reading per-screen endpoint usage.
-function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
-  const [q, setQ] = useState('')
-  const [sort, setSort] = useState({ key: 'name', dir: 1 })
-  const links = rep.endpointLinks || {}
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    let r = rep.screens
-    if (needle) {
-      r = r.filter((s) =>
-        [s.name, s.path, (s.paths || []).join(' '), (s.roles || []).join(' '), (s.endpoints || []).join(' '), (s.components || []).join(' ')]
-          .join(' ')
-          .toLowerCase()
-          .includes(needle),
-      )
-    }
-    const val = (s) => (sort.key === 'endpoints' ? s.endpoints?.length || 0 : sort.key === 'route' ? s.path || '' : s.name || '')
-    return [...r].sort((a, b) => {
-      const av = val(a)
-      const bv = val(b)
-      return (typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv))) * sort.dir
-    })
-  }, [rep.screens, q, sort])
+function screenMatches(screen, needle) {
+  return [
+    screen.name,
+    screen.path,
+    (screen.paths || []).join(' '),
+    (screen.roles || []).join(' '),
+    (screen.endpoints || []).join(' '),
+    (screen.components || []).join(' '),
+  ]
+    .join(' ')
+    .toLowerCase()
+    .includes(needle)
+}
 
-  const Th = ({ k, children }) => (
-    <th className={'sortable' + (sort.key === k ? ' sorted' : '')} onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? -s.dir : 1 }))}>
+function screenSortValue(screen, key) {
+  if (key === 'endpoints') return screen.endpoints?.length || 0
+  if (key === 'route') return screen.path || ''
+  return screen.name || ''
+}
+
+function routesOf(screen) {
+  if (screen.paths?.length) return screen.paths
+  return screen.path ? [screen.path] : []
+}
+
+function ScreenRow({ screen, links, backendOf, onSelect }) {
+  const onKeyDown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onSelect()
+  }
+  return (
+    <tr onClick={onSelect} tabIndex={0} onKeyDown={onKeyDown}>
+      <td>
+        <div className="screen-name">{screen.name}</div>
+        {screen.file ? <div className="muted small mono">{screen.file}</div> : null}
+      </td>
+      <td className="mono small">{routesOf(screen).join(', ') || <Dash />}</td>
+      <td className="small">
+        <ChipList items={screen.roles} chipClassName="mod-chip" />
+      </td>
+      <td className="small">
+        <ChipList items={screen.components} chipClassName="mod-chip ui-chip" />
+      </td>
+      <td className="small">
+        <ChipList items={screenBackendLabels(screen, backendOf)} chipClassName="mod-chip be-chip" />
+      </td>
+      <td className="small">
+        <EndpointChips endpoints={screen.endpoints} links={links} />
+      </td>
+    </tr>
+  )
+}
+
+function Th({ k, sort, setSort, children }) {
+  return (
+    <th
+      className={'sortable' + (sort.key === k ? ' sorted' : '')}
+      onClick={() => setSort((current) => ({ key: k, dir: current.key === k ? -current.dir : 1 }))}
+    >
       {children}
       {sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
   )
+}
+
+// The default drill-down view: comfortable for reading per-screen endpoint usage.
+function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
+  const [filterText, setFilterText] = useState('')
+  const [sort, setSort] = useState({ key: 'name', dir: 1 })
+  const links = rep.endpointLinks || {}
+  const rows = useMemo(() => {
+    const needle = filterText.trim().toLowerCase()
+    const matching = needle ? rep.screens.filter((screen) => screenMatches(screen, needle)) : rep.screens
+    return [...matching].sort((a, b) => {
+      const valueA = screenSortValue(a, sort.key)
+      const valueB = screenSortValue(b, sort.key)
+      const order =
+        typeof valueA === 'number' ? valueA - valueB : String(valueA).localeCompare(String(valueB))
+      return order * sort.dir
+    })
+  }, [rep.screens, filterText, sort])
 
   return (
     <div className="table-wrap">
       <div className="table-meta">
-        <input className="table-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter screens, routes, endpoints, components…" />
+        <input
+          className="table-filter"
+          value={filterText}
+          onChange={(event) => setFilterText(event.target.value)}
+          placeholder="Filter screens, routes, endpoints, components…"
+        />
         <span className="muted small">
           {rows.length} of {rep.screens.length} screens
         </span>
@@ -78,78 +156,29 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
       <table className="inv-table">
         <thead>
           <tr>
-            <Th k="name">Screen</Th>
-            <Th k="route">Route</Th>
+            <Th sort={sort} setSort={setSort} k="name">
+              Screen
+            </Th>
+            <Th sort={sort} setSort={setSort} k="route">
+              Route
+            </Th>
             <th>Roles</th>
             <th>UI components</th>
             <th>Backend</th>
-            <Th k="endpoints">Endpoints</Th>
+            <Th sort={sort} setSort={setSort} k="endpoints">
+              Endpoints
+            </Th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((s) => (
-            <tr
-              key={s.component || s.name}
-              onClick={() => onSelectScreen?.(s, clientTitle)}
-              tabIndex={0}
-              onKeyDown={(ev) => {
-                if (ev.key === 'Enter' || ev.key === ' ') {
-                  ev.preventDefault()
-                  onSelectScreen?.(s, clientTitle)
-                }
-              }}
-            >
-              <td>
-                <div className="screen-name">{s.name}</div>
-                {s.file ? <div className="muted small mono">{s.file}</div> : null}
-              </td>
-              <td className="mono small">{(s.paths?.length ? s.paths : s.path ? [s.path] : []).join(', ') || <span className="muted">—</span>}</td>
-              <td className="small">
-                {s.roles?.length ? (
-                  <div className="chiprow">
-                    {s.roles.map((r) => (
-                      <span key={r} className="mod-chip">
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
-              <td className="small">
-                {s.components?.length ? (
-                  <div className="chiprow">
-                    {s.components.map((c) => (
-                      <span key={c} className="mod-chip ui-chip">
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
-              <td className="small">
-                {(() => {
-                  const bes = screenBackendLabels(s, backendOf)
-                  return bes.length ? (
-                    <div className="chiprow">
-                      {bes.map((b) => (
-                        <span key={b} className="mod-chip be-chip">
-                          {b}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="muted">—</span>
-                  )
-                })()}
-              </td>
-              <td className="small">
-                <EndpointChips endpoints={s.endpoints} links={links} />
-              </td>
-            </tr>
+          {rows.map((screen) => (
+            <ScreenRow
+              key={screen.component || screen.name}
+              screen={screen}
+              links={links}
+              backendOf={backendOf}
+              onSelect={() => onSelectScreen?.(screen, clientTitle)}
+            />
           ))}
         </tbody>
       </table>
@@ -160,9 +189,12 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
 function ScreensGraph({ data, folder, dark, onSelectScreen, clientTitle }) {
   const graph = useMemo(() => buildClientGraph(data, folder), [data, folder])
   if (!graph) return null
-  const onNodeClick = (_, node) => {
-    if (node.data.kind === 'screen') onSelectScreen?.(node.data.screen, clientTitle)
-    else if (node.data.kind === 'endpoint' && node.data.link) window.open(node.data.link, '_blank', 'noopener')
+  const onNodeClick = (_event, node) => {
+    if (node.data.kind === 'screen') {
+      onSelectScreen?.(node.data.screen, clientTitle)
+    } else if (node.data.kind === 'endpoint' && node.data.link) {
+      window.open(node.data.link, '_blank', 'noopener')
+    }
   }
   return (
     <ReactFlow
@@ -172,46 +204,130 @@ function ScreensGraph({ data, folder, dark, onSelectScreen, clientTitle }) {
       onNodeClick={onNodeClick}
       nodesDraggable={false}
       fitView
-      fitViewOptions={{ padding: 0.12 }}
-      minZoom={0.1}
+      fitViewOptions={FIT_VIEW_OPTIONS}
+      minZoom={MIN_ZOOM}
       proOptions={{ hideAttribution: true }}
     >
-      <Background gap={18} color={dark ? '#223052' : '#e6e8ee'} />
-      <MiniMap pannable zoomable nodeColor={(n) => KIND[n.data?.kind]?.color || '#bbb'} />
+      <Background gap={BACKGROUND_GAP} color={dark ? BACKGROUND_COLOR_DARK : BACKGROUND_COLOR_LIGHT} />
+      <MiniMap
+        pannable
+        zoomable
+        nodeColor={(node) => KIND[node.data?.kind]?.color || MINIMAP_FALLBACK_COLOR}
+      />
       <Controls />
     </ReactFlow>
   )
 }
 
-// Per-client drill-down: screens (routes) and the backend endpoints each one calls. Table by default
-// (comfortable for reading); a graph toggle shows the same screen→endpoint relationships visually.
+function countScreenUsage(screens, backendOf) {
+  const endpoints = new Set()
+  const backends = new Set()
+  const components = new Set()
+  for (const screen of screens) {
+    for (const endpoint of screen.endpoints || []) {
+      endpoints.add(endpoint)
+      const backend = backendOf(endpoint)
+      if (backend) backends.add(backend.id)
+    }
+    for (const component of screen.components || []) components.add(component)
+  }
+  return {
+    screens: screens.length,
+    endpoints: endpoints.size,
+    backends: backends.size,
+    components: components.size,
+  }
+}
+
+function GraphLegend() {
+  return (
+    <div className="legend client-legend">
+      <div className="legend-cap">This view</div>
+      <div className="legend-item">
+        <span className="dot" style={{ background: KIND.screen.color }} /> Screen (route)
+      </div>
+      <div className="legend-item">
+        <span className="dot" style={{ background: KIND.endpoint.color }} /> Endpoint
+      </div>
+      <div className="legend-item">
+        <span className="dot" style={{ background: KIND.backend.color }} /> Backend
+      </div>
+      <div className="legend-item legend-note">
+        screen → endpoint → backend. Click an endpoint to open its API docs.
+      </div>
+    </div>
+  )
+}
+
+function ModeToggle({ mode, setMode }) {
+  const modeButton = (value, label) => (
+    <button
+      className={'seg' + (mode === value ? ' on' : '')}
+      onClick={() => setMode(value)}
+      role="tab"
+      aria-selected={mode === value}
+    >
+      {label}
+    </button>
+  )
+  return (
+    <div className="seg-toggle" role="tablist" aria-label="Drill-down view">
+      {modeButton('table', 'Table')}
+      {modeButton('graph', 'Graph')}
+    </div>
+  )
+}
+
+// Per-client drill-down: its screens (routes) and the backend endpoints each one calls, as a table
+// or as a graph of the same relationships.
 export default function ClientDetailView({ data, folder, title, dark, onBack, onSelectScreen }) {
   const [mode, setMode] = useState('table')
-  // Esc exits the drill-down back to the map (in addition to the Back button).
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onBack?.()
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onBack?.()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [onBack])
   const rep = clientScreens(data, folder)
   const { backendOf } = useMemo(() => clientBackendResolver(data, folder), [data, folder])
   const counts = useMemo(() => {
     if (!rep?.screens?.length) return null
-    const eps = new Set()
-    const bes = new Set()
-    const comps = new Set()
-    for (const s of rep.screens) {
-      for (const e of s.endpoints || []) {
-        eps.add(e)
-        const be = backendOf(e)
-        if (be) bes.add(be.id)
-      }
-      for (const c of s.components || []) comps.add(c)
-    }
-    return { screens: rep.screens.length, endpoints: eps.size, backends: bes.size, components: comps.size }
+    return countScreenUsage(rep.screens, backendOf)
   }, [rep, backendOf])
+  const clientTitle = title || folder
+
+  const renderBody = () => {
+    if (!counts) {
+      return (
+        <div className="loading">
+          <span>No screen data extracted for this client yet.</span>
+        </div>
+      )
+    }
+    if (mode === 'table') {
+      return (
+        <ScreensTable
+          rep={rep}
+          onSelectScreen={onSelectScreen}
+          clientTitle={clientTitle}
+          backendOf={backendOf}
+        />
+      )
+    }
+    return (
+      <>
+        <ScreensGraph
+          data={data}
+          folder={folder}
+          dark={dark}
+          onSelectScreen={onSelectScreen}
+          clientTitle={clientTitle}
+        />
+        <GraphLegend />
+      </>
+    )
+  }
 
   return (
     <div className="canvas client-detail">
@@ -219,49 +335,18 @@ export default function ClientDetailView({ data, folder, title, dark, onBack, on
         <button className="btn" onClick={onBack} title="Back to the map (Esc)">
           <Icon name="close" /> Back to map
         </button>
-        <span className="client-detail-title">{title || folder}</span>
+        <span className="client-detail-title">{clientTitle}</span>
         {counts ? (
           <span className="client-detail-meta">
-            {counts.screens} screens · {counts.endpoints} endpoints · {counts.backends} backends · {counts.components} UI components
+            {counts.screens} screens · {counts.endpoints} endpoints · {counts.backends} backends ·{' '}
+            {counts.components} UI components
             {rep.method === 'folder' ? ' · folder-inferred' : ''}
           </span>
         ) : null}
-        {counts ? (
-          <div className="seg-toggle" role="tablist" aria-label="Drill-down view">
-            <button className={'seg' + (mode === 'table' ? ' on' : '')} onClick={() => setMode('table')} role="tab" aria-selected={mode === 'table'}>
-              Table
-            </button>
-            <button className={'seg' + (mode === 'graph' ? ' on' : '')} onClick={() => setMode('graph')} role="tab" aria-selected={mode === 'graph'}>
-              Graph
-            </button>
-          </div>
-        ) : null}
+        {counts ? <ModeToggle mode={mode} setMode={setMode} /> : null}
       </div>
 
-      {!counts ? (
-        <div className="loading">
-          <span>No screen data extracted for this client yet.</span>
-        </div>
-      ) : mode === 'table' ? (
-        <ScreensTable rep={rep} onSelectScreen={onSelectScreen} clientTitle={title || folder} backendOf={backendOf} />
-      ) : (
-        <>
-          <ScreensGraph data={data} folder={folder} dark={dark} onSelectScreen={onSelectScreen} clientTitle={title || folder} />
-          <div className="legend client-legend">
-            <div className="legend-cap">This view</div>
-            <div className="legend-item">
-              <span className="dot" style={{ background: KIND.screen.color }} /> Screen (route)
-            </div>
-            <div className="legend-item">
-              <span className="dot" style={{ background: KIND.endpoint.color }} /> Endpoint
-            </div>
-            <div className="legend-item">
-              <span className="dot" style={{ background: KIND.backend.color }} /> Backend
-            </div>
-            <div className="legend-item legend-note">screen → endpoint → backend. Click an endpoint to open its API docs.</div>
-          </div>
-        </>
-      )}
+      {renderBody()}
     </div>
   )
 }

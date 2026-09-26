@@ -1,18 +1,12 @@
-// Per-FE-client SCREEN extraction with best-effort endpoint attribution.
-//
-// For each FE client repo (repos.feInOrg), this:
-//   1. finds router files (*Router*.tsx + files using <Route>/createBrowserRouter),
-//   2. parses route entries — pairing each `element: <Comp/>` / `element={<Comp/>}` with its nearest
-//      string-literal `path` and any necessary/sufficient roles (covers RouteItem[] arrays, <Route>
-//      JSX, and createBrowserRouter object routes),
-//   3. resolves each screen component back to an on-disk file (relative + tsconfig path-alias),
-//   4. attributes endpoints by BFS-walking that component's local import graph and collecting
-//      use<Name>Endpoints('path') literals (shared with gather-arch via lib/endpoints.mjs).
+// Per-FE-client screen extraction with best-effort endpoint attribution. For each FE repo:
+//   1. find router files (*Router*.tsx, or files using <Route>/createBrowserRouter),
+//   2. pair each route `element` with the `path` and roles of the same route object or tag,
+//   3. resolve the screen component to a file (relative or tsconfig path alias),
+//   4. walk that file's local import graph collecting endpoints and design-system imports.
 // Repos with no parseable routers fall back to folder convention (src/pages|screens|views/*).
 //
-// Output: scripts/screens-out.json — { perRepo: { <folder>: { method, routerFiles, screens:[...] } } }.
-// Heuristic by design (see plan): widely-shared hooks over-attribute; dynamic endpoint strings are
-// missed. Accuracy can be improved later with a curated override file.
+// Writes scripts/screens-out.json: { perRepo: { <folder>: { method, routerFiles, screens } } }.
+// Heuristic by design: widely shared hooks over-attribute and dynamic endpoint strings are missed.
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,187 +15,373 @@ import { ROOT, AUDIT, maybeFetch } from './_paths.mjs'
 import { repos } from './repos.mjs'
 import { extractEndpointsFromText, extractApiCallsFromText } from './lib/endpoints.mjs'
 
-const EXTS = ['.tsx', '.ts', '.jsx', '.js']
-const SKIP_COMPONENTS = new Set(['Navigate', 'Outlet', 'Fragment', 'Suspense', 'Routes', 'Route', 'RouterProvider'])
-const MAX_BFS_FILES = 600 // per-screen import-graph walk cap
-const MAX_BFS_DEPTH = 8
-const PATH_FWD = 600 // chars after an `element` to look for its path
-const PATH_BACK = 200 // chars before an `element` to look for its path (path-first JSX)
+const SOURCE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js']
+const SKIPPED_DIRS = new Set(['node_modules', 'dist', 'build', '.git', 'coverage', '__snapshots__'])
+const TSCONFIG_NAMES = ['tsconfig.json', 'tsconfig.base.json', 'jsconfig.json']
+const SCREEN_FOLDERS = ['pages', 'screens', 'views']
+// Wrappers and redirects, never the screen itself.
+const SKIP_COMPONENTS = new Set([
+  'Navigate',
+  'Outlet',
+  'Fragment',
+  'Suspense',
+  'Routes',
+  'Route',
+  'RouterProvider',
+])
+const MAX_TRACED_FILES = 600
+const MAX_TRACE_DEPTH = 8
 
-const readFile = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
-const rel = (repoDir, abs) => path.relative(repoDir, abs).split(path.sep).join('/')
-
-// Walk a repo's src/ tree, returning every source file (skips node_modules, dist, tests dirs).
-const walkSrc = (dir, acc = []) => {
-  let entries = []
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return acc }
-  for (const e of entries) {
-    const p = path.join(dir, e.name)
-    if (e.isDirectory()) {
-      if (['node_modules', 'dist', 'build', '.git', 'coverage', '__snapshots__'].includes(e.name)) continue
-      walkSrc(p, acc)
-    } else if (EXTS.includes(path.extname(e.name))) {
-      acc.push(p)
-    }
+const readFile = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch {
+    return ''
   }
-  return acc
 }
 
-// Tolerant tsconfig read (strips // and /* */ comments + trailing commas) -> { baseUrl, paths }.
-const readTsPaths = (repoDir) => {
-  for (const name of ['tsconfig.json', 'tsconfig.base.json', 'jsconfig.json']) {
+const relativePosix = (repoDir, absolutePath) =>
+  path.relative(repoDir, absolutePath).split(path.sep).join('/')
+
+const pushUnique = (items, item) => {
+  if (!items.includes(item)) items.push(item)
+}
+
+function listSourceFiles(dir, files = []) {
+  let entries = []
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return files
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (!SKIPPED_DIRS.has(entry.name)) listSourceFiles(entryPath, files)
+    } else if (SOURCE_EXTENSIONS.includes(path.extname(entry.name))) {
+      files.push(entryPath)
+    }
+  }
+  return files
+}
+
+// ---- Module resolution -----------------------------------------------------------------------
+
+// tsconfig allows comments and trailing commas, which JSON.parse doesn't. Strings are matched
+// first so a `/*` or `//` inside one (like "@/*") is kept.
+const STRING_OR_COMMENT = /("(?:[^"\\\n]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g
+const STRING_OR_TRAILING_COMMA = /("(?:[^"\\\n]|\\.)*")|,(\s*[}\]])/g
+
+const stripJsonComments = (raw) =>
+  raw
+    .replace(STRING_OR_COMMENT, (match, string) => string ?? '')
+    .replace(STRING_OR_TRAILING_COMMA, (match, string, closing) => string ?? closing)
+
+export function readTsPaths(repoDir) {
+  for (const name of TSCONFIG_NAMES) {
     const raw = readFile(path.join(repoDir, name))
     if (!raw) continue
-    const cleaned = raw
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1')
-      .replace(/,(\s*[}\]])/g, '$1')
     try {
-      const j = JSON.parse(cleaned)
-      const co = j.compilerOptions || {}
-      return { baseUrl: co.baseUrl || '.', paths: co.paths || {} }
-    } catch { /* try next */ }
+      const compilerOptions = JSON.parse(stripJsonComments(raw)).compilerOptions || {}
+      return { baseUrl: compilerOptions.baseUrl || '.', paths: compilerOptions.paths || {} }
+    } catch {
+      // Unparseable: try the next candidate.
+    }
   }
   return { baseUrl: '.', paths: {} }
 }
 
-// Resolve a specifier (relative or alias) imported from `fromFile` to an on-disk file inside the repo.
-// Returns an absolute path or null (external packages, node_modules, unresolved aliases -> null).
-const makeResolver = (repoDir, ts) => {
-  const tryFile = (base) => {
-    for (const ext of EXTS) if (fs.existsSync(base + ext)) return base + ext
-    for (const ext of EXTS) { const idx = path.join(base, 'index' + ext); if (fs.existsSync(idx)) return idx }
-    if (fs.existsSync(base) && fs.statSync(base).isFile()) return base
+function resolveFile(base) {
+  for (const extension of SOURCE_EXTENSIONS) {
+    if (fs.existsSync(base + extension)) return base + extension
+  }
+  for (const extension of SOURCE_EXTENSIONS) {
+    const indexFile = path.join(base, 'index' + extension)
+    if (fs.existsSync(indexFile)) return indexFile
+  }
+  if (fs.existsSync(base) && fs.statSync(base).isFile()) return base
+  return null
+}
+
+// Candidates from tsconfig `paths`, e.g. "*": ["./src/*"] or "@/*": ["src/*"].
+function aliasCandidates(specifier, paths, baseDir) {
+  const candidates = []
+  for (const [pattern, targets] of Object.entries(paths)) {
+    const starIndex = pattern.indexOf('*')
+    if (starIndex < 0) {
+      if (pattern === specifier) {
+        for (const target of targets) candidates.push(path.join(baseDir, target))
+      }
+      continue
+    }
+    const prefix = pattern.slice(0, starIndex)
+    const suffix = pattern.slice(starIndex + 1)
+    if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue
+    const wildcard = specifier.slice(prefix.length, specifier.length - suffix.length)
+    for (const target of targets) candidates.push(path.join(baseDir, target.replace('*', wildcard)))
+  }
+  return candidates
+}
+
+// Returns resolve(fromFile, specifier) -> absolute path inside the repo, or null for external
+// packages and unresolved aliases.
+function makeResolver(repoDir, tsPaths) {
+  const baseDir = path.join(repoDir, tsPaths.baseUrl || '.')
+  return (fromFile, specifier) => {
+    if (!specifier || specifier.startsWith('node:')) return null
+    if (specifier.startsWith('.')) return resolveFile(path.resolve(path.dirname(fromFile), specifier))
+    for (const candidate of aliasCandidates(specifier, tsPaths.paths, baseDir)) {
+      const file = resolveFile(candidate)
+      if (file) return file
+    }
+    // baseUrl-relative, which also covers "*": ["./src/*"].
+    const file = resolveFile(path.join(baseDir, specifier))
+    if (file && file.startsWith(repoDir)) return file
     return null
   }
-  const baseDir = path.join(repoDir, ts.baseUrl || '.')
-  // alias candidates from tsconfig paths (e.g. "*": ["./src/*"], "@/*": ["src/*"])
-  const aliasCandidates = (spec) => {
-    const out = []
-    for (const [pattern, targets] of Object.entries(ts.paths)) {
-      const star = pattern.indexOf('*')
-      if (star < 0) { if (pattern === spec) for (const t of targets) out.push(path.join(baseDir, t)); continue }
-      const pre = pattern.slice(0, star)
-      const post = pattern.slice(star + 1)
-      if (spec.startsWith(pre) && spec.endsWith(post)) {
-        const mid = spec.slice(pre.length, spec.length - post.length)
-        for (const t of targets) out.push(path.join(baseDir, t.replace('*', mid)))
-      }
-    }
-    return out
-  }
-  return (fromFile, spec) => {
-    if (!spec || spec.startsWith('node:')) return null
-    if (spec.startsWith('.')) return tryFile(path.resolve(path.dirname(fromFile), spec))
-    // bare specifier: try tsconfig aliases, then baseUrl-relative (covers "*":["./src/*"])
-    for (const cand of aliasCandidates(spec)) { const f = tryFile(cand); if (f) return f }
-    const f = tryFile(path.join(baseDir, spec))
-    if (f && f.startsWith(repoDir)) return f
-    return null // external package
-  }
 }
 
-// import/export specifiers in a file's text (static + dynamic import()).
-const importSpecs = (text) => {
-  const out = new Set()
-  const res = [
-    /(?:import|export)\s+[^'"]*?\s+from\s*['"]([^'"]+)['"]/g,
-    /import\s*['"]([^'"]+)['"]/g, // side-effect import
-    /import\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import
-  ]
-  for (const re of res) { let m; while ((m = re.exec(text))) out.add(m[1]) }
-  return [...out]
+const IMPORT_SPECIFIERS = [
+  /(?:import|export)\s+[^'"]*?\s+from\s*['"]([^'"]+)['"]/g,
+  /import\s*['"]([^'"]+)['"]/g, // side-effect import
+  /import\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import
+]
+
+function importSpecifiers(text) {
+  const specifiers = new Set()
+  for (const regex of IMPORT_SPECIFIERS) {
+    for (const match of text.matchAll(regex)) specifiers.add(match[1])
+  }
+  return [...specifiers]
 }
 
-// Map a component identifier -> import specifier, from a router file's imports.
+// ---- Router parsing --------------------------------------------------------------------------
+
+const DEFAULT_IMPORT =
+  /import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s*['"]([^'"]+)['"]/g
+const NAMED_IMPORT = /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s*['"]([^'"]+)['"]/g
+// const X = lazy(() => import('spec')), also React.lazy, loadable…
+const LAZY_IMPORT = /const\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
+
+// Component identifier -> import specifier, from a router file's imports.
 export const importMap = (text) => {
-  const map = {}
-  // default + namespace: import Foo from 'x' / import * as Foo from 'x'
-  let m
-  const def = /import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s*['"]([^'"]+)['"]/g
-  while ((m = def.exec(text))) map[m[1]] = m[2]
-  // named: import { A, B as C } from 'x'
-  const named = /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s*['"]([^'"]+)['"]/g
-  while ((m = named.exec(text))) {
-    for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim()
-      if (name) map[name] = m[2]
+  const specifierByName = {}
+  for (const [, name, specifier] of text.matchAll(DEFAULT_IMPORT)) specifierByName[name] = specifier
+  for (const [, namedList, specifier] of text.matchAll(NAMED_IMPORT)) {
+    for (const part of namedList.split(',')) {
+      // `B as C` binds the local name C.
+      const localName = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim()
+      if (localName) specifierByName[localName] = specifier
     }
   }
-  // lazy/dynamic component bindings: const X = lazy(() => import('spec')) (also React.lazy, loadable…)
-  const lazyRe = /const\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
-  while ((m = lazyRe.exec(text))) map[m[1]] = m[2]
-  return map
+  for (const [, name, specifier] of text.matchAll(LAZY_IMPORT)) specifierByName[name] = specifier
+  return specifierByName
 }
 
-// Parse route entries from a router file's text: nearest path + roles for each `element` anchor.
+// Ends where the element's JSX starts: `element={<X />}`, `element: <X />` or `element: (<X />)`.
+const ROUTE_ELEMENT = /element\s*[:=]\s*[{(]?\s*(?=<)/g
+const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
+const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\[([^\]]*)\]/
+// userRoles.ASSET or a quoted 'ASSET'.
+const ROLE_ENTRY = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g
+const TAG_NAME = /[\w$]*/y
+
+// Index just past the `}` matching the `{` at openIndex.
+function closingBraceEnd(text, openIndex) {
+  let depth = 0
+  for (let i = openIndex; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    if (text[i] === '}') depth--
+    if (depth === 0) return i + 1
+  }
+  return text.length
+}
+
+// Index just past the `>` closing the tag at tagIndex, skipping `{…}` attribute values.
+function tagEnd(text, tagIndex) {
+  let i = tagIndex + 1
+  while (i < text.length && text[i] !== '>') {
+    i = text[i] === '{' ? closingBraceEnd(text, i) : i + 1
+  }
+  return i + 1
+}
+
+function tagName(text, tagIndex) {
+  TAG_NAME.lastIndex = tagIndex + 1
+  return TAG_NAME.exec(text)[0]
+}
+
+// The opening tags (with nesting depth) of the JSX element starting at `start`, and where it ends.
+// `{…}` children are skipped, so a Suspense fallback is not mistaken for the screen.
+function walkJsxElement(text, start) {
+  const tags = []
+  let depth = 0
+  let i = start
+  while (i < text.length) {
+    if (text[i] === '{') {
+      i = closingBraceEnd(text, i)
+      continue
+    }
+    if (text[i] !== '<') {
+      i++
+      continue
+    }
+    const end = tagEnd(text, i)
+    if (text[i + 1] === '/') {
+      depth--
+    } else {
+      tags.push({ name: tagName(text, i), depth })
+      if (text[end - 2] !== '/') depth++
+    }
+    i = end
+    if (depth === 0) break
+  }
+  return { tags, end: i }
+}
+
+// The deepest component, so wrappers like <Suspense> or <RequireAuth> are looked through.
+function screenComponentOf(tags) {
+  let screen = null
+  for (const tag of tags) {
+    if (!/^[A-Z]/.test(tag.name) || SKIP_COMPONENTS.has(tag.name)) continue
+    if (!screen || tag.depth > screen.depth) screen = tag
+  }
+  return screen?.name
+}
+
+// The route owning an element: the `{…}` object or JSX tag (<Route>, <PrivateRoute>…) around it.
+// Walks back over balanced brackets and whole JSX elements; null when the element is in neither.
+function enclosingRoute(text, elementIndex) {
+  let bracketDepth = 0
+  let closedTags = 0
+  for (let i = elementIndex - 1; i >= 0; i--) {
+    const char = text[i]
+    if ('}])'.includes(char)) {
+      bracketDepth++
+    } else if ('{[('.includes(char)) {
+      if (bracketDepth === 0) {
+        return char === '{' ? { start: i, end: closingBraceEnd(text, i), isObject: true } : null
+      }
+      bracketDepth--
+    } else if (bracketDepth > 0) {
+      continue
+    } else if (char === '>' && text[i - 1] !== '=') {
+      closedTags++
+    } else if (char === '<' && /[A-Za-z/]/.test(text[i + 1])) {
+      if (closedTags === 0 && text[i + 1] !== '/') return { start: i, end: tagEnd(text, i), isObject: false }
+      closedTags--
+    }
+  }
+  return null
+}
+
+// The route's own properties, without its element and, for objects, without nested child routes.
+function routeOwnText(text, route, element) {
+  const ownText =
+    text.slice(route.start, element.start) +
+    ' '.repeat(element.end - element.start) +
+    text.slice(element.end, route.end)
+  if (!route.isObject) return ownText
+  let depth = 0
+  let topLevel = ''
+  for (const char of ownText) {
+    if (char === '{') depth++
+    if (depth === 1) topLevel += char
+    if (char === '}') depth--
+  }
+  return topLevel
+}
+
+function rolesIn(routeText) {
+  const rolesMatch = ROUTE_ROLES.exec(routeText)
+  if (!rolesMatch) return []
+  return [...rolesMatch[1].matchAll(ROLE_ENTRY)].map((match) => match[1] || match[2]).filter(Boolean)
+}
+
+// One route per `element` anchor, with the path and roles of the same route object or tag.
 export const parseRoutes = (text) => {
   const routes = []
-  const elementRe = /element\s*[:=]\s*\{?\s*(<[\s\S]{0,200}?>)/g
-  let m
-  while ((m = elementRe.exec(text))) {
-    // first non-skip component in the element value
-    const comps = [...m[1].matchAll(/<([A-Z][\w$]*)/g)].map((x) => x[1])
-    const component = comps.find((c) => !SKIP_COMPONENTS.has(c))
+  for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
+    const elementStart = elementMatch.index + elementMatch[0].length
+    const { tags, end } = walkJsxElement(text, elementStart)
+    const component = screenComponentOf(tags)
     if (!component) continue
-    const i = m.index
-    const fwd = text.slice(i, i + PATH_FWD)
-    const back = text.slice(Math.max(0, i - PATH_BACK), i)
-    const pathRe = /path\s*[:=]\s*['"]([^'"]+)['"]/g
-    // element-first: nearest path *after* the element. path-first JSX (<Route path=… element=…>):
-    // the *last* path before the element (closest), not an earlier sibling's.
-    const fwdMatch = pathRe.exec(fwd)
-    const backMatches = [...back.matchAll(/path\s*[:=]\s*['"]([^'"]+)['"]/g)]
-    const pm = fwdMatch || (backMatches.length ? backMatches[backMatches.length - 1] : null)
-    const rolesRaw = /(?:necessary|sufficient)Roles\s*[:=]\s*\[([^\]]*)\]/.exec(fwd)
-    const roles = rolesRaw ? [...rolesRaw[1].matchAll(/\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g)].map((x) => x[1] || x[2]).filter(Boolean) : []
-    routes.push({ component, path: pm ? pm[1] : null, roles })
+    const route = enclosingRoute(text, elementMatch.index)
+    const routeText = route ? routeOwnText(text, route, { start: elementStart, end }) : ''
+    routes.push({ component, path: routeText.match(ROUTE_PATH)?.[1] ?? null, roles: rolesIn(routeText) })
   }
   return routes
 }
 
-// Named imports a file pulls from the shared design system — the components/hooks/tokens a screen
-// uses from it. Captures the *exported* name (before any `as` alias). The package list is
-// config.json `uiPackages`, same as isUiPkg in graph.js; with none configured nothing matches.
-const appConfig = (() => { try { return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8')) } catch { return {} } })()
+// ---- Design-system imports -------------------------------------------------------------------
+// The package list is config.json `uiPackages`, as for isUiPkg in graph.js. With none configured
+// nothing matches.
+
+function readAppConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(AUDIT, 'config.json'), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+const appConfig = readAppConfig()
 const UI_PACKAGES = Array.isArray(appConfig.uiPackages) ? appConfig.uiPackages : []
-const escapeRe = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const UI_IMPORT_RE = UI_PACKAGES.length
-  ? new RegExp(`import\\s+(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]*)\\}\\s+from\\s*['"](?:${UI_PACKAGES.map(escapeRe).join('|')})['"]`, 'g')
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const UI_IMPORT = UI_PACKAGES.length
+  ? new RegExp(
+      `import\\s+(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]*)\\}\\s+from\\s*['"](?:${UI_PACKAGES.map(escapeRegex).join('|')})['"]`,
+      'g',
+    )
   : null
+
+// Records the exported name, before any `as` alias.
 export const extractUiComponents = (text, set = new Set()) => {
-  if (!UI_IMPORT_RE) return set
-  UI_IMPORT_RE.lastIndex = 0
-  let m
-  while ((m = UI_IMPORT_RE.exec(text))) {
-    for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0].trim()
-      if (name && /^[A-Za-z]/.test(name)) set.add(name)
+  if (!UI_IMPORT) return set
+  for (const [, namedList] of text.matchAll(UI_IMPORT)) {
+    for (const part of namedList.split(',')) {
+      const exportedName = part
+        .trim()
+        .split(/\s+as\s+/)[0]
+        .trim()
+      if (exportedName && /^[A-Za-z]/.test(exportedName)) set.add(exportedName)
     }
   }
   return set
 }
 
-// BFS a screen component's local import graph, unioning endpoints + design-system imports found.
-const traceEndpoints = (startFile, resolve) => {
+// ---- Endpoint attribution --------------------------------------------------------------------
+
+function collectFromText(text, endpoints, components) {
+  extractEndpointsFromText(text, endpoints)
+  extractApiCallsFromText(text, endpoints)
+  extractUiComponents(text, components)
+}
+
+// Breadth-first over the screen's local import graph, capped by depth and file count.
+function traceImportGraph(startFile, resolve) {
   const endpoints = new Set()
   const components = new Set()
   const seen = new Set([startFile])
   let frontier = [startFile]
   let scanned = 0
-  for (let depth = 0; depth <= MAX_BFS_DEPTH && frontier.length && scanned < MAX_BFS_FILES; depth++) {
+  for (let depth = 0; depth <= MAX_TRACE_DEPTH && frontier.length && scanned < MAX_TRACED_FILES; depth++) {
     const next = []
     for (const file of frontier) {
-      if (scanned >= MAX_BFS_FILES) break
+      if (scanned >= MAX_TRACED_FILES) break
       scanned++
       const text = readFile(file)
       if (!text) continue
-      extractEndpointsFromText(text, endpoints) // use*Endpoints('path') hooks
-      extractApiCallsFromText(text, endpoints) // fetch/axios/.get/.post + template-URL paths
-      extractUiComponents(text, components) // design-system named imports
-      for (const spec of importSpecs(text)) {
-        const target = resolve(file, spec)
-        if (target && !seen.has(target)) { seen.add(target); next.push(target) }
+      collectFromText(text, endpoints, components)
+      for (const specifier of importSpecifiers(text)) {
+        const target = resolve(file, specifier)
+        if (!target || seen.has(target)) continue
+        seen.add(target)
+        next.push(target)
       }
     }
     frontier = next
@@ -209,116 +389,146 @@ const traceEndpoints = (startFile, resolve) => {
   return { endpoints: [...endpoints].sort(), components: [...components].sort(), filesScanned: scanned }
 }
 
-// Scan a whole screen directory subtree for endpoints. Used for folder-method screens, whose
-// components often sit several levels below the dir (e.g. AddFlow/AddNewAsset/AddNewAsset.tsx) with
-// no resolvable entry file — and whose repos frequently have no tsconfig aliases, so import-graph
-// BFS stalls. The dir is the screen boundary, so scanning it directly is both simpler and complete.
-const traceDir = (dir) => {
+// Folder-method screens often have no resolvable entry file (the component sits a few levels
+// down) and their repos often have no aliases, so the import walk stalls. The folder is the screen
+// boundary, so scanning it whole is simpler and complete.
+function traceDirectory(dir) {
   const endpoints = new Set()
   const components = new Set()
-  const files = walkSrc(dir).slice(0, MAX_BFS_FILES)
-  for (const f of files) {
-    const t = readFile(f)
-    if (!t) continue
-    extractEndpointsFromText(t, endpoints)
-    extractApiCallsFromText(t, endpoints)
-    extractUiComponents(t, components)
+  const files = listSourceFiles(dir).slice(0, MAX_TRACED_FILES)
+  for (const file of files) {
+    const text = readFile(file)
+    if (text) collectFromText(text, endpoints, components)
   }
   return { endpoints: [...endpoints].sort(), components: [...components].sort(), filesScanned: files.length }
 }
 
-// Humanize a path/component into a screen label.
-const screenName = (component, routePath) => component || (routePath || '').replace(/^\//, '').split('/')[0] || 'screen'
+function traceScreen(screen, resolve) {
+  if (screen.dir) return traceDirectory(screen.dir)
+  if (screen.file) return traceImportGraph(screen.file, resolve)
+  return { endpoints: [], components: [], filesScanned: 0 }
+}
 
-const gatherRepo = (folder) => {
+// ---- Per-repo gathering ----------------------------------------------------------------------
+
+const screenName = (component, routePath) =>
+  component || (routePath || '').replace(/^\//, '').split('/')[0] || 'screen'
+
+function isRouterFile(file) {
+  if (/Router[\w]*\.[jt]sx?$/.test(path.basename(file))) return true
+  return /<Route[\s>]|createBrowserRouter|createRoutesFromElements/.test(readFile(file))
+}
+
+// A component routed from several places becomes one screen with all its paths and roles.
+function screensFromRouters(routerFiles, resolve) {
+  const screenByComponent = new Map()
+  for (const routerFile of routerFiles) {
+    const text = readFile(routerFile)
+    const specifierByName = importMap(text)
+    for (const route of parseRoutes(text)) {
+      const specifier = specifierByName[route.component]
+      const file = specifier ? resolve(routerFile, specifier) : null
+      const existing = screenByComponent.get(route.component)
+      if (!existing) {
+        screenByComponent.set(route.component, {
+          component: route.component,
+          paths: route.path ? [route.path] : [],
+          roles: [...route.roles],
+          file,
+        })
+        continue
+      }
+      if (route.path) pushUnique(existing.paths, route.path)
+      for (const role of route.roles) pushUnique(existing.roles, role)
+      if (!existing.file && file) existing.file = file
+    }
+  }
+  return [...screenByComponent.values()]
+}
+
+function screensFromFolders(srcDir, resolve) {
+  const screens = []
+  for (const folderName of SCREEN_FOLDERS) {
+    const folder = path.join(srcDir, folderName)
+    if (!fs.existsSync(folder)) continue
+    // resolve() uses dirname(fromFile), so anchor on a file inside the folder.
+    const anchor = path.join(folder, 'index.tsx')
+    const resolveEntry = (entry) => resolve(anchor, './' + entry.name)
+    for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+      const stem = path.basename(entry.name, path.extname(entry.name))
+      if (entry.isDirectory()) {
+        const dir = path.join(folder, entry.name)
+        screens.push({ component: entry.name, paths: [], roles: [], file: resolveEntry(entry), dir })
+      } else if (/\.[jt]sx$/.test(entry.name) && /^[A-Z]/.test(stem)) {
+        // Loose PascalCase component files only; utils, constants and index are skipped.
+        screens.push({ component: stem, paths: [], roles: [], file: resolveEntry(entry) })
+      }
+    }
+  }
+  return screens
+}
+
+function screenFileLabel(repoDir, screen) {
+  if (screen.file) return relativePosix(repoDir, screen.file)
+  if (screen.dir) return relativePosix(repoDir, screen.dir) + '/'
+  return null
+}
+
+function describeScreen(repoDir, screen, resolve) {
+  const trace = traceScreen(screen, resolve)
+  return {
+    name: screenName(screen.component, screen.paths[0]),
+    component: screen.component,
+    path: screen.paths[0] || null,
+    paths: screen.paths,
+    roles: screen.roles,
+    file: screenFileLabel(repoDir, screen),
+    endpoints: trace.endpoints,
+    components: trace.components || [],
+    filesScanned: trace.filesScanned,
+  }
+}
+
+// A screen with no path, file, endpoints or components carries nothing.
+const carriesInformation = (screen) =>
+  screen.path || screen.file || screen.endpoints.length || screen.components.length
+
+function gatherRepo(folder) {
   const repoDir = path.join(ROOT, folder)
   const srcDir = path.join(repoDir, 'src')
   if (!fs.existsSync(srcDir)) return null
   maybeFetch(repoDir)
-  const ts = readTsPaths(repoDir)
-  const resolve = makeResolver(repoDir, ts)
-  const allFiles = walkSrc(srcDir)
-
-  // router files: *Router*.tsx, or any file using <Route/createBrowserRouter
-  const routerFiles = allFiles.filter((f) => {
-    if (/Router[\w]*\.[jt]sx?$/.test(path.basename(f))) return true
-    const t = readFile(f)
-    return /<Route[\s>]|createBrowserRouter|createRoutesFromElements/.test(t)
-  })
-
-  const byComponent = new Map() // component -> screen (merge multiple paths)
-  for (const rf of routerFiles) {
-    const text = readFile(rf)
-    const imap = importMap(text)
-    for (const r of parseRoutes(text)) {
-      const spec = imap[r.component]
-      const file = spec ? resolve(rf, spec) : null
-      const key = r.component
-      const existing = byComponent.get(key)
-      if (existing) {
-        if (r.path && !existing.paths.includes(r.path)) existing.paths.push(r.path)
-        for (const role of r.roles) if (!existing.roles.includes(role)) existing.roles.push(role)
-        if (!existing.file && file) existing.file = file
-      } else {
-        byComponent.set(key, { component: r.component, paths: r.path ? [r.path] : [], roles: [...r.roles], file })
-      }
-    }
-  }
+  const resolve = makeResolver(repoDir, readTsPaths(repoDir))
+  const routerFiles = listSourceFiles(srcDir).filter(isRouterFile)
 
   let method = 'router'
-  let screens = [...byComponent.values()]
-
-  // fallback: folder convention when no router-derived screens with files
-  if (!screens.some((s) => s.file)) {
+  let screens = screensFromRouters(routerFiles, resolve)
+  if (!screens.some((screen) => screen.file)) {
     method = 'folder'
-    screens = []
-    for (const dirName of ['pages', 'screens', 'views']) {
-      const base = path.join(srcDir, dirName)
-      if (!fs.existsSync(base)) continue
-      // resolve() takes dirname(fromFile), so anchor on a sentinel file *inside* base
-      const anchor = path.join(base, 'index.tsx')
-      for (const e of fs.readdirSync(base, { withFileTypes: true })) {
-        const stem = path.basename(e.name, path.extname(e.name))
-        if (e.isDirectory()) { const f = resolve(anchor, './' + e.name); screens.push({ component: e.name, paths: [], roles: [], file: f, dir: path.join(base, e.name) }) }
-        // loose component files only: PascalCase .tsx/.jsx (skip utils/constants/index)
-        else if (/\.[jt]sx$/.test(e.name) && /^[A-Z]/.test(stem)) { const f = resolve(anchor, './' + e.name); screens.push({ component: stem, paths: [], roles: [], file: f }) }
-      }
-    }
+    screens = screensFromFolders(srcDir, resolve)
   }
 
-  // attribute endpoints per screen: folder-method screens scan their whole dir subtree; router-method
-  // screens BFS the resolved component's import graph.
-  const out = []
-  for (const s of screens) {
-    const trace = s.dir ? traceDir(s.dir) : s.file ? traceEndpoints(s.file, resolve) : { endpoints: [], components: [], filesScanned: 0 }
-    out.push({
-      name: screenName(s.component, s.paths[0]),
-      component: s.component,
-      path: s.paths[0] || null,
-      paths: s.paths,
-      roles: s.roles,
-      file: s.file ? rel(repoDir, s.file) : s.dir ? rel(repoDir, s.dir) + '/' : null,
-      endpoints: trace.endpoints,
-      components: trace.components || [],
-      filesScanned: trace.filesScanned,
-    })
-  }
-  // drop pure noise: a "screen" with no route path, no resolved file, and no endpoints carries nothing
-  const kept = out.filter((s) => s.path || s.file || s.endpoints.length || s.components.length)
-  kept.sort((a, b) => a.name.localeCompare(b.name))
-  return { method, routerFiles: routerFiles.length, screens: kept }
+  const described = screens
+    .map((screen) => describeScreen(repoDir, screen, resolve))
+    .filter(carriesInformation)
+  described.sort((a, b) => a.name.localeCompare(b.name))
+  return { method, routerFiles: routerFiles.length, screens: described }
 }
 
-// CLI: run the full extraction only when invoked directly (not when imported by a test).
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function main() {
   const perRepo = {}
   for (const folder of repos.feInOrg) {
-    const r = gatherRepo(folder)
-    if (!r) continue
-    perRepo[folder] = r
-    const withEp = r.screens.filter((s) => s.endpoints.length).length
-    console.log(`  ${folder}: ${r.screens.length} screens (${r.method}), ${withEp} with endpoints`)
+    const repoScreens = gatherRepo(folder)
+    if (!repoScreens) continue
+    perRepo[folder] = repoScreens
+    const withEndpoints = repoScreens.screens.filter((screen) => screen.endpoints.length).length
+    console.log(
+      `  ${folder}: ${repoScreens.screens.length} screens (${repoScreens.method}), ${withEndpoints} with endpoints`,
+    )
   }
   fs.writeFileSync(path.join(AUDIT, 'scripts/screens-out.json'), JSON.stringify({ perRepo }, null, 2))
   console.log('done; repos with screens:', Object.keys(perRepo).length)
 }
+
+// Run only when invoked directly, not when imported by a test.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

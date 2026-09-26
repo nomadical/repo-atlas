@@ -3,89 +3,124 @@ import path from 'node:path'
 
 import { ROOT, AUDIT } from './_paths.mjs'
 import { repos } from './repos.mjs'
-const REPOS = repos.moduleGraph
 
-const walk = (dir, acc=[]) => {
-  let ents
-  try { ents = fs.readdirSync(dir, { withFileTypes: true }) } catch { return acc }
-  for (const e of ents) {
-    const p = path.join(dir, e.name)
-    if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist') continue
-      walk(p, acc)
-    } else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name) && !/\.d\.ts$/.test(e.name)) {
-      acc.push(p)
+// How many folder levels below src/ make up one graph node (src/<folder>).
+const FOLDER_DEPTH = 1
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
+const SKIPPED_DIRS = new Set(['node_modules', '.git', 'dist'])
+const EDGE_SEPARATOR = ' -> '
+const IMPORT_PATTERN =
+  /(?:import\s[^'"]*?from\s*|import\s*|export\s[^'"]*?from\s*|require\(\s*)['"]([^'"]+)['"]/g
+// Path aliases that all point at src/.
+const SRC_ALIAS_PATTERN = /^@src\/|^@\/|^~\//
+
+const isSourceFile = (name) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name) && !name.endsWith('.d.ts')
+
+const listSourceFiles = (dir, found = []) => {
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return found
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (!SKIPPED_DIRS.has(entry.name)) listSourceFiles(entryPath, found)
+    } else if (isSourceFile(entry.name)) {
+      found.push(entryPath)
     }
   }
-  return acc
+  return found
 }
 
-const DEPTH = 1
-const toFolder = (relFromRepo) => {
-  const segs = relFromRepo.split('/')
-  if (segs[0] !== 'src') return null
-  const last = segs[segs.length-1]
-  const segsDir = /\.[a-z]+$/.test(last) ? segs.slice(0, -1) : segs.slice()
-  if (segsDir.length <= 1) return 'src'
-  return segsDir.slice(0, 1 + DEPTH).join('/')
+// Maps a repo-relative path to its graph node, or null when it is outside src/.
+const toFolder = (pathFromRepo) => {
+  const segments = pathFromRepo.split('/')
+  if (segments[0] !== 'src') return null
+  const lastSegment = segments[segments.length - 1]
+  const dirSegments = /\.[a-z]+$/.test(lastSegment) ? segments.slice(0, -1) : segments.slice()
+  if (dirSegments.length <= 1) return 'src'
+  return dirSegments.slice(0, 1 + FOLDER_DEPTH).join('/')
 }
 
-const importRe = /(?:import\s[^'"]*?from\s*|import\s*|export\s[^'"]*?from\s*|require\(\s*)['"]([^'"]+)['"]/g
+const listTopFolders = (srcDir) =>
+  new Set(
+    fs
+      .readdirSync(srcDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+  )
 
-const result = {}
-for (const repo of REPOS) {
-  const repoDir = path.join(ROOT, repo)
-  const srcDir = path.join(repoDir, 'src')
-  if (!fs.existsSync(srcDir)) { result[repo] = { method:'grep', error:'no src', crossFolderEdges:0, edges:[] }; continue }
-  const topFolders = new Set(fs.readdirSync(srcDir, {withFileTypes:true}).filter(d=>d.isDirectory()).map(d=>d.name))
-  const files = walk(srcDir)
-  const fileSet = new Set(files.map(f => path.relative(repoDir, f)))
-  const exists = (relNoExt) => {
-    for (const ext of ['.ts','.tsx','.js','.jsx','.mjs','.cjs']) {
-      if (fileSet.has(relNoExt+ext)) return relNoExt+ext
-      if (fileSet.has(relNoExt+'/index'+ext)) return relNoExt+'/index'+ext
-    }
-    if (fileSet.has(relNoExt)) return relNoExt
+// Resolves an extension-less import path the way a bundler would; null when no file matches.
+const makeResolver = (knownFiles) => (pathWithoutExt) => {
+  for (const ext of SOURCE_EXTENSIONS) {
+    if (knownFiles.has(pathWithoutExt + ext)) return pathWithoutExt + ext
+    const indexFile = pathWithoutExt + '/index' + ext
+    if (knownFiles.has(indexFile)) return indexFile
+  }
+  if (knownFiles.has(pathWithoutExt)) return pathWithoutExt
+  return null
+}
+
+// Returns the repo-relative import target, or null for a package import.
+const importTarget = (specifier, importingFile, topFolders) => {
+  if (specifier.startsWith('.')) return path.normalize(path.join(path.dirname(importingFile), specifier))
+  if (specifier.startsWith('src/')) return specifier
+  if (SRC_ALIAS_PATTERN.test(specifier)) return 'src/' + specifier.replace(SRC_ALIAS_PATTERN, '')
+  // Bare specifiers that name a src/ top folder come from a baseUrl of src/.
+  if (topFolders.has(specifier.split('/')[0])) return 'src/' + specifier
+  return null
+}
+
+const readText = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch {
     return null
   }
-  const edgeSet = new Set()
-  for (const file of files) {
-    const relFile = path.relative(repoDir, file)
-    const fromFolder = toFolder(relFile)
-    if (!fromFolder) continue
-    let txt
-    try { txt = fs.readFileSync(file,'utf8') } catch { continue }
-    let m
-    importRe.lastIndex = 0
-    while ((m = importRe.exec(txt))) {
-      const spec = m[1]
-      let targetRel = null
-      if (spec.startsWith('.')) {
-        const abs = path.normalize(path.join(path.dirname(relFile), spec))
-        targetRel = exists(abs) || abs
-      } else if (spec.startsWith('src/')) {
-        targetRel = exists(spec) || spec
-      } else if (spec.startsWith('@src/') || spec.startsWith('@/') || spec.startsWith('~/')) {
-        const abs = 'src/' + spec.replace(/^@src\/|^@\/|^~\//, '')
-        targetRel = exists(abs) || abs
-      } else {
-        const first = spec.split('/')[0]
-        if (topFolders.has(first)) {
-          const abs = 'src/'+spec
-          targetRel = exists(abs) || abs
-        } else {
-          continue
-        }
-      }
-      const dest = toFolder(targetRel)
-      if (!dest) continue
-      if (dest === fromFolder) continue
-      edgeSet.add(fromFolder + ' -> ' + dest)
-    }
-  }
-  const edges = [...edgeSet].sort().map(e => e.split(' -> '))
-  result[repo] = { method:'grep', crossFolderEdges: edges.length, srcFiles: files.length, topFolders:[...topFolders].sort(), edges }
 }
 
-fs.writeFileSync(path.join(AUDIT,'scripts/modulegraph-out.json'), JSON.stringify(result,null,2))
-for (const [r,v] of Object.entries(result)) console.log(r, '->', v.crossFolderEdges, 'edges,', v.srcFiles||0,'files')
+const collectCrossFolderEdges = (repoDir, files, topFolders) => {
+  const resolve = makeResolver(new Set(files.map((file) => path.relative(repoDir, file))))
+  const edges = new Set()
+  for (const file of files) {
+    const relativeFile = path.relative(repoDir, file)
+    const fromFolder = toFolder(relativeFile)
+    if (!fromFolder) continue
+    const text = readText(file)
+    if (text === null) continue
+    for (const match of text.matchAll(IMPORT_PATTERN)) {
+      const target = importTarget(match[1], relativeFile, topFolders)
+      if (target === null) continue
+      const toFolderName = toFolder(resolve(target) || target)
+      if (!toFolderName || toFolderName === fromFolder) continue
+      edges.add(fromFolder + EDGE_SEPARATOR + toFolderName)
+    }
+  }
+  return [...edges].sort().map((edge) => edge.split(EDGE_SEPARATOR))
+}
+
+const buildRepoGraph = (repo) => {
+  const repoDir = path.join(ROOT, repo)
+  const srcDir = path.join(repoDir, 'src')
+  if (!fs.existsSync(srcDir)) return { method: 'grep', error: 'no src', crossFolderEdges: 0, edges: [] }
+  const topFolders = listTopFolders(srcDir)
+  const files = listSourceFiles(srcDir)
+  const edges = collectCrossFolderEdges(repoDir, files, topFolders)
+  return {
+    method: 'grep',
+    crossFolderEdges: edges.length,
+    srcFiles: files.length,
+    topFolders: [...topFolders].sort(),
+    edges,
+  }
+}
+
+const graphsByRepo = {}
+for (const repo of repos.moduleGraph) graphsByRepo[repo] = buildRepoGraph(repo)
+
+fs.writeFileSync(path.join(AUDIT, 'scripts/modulegraph-out.json'), JSON.stringify(graphsByRepo, null, 2))
+for (const [repo, graph] of Object.entries(graphsByRepo)) {
+  console.log(repo, '->', graph.crossFolderEdges, 'edges,', graph.srcFiles || 0, 'files')
+}

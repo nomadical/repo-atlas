@@ -1,179 +1,202 @@
 import dagre from '@dagrejs/dagre'
 import { MarkerType } from '@xyflow/react'
 
-// Per-client drill-down graph: a three-tier trace — screens (routes) → the backend endpoints they
-// call → the backend that serves each endpoint. Screen/endpoint data comes from
-// data.extras.screens.perRepo[folder] (scripts/screens-gather.mjs); the endpoint→backend resolution
-// matches the endpoint's swagger-link host (or the repo's apiUrl) against data.backendTopology hosts.
-// Laid out left→right with dagre so shared endpoints/backends fan in visibly. Read-only.
+// Per-client drill-down: screens (routes) → the endpoints they call → the backend serving each
+// endpoint. Screen data comes from data.extras.screens.perRepo[folder] (scripts/screens-gather.mjs).
+// An endpoint resolves to a backend by matching its swagger-link host, or the repo's apiUrl, against
+// data.backendTopology hosts. Laid out left to right with dagre so shared endpoints fan in visibly.
 
-const SCREEN_W = 230,
-  SCREEN_H = 92,
-  EP_W = 240,
-  EP_H = 56,
-  BE_W = 210,
-  BE_H = 64
+const SIZE_BY_KIND = {
+  screen: [230, 92],
+  endpoint: [240, 56],
+  backend: [210, 64],
+}
+const ROLES_SHOWN = 3
+const SCREEN_EDGE_COLOR = '#00838f'
+const BACKEND_EDGE_COLOR = '#fb8c00'
 
 export function clientScreens(data, folder) {
   return data?.extras?.screens?.perRepo?.[folder] || null
 }
 
-// Design-system adoption: invert the per-screen component usage into "which clients/screens use each
-// design-system export" — change-impact analysis for the design-system team. Takes data.extras.
+// Which clients and screens use each design-system export: change-impact analysis for the
+// design-system team. Takes data.extras.
 export function componentAdoption(extras) {
-  const per = extras?.screens?.perRepo || {}
-  const map = new Map() // component -> { clients:Set, screens:number }
-  for (const [folder, rep] of Object.entries(per)) {
-    for (const s of rep.screens || []) {
-      for (const c of s.components || []) {
-        let e = map.get(c)
-        if (!e) {
-          e = { clients: new Set(), screens: 0 }
-          map.set(c, e)
+  const perRepo = extras?.screens?.perRepo || {}
+  const usageByComponent = new Map()
+  for (const [folder, report] of Object.entries(perRepo)) {
+    for (const screen of report.screens || []) {
+      for (const component of screen.components || []) {
+        if (!usageByComponent.has(component)) {
+          usageByComponent.set(component, { clients: new Set(), screens: 0 })
         }
-        e.clients.add(folder)
-        e.screens++
+        const usage = usageByComponent.get(component)
+        usage.clients.add(folder)
+        usage.screens++
       }
     }
   }
-  return [...map.entries()]
-    .map(([component, e]) => ({ component, clients: [...e.clients].sort(), screens: e.screens }))
-    .sort((a, b) => b.clients.length - a.clients.length || b.screens - a.screens || a.component.localeCompare(b.component))
+  return [...usageByComponent.entries()]
+    .map(([component, usage]) => ({ component, clients: [...usage.clients].sort(), screens: usage.screens }))
+    .sort(
+      (a, b) =>
+        b.clients.length - a.clients.length ||
+        b.screens - a.screens ||
+        a.component.localeCompare(b.component),
+    )
 }
 
-// Normalize a host for comparison: drop protocol/path, collapse env segments to .{env}, lowercase.
-const normHost = (h) =>
-  String(h || '')
+// Hosts compare without protocol or path, and with environment segments collapsed to .{env}.
+const normalizeHost = (host) =>
+  String(host || '')
     .replace(/^https?:\/\//, '')
     .replace(/\/.*$/, '')
     .replace(/\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g, '.{env}')
     .toLowerCase()
 
-// Resolve each endpoint of a client to the backend node that serves it. Returns
-// { backendOf(endpoint) -> backend|null, backends: [used backend nodes] }.
+function hostOfUrl(url) {
+  if (!url) return null
+  try {
+    return new URL(url).host
+  } catch {
+    return null
+  }
+}
+
+// Returns { backendOf(endpoint) -> backend | null, backends }.
 export function clientBackendResolver(data, folder) {
-  const rep = clientScreens(data, folder)
-  const repo = data?.repos?.find((r) => r.folder === folder)
+  const report = clientScreens(data, folder)
+  const repo = data?.repos?.find((candidate) => candidate.folder === folder)
   const backends = data?.backendTopology?.backends || []
-  const links = rep?.endpointLinks || {}
-  const apiHost = repo?.apiUrl ? normHost(repo.apiUrl) : null
+  const links = report?.endpointLinks || {}
+  const apiHost = repo?.apiUrl ? normalizeHost(repo.apiUrl) : null
   const cache = new Map()
   const backendOf = (endpoint) => {
     if (cache.has(endpoint)) return cache.get(endpoint)
-    let host = null
-    const link = links[endpoint]
-    if (link) {
-      try {
-        host = new URL(link).host
-      } catch {
-        /* not a full URL */
-      }
-    }
-    const nh = host ? normHost(host) : apiHost
-    const be = (nh && backends.find((b) => b.host && normHost(b.host) === nh)) || null
-    cache.set(endpoint, be)
-    return be
+    const linkHost = hostOfUrl(links[endpoint])
+    const host = linkHost ? normalizeHost(linkHost) : apiHost
+    const backend = (host && backends.find((b) => b.host && normalizeHost(b.host) === host)) || null
+    cache.set(endpoint, backend)
+    return backend
   }
   return { backendOf, backends }
 }
 
-// Distinct backend labels a screen's endpoints reach (for the table's Backend column).
+// Distinct backend labels a screen's endpoints reach (the table's Backend column).
 export function screenBackendLabels(screen, backendOf) {
-  const seen = new Map()
-  for (const e of screen.endpoints || []) {
-    const be = backendOf(e)
-    if (be && !seen.has(be.id)) seen.set(be.id, be.label)
+  const labelById = new Map()
+  for (const endpoint of screen.endpoints || []) {
+    const backend = backendOf(endpoint)
+    if (backend && !labelById.has(backend.id)) labelById.set(backend.id, backend.label)
   }
-  return [...seen.values()]
+  return [...labelById.values()]
 }
 
-// Build { nodes, edges, screenCount, endpointCount, backendCount } for one client, or null if no data.
+const arrowEdge = (source, target, color) => ({
+  id: `${source}->${target}`,
+  source,
+  target,
+  markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+  style: { stroke: color, strokeWidth: 1 },
+})
+
+// Two screens can share a component name (route wrappers), so duplicates get a numeric suffix
+// instead of overwriting each other in dagre and in React keys.
+function uniqueScreenId(screen, usedIds) {
+  const base = 'screen:' + (screen.component || screen.name)
+  let id = base
+  for (let i = 2; usedIds.has(id); i++) id = base + ':' + i
+  usedIds.add(id)
+  return id
+}
+
+// Returns { nodes, edges, screenCount, endpointCount, backendCount, method } for one client, or
+// null when it has no screen data.
 export function buildClientGraph(data, folder) {
-  const rep = clientScreens(data, folder)
-  if (!rep || !rep.screens?.length) return null
-  const links = rep.endpointLinks || {}
+  const report = clientScreens(data, folder)
+  if (!report || !report.screens?.length) return null
+  const links = report.endpointLinks || {}
   const { backendOf } = clientBackendResolver(data, folder)
 
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'LR', nodesep: 22, ranksep: 200, marginx: 24, marginy: 24, ranker: 'tight-tree' })
+  const layoutGraph = new dagre.graphlib.Graph()
+  layoutGraph.setDefaultEdgeLabel(() => ({}))
+  layoutGraph.setGraph({
+    rankdir: 'LR',
+    nodesep: 22,
+    ranksep: 200,
+    marginx: 24,
+    marginy: 24,
+    ranker: 'tight-tree',
+  })
 
   const nodes = []
   const edges = []
-  const endpointIds = new Map() // endpoint path -> node id
-  const backendIds = new Set() // backend id already added
-  const dimOf = (kind) => (kind === 'endpoint' ? [EP_W, EP_H] : kind === 'backend' ? [BE_W, BE_H] : [SCREEN_W, SCREEN_H])
+  const endpointNodeIds = new Map()
+  const backendIds = new Set()
 
-  const addBackendNode = (be) => {
-    const id = 'be:' + be.id
-    if (!backendIds.has(be.id)) {
-      backendIds.add(be.id)
-      nodes.push({ id, type: 'card', position: { x: 0, y: 0 }, data: { kind: 'backend', title: be.label, subtitle: be.host || null, backend: be } })
-      g.setNode(id, { width: BE_W, height: BE_H })
-    }
+  const addNode = (id, data) => {
+    nodes.push({ id, type: 'card', position: { x: 0, y: 0 }, data })
+    const [width, height] = SIZE_BY_KIND[data.kind]
+    layoutGraph.setNode(id, { width, height })
+  }
+  const addEdge = (source, target, color) => {
+    edges.push(arrowEdge(source, target, color))
+    layoutGraph.setEdge(source, target)
+  }
+
+  const backendNodeId = (backend) => {
+    const id = 'be:' + backend.id
+    if (backendIds.has(backend.id)) return id
+    backendIds.add(backend.id)
+    addNode(id, { kind: 'backend', title: backend.label, subtitle: backend.host || null, backend })
     return id
   }
 
-  const epId = (e) => {
-    if (endpointIds.has(e)) return endpointIds.get(e)
-    const id = 'ep:' + e
-    endpointIds.set(e, id)
-    nodes.push({
-      id,
-      type: 'card',
-      position: { x: 0, y: 0 },
-      data: { kind: 'endpoint', title: e, subtitle: links[e] ? 'swagger ↗' : null, endpoint: e, link: links[e] || null },
+  // Each endpoint is added once, together with its edge to the backend serving it.
+  const endpointNodeId = (endpoint) => {
+    if (endpointNodeIds.has(endpoint)) return endpointNodeIds.get(endpoint)
+    const id = 'ep:' + endpoint
+    endpointNodeIds.set(endpoint, id)
+    addNode(id, {
+      kind: 'endpoint',
+      title: endpoint,
+      subtitle: links[endpoint] ? 'swagger ↗' : null,
+      endpoint,
+      link: links[endpoint] || null,
     })
-    g.setNode(id, { width: EP_W, height: EP_H })
-    // endpoint → backend (resolved once per endpoint)
-    const be = backendOf(e)
-    if (be) {
-      const bid = addBackendNode(be)
-      edges.push({
-        id: `${id}->${bid}`,
-        source: id,
-        target: bid,
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#fb8c00', width: 16, height: 16 },
-        style: { stroke: '#fb8c00', strokeWidth: 1 },
-      })
-      g.setEdge(id, bid)
-    }
+    const backend = backendOf(endpoint)
+    if (backend) addEdge(id, backendNodeId(backend), BACKEND_EDGE_COLOR)
     return id
   }
 
   const screenIds = new Set()
-  for (const s of rep.screens) {
-    // two screens can share a component name (route wrappers) — suffix duplicates so neither
-    // silently overwrites the other in dagre / React keys
-    let id = 'screen:' + (s.component || s.name)
-    for (let i = 2; screenIds.has(id); i++) id = 'screen:' + (s.component || s.name) + ':' + i
-    screenIds.add(id)
-    nodes.push({
-      id,
-      type: 'card',
-      position: { x: 0, y: 0 },
-      data: { kind: 'screen', title: s.name, subtitle: s.path || s.file || null, chips: (s.roles || []).slice(0, 3), screen: s },
+  for (const screen of report.screens) {
+    const id = uniqueScreenId(screen, screenIds)
+    addNode(id, {
+      kind: 'screen',
+      title: screen.name,
+      subtitle: screen.path || screen.file || null,
+      chips: (screen.roles || []).slice(0, ROLES_SHOWN),
+      screen,
     })
-    g.setNode(id, { width: SCREEN_W, height: SCREEN_H })
-    for (const e of s.endpoints || []) {
-      const t = epId(e)
-      edges.push({
-        id: `${id}->${t}`,
-        source: id,
-        target: t,
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#00838f', width: 16, height: 16 },
-        style: { stroke: '#00838f', strokeWidth: 1 },
-      })
-      g.setEdge(id, t)
+    for (const endpoint of screen.endpoints || []) {
+      addEdge(id, endpointNodeId(endpoint), SCREEN_EDGE_COLOR)
     }
   }
 
-  dagre.layout(g)
-  for (const n of nodes) {
-    const [w, h] = dimOf(n.data.kind)
-    const p = g.node(n.id)
-    n.position = { x: p.x - w / 2, y: p.y - h / 2 }
+  dagre.layout(layoutGraph)
+  for (const node of nodes) {
+    const [width, height] = SIZE_BY_KIND[node.data.kind]
+    const center = layoutGraph.node(node.id)
+    node.position = { x: center.x - width / 2, y: center.y - height / 2 }
   }
 
-  return { nodes, edges, screenCount: rep.screens.length, endpointCount: endpointIds.size, backendCount: backendIds.size, method: rep.method }
+  return {
+    nodes,
+    edges,
+    screenCount: report.screens.length,
+    endpointCount: endpointNodeIds.size,
+    backendCount: backendIds.size,
+    method: report.method,
+  }
 }

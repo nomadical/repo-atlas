@@ -1,8 +1,19 @@
-// Structural tests for buildGraph against the real committed model. These guard the invariants
-// the renderer relies on (no dangling edges, clusters + core nodes present, deterministic across
-// option combos) — especially valuable before the reactflow→xyflow migration and the App split.
+// Structural tests for buildGraph against the real committed model: the invariants the renderer
+// relies on (no dangling edges, clusters and core nodes present, stable across option combos).
 import { describe, it, expect } from 'vitest'
-import { buildGraph, KIND, LAYERS, DEFAULT_LAYERS, resolveClusters, DEFAULT_CLUSTERS, matchInventory, isAtRisk, nodeIdOf, groupingFor } from './graph.js'
+import {
+  buildGraph,
+  KIND,
+  LAYERS,
+  DEFAULT_LAYERS,
+  resolveClusters,
+  DEFAULT_CLUSTERS,
+  matchInventory,
+  isAtRisk,
+  nodeIdOf,
+  groupingFor,
+  clusterOfInv,
+} from './graph.js'
 import main from '../../fe-architecture.json'
 import extras from '../../fe-architecture-extras.json'
 import config from '../../config.json'
@@ -17,7 +28,8 @@ const CLUSTERS = resolveClusters(config)
 const ALL_CLUSTERS = CLUSTERS.map((c) => c.label)
 const LANES = CLUSTERS.filter((c) => !c.fallback).map((c) => c.label)
 const FALLBACK = CLUSTERS.find((c) => c.fallback)?.label ?? 'Shared'
-const [LANE_A, LANE_B] = [LANES[0], LANES[1] ?? LANES[0]]
+const LANE_A = LANES[0]
+const LANE_B = LANES[1] ?? LANES[0]
 // an owner topic value that routes into LANE_A, for synthetic fixtures
 const OWNER_A = (CLUSTERS.find((c) => c.label === LANE_A)?.match || [])[0] || LANE_A
 const CORE_CLIENTS = main.repos
@@ -32,7 +44,10 @@ const optionMatrix = [
   { label: 'dev all layers', opts: { mode: 'dev', layers: ALL_LAYERS_ON, facets: groups(...ALL_CLUSTERS) } },
   { label: 'one lane only', opts: { mode: 'dev', facets: groups(LANE_B) } },
   { label: 'no cluster filter (all shown)', opts: { mode: 'dev' } },
-  { label: 'status facet', opts: { mode: 'dev', facets: { ...groups(...ALL_CLUSTERS), status: new Set(['Current']) } } },
+  {
+    label: 'status facet',
+    opts: { mode: 'dev', facets: { ...groups(...ALL_CLUSTERS), status: new Set(['Current']) } },
+  },
   { label: 'health facet', opts: { mode: 'dev', facets: { health: new Set(['at-risk']) } } },
 ]
 
@@ -43,59 +58,59 @@ describe('groupingFor (Group by: Application / Platform)', () => {
   })
 
   it('application grouping derives one lane per first-application, plus Other', () => {
-    const g = groupingFor(data, 'application')
-    expect(g).toBeTruthy()
-    const labels = g.clusters.map((c) => c.label)
+    const grouping = groupingFor(data, 'application')
+    expect(grouping).toBeTruthy()
+    const labels = grouping.clusters.map((c) => c.label)
     expect(labels).toContain('Other')
     expect(labels.length).toBeGreaterThan(3)
     // membership: a component's first application names its lane; app-less → Other
     const withApp = data.inventory.find((e) => e.applications?.length)
-    expect(g.memberOf(withApp)).toBe(withApp.applications[0])
-    expect(g.memberOf({ applications: [] })).toBe('Other')
+    expect(grouping.memberOf(withApp)).toBe(withApp.applications[0])
+    expect(grouping.memberOf({ applications: [] })).toBe('Other')
   })
 
   it('platform grouping follows config.platforms order and rolls apps up', () => {
     const config = { platforms: { P1: ['App A'], P2: ['App B'] } }
-    const g = groupingFor({ ...data, config }, 'platform')
-    expect(g.clusters.map((c) => c.label).slice(0, 2)).toEqual(['P1', 'P2'])
-    expect(g.memberOf({ applications: ['App B'] })).toBe('P2')
-    expect(g.memberOf({ applications: ['Unmapped App'] })).toBe('Other')
+    const grouping = groupingFor({ ...data, config }, 'platform')
+    expect(grouping.clusters.map((c) => c.label).slice(0, 2)).toEqual(['P1', 'P2'])
+    expect(grouping.memberOf({ applications: ['App B'] })).toBe('P2')
+    expect(grouping.memberOf({ applications: ['Unmapped App'] })).toBe('Other')
   })
 
   it('buildGraph lays out lanes without dangling edges under both groupings', () => {
-    for (const by of ['application', 'platform']) {
-      const g = buildGraph(data, { mode: 'dev', groupBy: by })
-      const ids = new Set(g.nodes.map((n) => n.id))
-      for (const e of g.edges) {
+    for (const groupBy of ['application', 'platform']) {
+      const graph = buildGraph(data, { mode: 'dev', groupBy })
+      const ids = new Set(graph.nodes.map((n) => n.id))
+      for (const e of graph.edges) {
         expect(ids.has(e.source)).toBe(true)
         expect(ids.has(e.target)).toBe(true)
       }
-      expect(g.nodes.some((n) => n.type === 'region')).toBe(true)
+      expect(graph.nodes.some((n) => n.type === 'region')).toBe(true)
     }
   })
 })
 
 describe('buildGraph', () => {
   it('produces nodes and edges with valid kinds', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    expect(g.nodes.length).toBeGreaterThan(10)
-    for (const n of g.nodes) {
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    expect(graph.nodes.length).toBeGreaterThan(10)
+    for (const n of graph.nodes) {
       if (n.type === 'card') expect(KIND[n.data.kind] || n.data.kind === 'bus').toBeTruthy()
     }
   })
 
   it('has region clusters and the core FE clients as cards', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    expect(g.nodes.some((n) => n.type === 'region')).toBe(true)
-    const cardIds = new Set(g.nodes.filter((n) => n.type === 'card').map((n) => n.id))
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    expect(graph.nodes.some((n) => n.type === 'region')).toBe(true)
+    const cardIds = new Set(graph.nodes.filter((n) => n.type === 'card').map((n) => n.id))
     for (const c of CORE_CLIENTS) expect(cardIds.has(c)).toBe(true)
   })
 
   it('never produces a dangling edge, under any option combo', () => {
     for (const { label, opts } of optionMatrix) {
-      const g = buildGraph(data, opts)
-      const ids = new Set(g.nodes.map((n) => n.id))
-      for (const e of g.edges) {
+      const graph = buildGraph(data, opts)
+      const ids = new Set(graph.nodes.map((n) => n.id))
+      for (const e of graph.edges) {
         expect(ids.has(e.source), `${label}: edge source ${e.source}`).toBe(true)
         expect(ids.has(e.target), `${label}: edge target ${e.target}`).toBe(true)
       }
@@ -115,17 +130,20 @@ describe('buildGraph', () => {
     expect(DEFAULT_LAYERS.backends).toBe(true)
     expect(DEFAULT_LAYERS.deploy).toBe(true)
     expect(DEFAULT_LAYERS.integrations).toBe(false)
-    const g = buildGraph(data, { mode: 'dev' })
+    const graph = buildGraph(data, { mode: 'dev' })
     // deploy-target nodes present (deploy layer on by default), no external/SaaS cards (off)
-    expect(g.nodes.some((n) => n.data?.kind === 'infra')).toBe(true)
-    expect(g.nodes.some((n) => n.data?.kind === 'external')).toBe(false)
+    expect(graph.nodes.some((n) => n.data?.kind === 'infra')).toBe(true)
+    expect(graph.nodes.some((n) => n.data?.kind === 'external')).toBe(false)
   })
 
   it('reports status facetOptions from the pre-status universe, then filters by status', () => {
     const base = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
     expect(base.facetOptions.status.length).toBeGreaterThan(0)
     const status = base.facetOptions.status[0]
-    const filtered = buildGraph(data, { mode: 'dev', facets: { ...groups(...ALL_CLUSTERS), status: new Set([status]) } })
+    const filtered = buildGraph(data, {
+      mode: 'dev',
+      facets: { ...groups(...ALL_CLUSTERS), status: new Set([status]) },
+    })
     // options stay scoped to the status-UNfiltered universe (so the menu doesn't shrink to the pick)
     expect(filtered.facetOptions.status).toEqual(base.facetOptions.status)
     for (const n of filtered.nodes.filter((n) => n.type === 'card' && n.data.inventory)) {
@@ -135,8 +153,8 @@ describe('buildGraph', () => {
   })
 
   it('health facet keeps only at-risk cards (plus the bus node)', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: { health: new Set(['at-risk']) } })
-    for (const n of g.nodes.filter((n) => n.type === 'card' && n.data.kind !== 'bus')) {
+    const graph = buildGraph(data, { mode: 'dev', facets: { health: new Set(['at-risk']) } })
+    for (const n of graph.nodes.filter((n) => n.type === 'card' && n.data.kind !== 'bus')) {
       expect(isAtRisk(n.data.inventory?.health || n.data.repo?.inventory?.health), n.id).toBe(true)
     }
   })
@@ -155,12 +173,12 @@ describe('buildGraph', () => {
   })
 
   it('draws curated serviceEdges when both endpoints are on the map', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    const ids = new Set(g.nodes.map((n) => n.id))
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    const ids = new Set(graph.nodes.map((n) => n.id))
     for (const e of data.backendTopology?.serviceEdges || []) {
       if (ids.has(e.source) && ids.has(e.target)) {
         expect(
-          g.edges.some((x) => x.id === `svc-${e.source}-${e.target}`),
+          graph.edges.some((x) => x.id === `svc-${e.source}-${e.target}`),
           `${e.source}→${e.target}`,
         ).toBe(true)
       }
@@ -168,35 +186,42 @@ describe('buildGraph', () => {
   })
 
   it('draws contentRepos next to their parent (kb-articles follows knowledge-base)', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    const ids = new Set(g.nodes.map((n) => n.id))
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    const ids = new Set(graph.nodes.map((n) => n.id))
     if (ids.has('knowledge-base')) {
       expect(ids.has('kb-articles')).toBe(true)
-      expect(g.edges.some((e) => e.id === 'content-knowledge-base-kb-articles')).toBe(true)
+      expect(graph.edges.some((e) => e.id === 'content-knowledge-base-kb-articles')).toBe(true)
     }
   })
 
   it('links backends to their curated deployTarget on the Deployments layer', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS), layers: { backends: true, deploy: true } })
-    const ids = new Set(g.nodes.map((n) => n.id))
+    const graph = buildGraph(data, {
+      mode: 'dev',
+      facets: groups(...ALL_CLUSTERS),
+      layers: { backends: true, deploy: true },
+    })
+    const ids = new Set(graph.nodes.map((n) => n.id))
     const withTarget = (data.backendTopology?.backends || []).filter((b) => b.deployTarget)
     expect(withTarget.length).toBeGreaterThan(0)
     for (const be of withTarget) {
       if (ids.has(be.id))
         expect(
-          g.edges.some((e) => e.id === `dpl-${be.deployTarget}-${be.id}`),
+          graph.edges.some((e) => e.id === `dpl-${be.deployTarget}-${be.id}`),
           be.id,
         ).toBe(true)
     }
   })
 
   it('hides every backend node (incl. deployArtifact ones) when the Resources layer is off', () => {
-    // Regression: pharma-backend is flagged deployArtifact and used to survive on the Deployments
-    // layer even with Resources unchecked, leaving one lone card inside a hidden Resources cluster.
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS), layers: { backends: false, deploy: true } })
+    // deployArtifact backends must not survive on the Deployments layer with Resources unchecked.
+    const graph = buildGraph(data, {
+      mode: 'dev',
+      facets: groups(...ALL_CLUSTERS),
+      layers: { backends: false, deploy: true },
+    })
     const backendKinds = new Set(['backend', 'extsvc', 'storage'])
-    expect(g.nodes.some((n) => backendKinds.has(n.data.kind))).toBe(false)
-    expect(g.nodes.some((n) => n.id === 'region-Resources')).toBe(false)
+    expect(graph.nodes.some((n) => backendKinds.has(n.data.kind))).toBe(false)
+    expect(graph.nodes.some((n) => n.id === 'region-Resources')).toBe(false)
   })
 
   // Synthetic fixtures: a lane app depending on a first-party package, with and without a
@@ -212,31 +237,68 @@ describe('buildGraph', () => {
   })
   // The design-system hub must be present or clusterLayout treats the data as truncated and
   // flattens to dagre, where x positions carry no lane meaning — see uiHubFoldersOf in graph.js.
-  const HUB = { folder: (config.uiHubFolders || ['ui'])[0], kind: 'library', inventory: { name: 'ui', owner: OWNER_A } }
+  const HUB = {
+    folder: (config.uiHubFolders || ['ui'])[0],
+    kind: 'library',
+    inventory: { name: 'ui', owner: OWNER_A },
+  }
   const withHub = (repos) => [HUB, ...repos]
 
-  it(`routes a cluster-${'$'}{FALLBACK} package out of its lane column into the centre`, () => {
-    const d = {
+  it(`routes a cluster-${FALLBACK} package out of its lane column into the centre`, () => {
+    const fixture = {
       config,
       repos: withHub([laneApp([{ name: sharedPkg, version: '1.0.0' }])]),
       inventory: [{ name: 'kb-react', cluster: FALLBACK, type: 'Library' }],
     }
-    const g = buildGraph(d, { mode: 'dev' })
-    const pkg = g.nodes.find((n) => n.id === `pkg:${sharedPkg}`)
+    const graph = buildGraph(fixture, { mode: 'dev' })
+    const pkg = graph.nodes.find((n) => n.id === `pkg:${sharedPkg}`)
     expect(pkg).toBeTruthy()
     expect(pkg.data.sharedPkg).toBe(true)
     // the centre columns sit near the origin; a lane's package column is far further left
     expect(pkg.position.x).toBeGreaterThan(-600)
   })
 
+  it('marks a package shared by the configured fallback cluster, not a fixed label', () => {
+    const custom = {
+      ...config,
+      clusters: [
+        { label: LANE_A, match: [OWNER_A] },
+        { label: 'Unscoped', match: [], fallback: true, center: true },
+      ],
+    }
+    const graph = buildGraph(
+      {
+        config: custom,
+        repos: withHub([
+          laneApp([
+            { name: sharedPkg, version: '1.0.0' },
+            { name: lonePkg, version: '1.0.0' },
+          ]),
+        ]),
+        inventory: [
+          { name: 'kb-react', cluster: 'Unscoped', type: 'Library' },
+          { name: 'some-lib', cluster: 'Shared', type: 'Library' },
+        ],
+      },
+      { mode: 'dev' },
+    )
+    expect(graph.nodes.find((n) => n.id === `pkg:${sharedPkg}`).data.sharedPkg).toBe(true)
+    expect(graph.nodes.find((n) => n.id === `pkg:${lonePkg}`).data.sharedPkg).toBe(false)
+  })
+
   it('a package with no cluster override stays in the (far-left) package column', () => {
     const withOverride = buildGraph(
-      { config, repos: withHub([laneApp([{ name: sharedPkg, version: '1.0.0' }])]), inventory: [{ name: 'kb-react', cluster: FALLBACK, type: 'Library' }] },
+      {
+        config,
+        repos: withHub([laneApp([{ name: sharedPkg, version: '1.0.0' }])]),
+        inventory: [{ name: 'kb-react', cluster: FALLBACK, type: 'Library' }],
+      },
       { mode: 'dev' },
     ).nodes.find((n) => n.id === `pkg:${sharedPkg}`)
-    const noOverride = buildGraph({ config, repos: withHub([laneApp([{ name: lonePkg, version: '1.0.0' }])]), inventory: [] }, { mode: 'dev' }).nodes.find(
-      (n) => n.id === `pkg:${lonePkg}`,
-    )
+    const noOverride = buildGraph(
+      { config, repos: withHub([laneApp([{ name: lonePkg, version: '1.0.0' }])]), inventory: [] },
+      { mode: 'dev' },
+    ).nodes.find((n) => n.id === `pkg:${lonePkg}`)
 
     expect(noOverride.data.sharedPkg).toBeFalsy()
     // the un-overridden package sits in the lanes' own package column, left of the centre one —
@@ -245,26 +307,31 @@ describe('buildGraph', () => {
   })
 
   it('routes a cluster-overridden repo into the centre, not Unclassified', () => {
-    const d = {
+    const fixture = {
       config,
       repos: withHub([
-        { folder: 'kb-react', kind: 'service', name: sharedPkg, inventory: { name: 'kb-react', cluster: FALLBACK } },
+        {
+          folder: 'kb-react',
+          kind: 'service',
+          name: sharedPkg,
+          inventory: { name: 'kb-react', cluster: FALLBACK },
+        },
         laneApp([{ name: sharedPkg, version: '1.0.0' }]),
       ]),
       inventory: [{ name: 'kb-react', cluster: FALLBACK }],
     }
-    const g = buildGraph(d, { mode: 'dev' })
-    const ids = new Set(g.nodes.map((n) => n.id))
+    const graph = buildGraph(fixture, { mode: 'dev' })
+    const ids = new Set(graph.nodes.map((n) => n.id))
     expect(ids.has('kb-react')).toBe(true) // resolves to the repo card…
     expect(ids.has(`pkg:${sharedPkg}`)).toBe(false) // …not a duplicate pkg node
-    expect(g.nodes.find((n) => n.id === 'kb-react').position.x).toBeGreaterThan(-600)
-    expect(g.nodes.some((n) => n.id === 'region-Unclassified')).toBe(false)
+    expect(graph.nodes.find((n) => n.id === 'kb-react').position.x).toBeGreaterThan(-600)
+    expect(graph.nodes.some((n) => n.id === 'region-Unclassified')).toBe(false)
   })
 
-  it("materializes missing service-link endpoints so the layer never draws nothing (services-don't-show fix)", () => {
-    const g = buildGraph(data, { mode: 'dev', layers: { serviceLinks: true } })
-    const ids = new Set(g.nodes.map((n) => n.id))
-    const links = g.edges.filter((e) => e.id.startsWith('link-'))
+  it('materializes missing service-link endpoints so the layer never draws nothing', () => {
+    const graph = buildGraph(data, { mode: 'dev', layers: { serviceLinks: true } })
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    const links = graph.edges.filter((e) => e.id.startsWith('link-'))
     // the committed data has integrations whose endpoints are inventory-only components —
     // they must appear as materialized cards with their edges, not vanish
     expect(links.length).toBeGreaterThan(0)
@@ -274,7 +341,7 @@ describe('buildGraph', () => {
     }
     // the Kafka bus only exists when something actually connects to it (no orphan bus card)
     if (ids.has('bus:kafka')) {
-      expect(g.edges.some((e) => e.source === 'bus:kafka' || e.target === 'bus:kafka')).toBe(true)
+      expect(graph.edges.some((e) => e.source === 'bus:kafka' || e.target === 'bus:kafka')).toBe(true)
     }
   })
 
@@ -282,38 +349,47 @@ describe('buildGraph', () => {
     const base = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
     expect(base.edgeTypesPresent).toContain('dependency')
     expect(base.edges.some((e) => e.id.startsWith('dep-'))).toBe(true)
-    const hidden = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS), hiddenEdges: new Set(['dependency']) })
+    const hidden = buildGraph(data, {
+      mode: 'dev',
+      facets: groups(...ALL_CLUSTERS),
+      hiddenEdges: new Set(['dependency']),
+    })
     // still offered as a toggle (so it can be switched back on) but no dependency arrow is drawn.
     // NB: red version-lag edges share the dep- id prefix but are the separate 'drift' type, so they
     // survive hiding 'dependency' — assert only non-drift dependency arrows are gone.
     expect(hidden.edgeTypesPresent).toContain('dependency')
     expect(hidden.edges.some((e) => e.id.startsWith('dep-') && !e.data?.drift)).toBe(false)
     // an unrelated type is untouched by the filter
-    expect(hidden.edges.some((e) => e.id.startsWith('be-'))).toBe(base.edges.some((e) => e.id.startsWith('be-')))
+    expect(hidden.edges.some((e) => e.id.startsWith('be-'))).toBe(
+      base.edges.some((e) => e.id.startsWith('be-')),
+    )
   })
 
   it('hides a component by name via the hidden facet and keeps it listed in facetOptions.components', () => {
     const base = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
     expect(base.facetOptions.components.length).toBeGreaterThan(0)
     const name = base.facetOptions.components[0]
-    const g = buildGraph(data, { mode: 'dev', facets: { ...groups(...ALL_CLUSTERS), hidden: new Set([name.toLowerCase()]) } })
+    const graph = buildGraph(data, {
+      mode: 'dev',
+      facets: { ...groups(...ALL_CLUSTERS), hidden: new Set([name.toLowerCase()]) },
+    })
     // the hidden component's card is dropped…
-    expect(g.nodes.some((n) => n.data?.inventory?.name === name)).toBe(false)
+    expect(graph.nodes.some((n) => n.data?.inventory?.name === name)).toBe(false)
     // …but it stays offered so it can be re-checked, and no dangling edge is left behind
-    expect(g.facetOptions.components).toContain(name)
-    const ids = new Set(g.nodes.map((n) => n.id))
-    for (const e of g.edges) expect(ids.has(e.source) && ids.has(e.target)).toBe(true)
+    expect(graph.facetOptions.components).toContain(name)
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    for (const e of graph.edges) expect(ids.has(e.source) && ids.has(e.target)).toBe(true)
   })
 
   it('service links stay off the map when the layer is off', () => {
-    const g = buildGraph(data, { mode: 'dev', layers: { serviceLinks: false } })
-    expect(g.edges.some((e) => e.id.startsWith('link-'))).toBe(false)
-    expect(g.nodes.some((n) => n.id === 'bus:kafka')).toBe(false)
+    const graph = buildGraph(data, { mode: 'dev', layers: { serviceLinks: false } })
+    expect(graph.edges.some((e) => e.id.startsWith('link-'))).toBe(false)
+    expect(graph.nodes.some((n) => n.id === 'bus:kafka')).toBe(false)
   })
 
   it('styles unverified service links distinctly (dotted, dimmed)', () => {
-    const g = buildGraph(data, { mode: 'dev', layers: { serviceLinks: true } })
-    const links = g.edges.filter((e) => e.id.startsWith('link-'))
+    const graph = buildGraph(data, { mode: 'dev', layers: { serviceLinks: true } })
+    const links = graph.edges.filter((e) => e.id.startsWith('link-'))
     if (links.length) {
       // current data: all service links are unverified -> dotted + reduced opacity
       const unverified = links.filter((e) => e.style?.strokeDasharray === '1 4')
@@ -323,15 +399,15 @@ describe('buildGraph', () => {
   })
 
   it('applies a layout override to a card position', () => {
-    const g = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 4321, y: -1234 } } })
-    const n = g.nodes.find((x) => x.id === 'be-orders')
+    const graph = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 4321, y: -1234 } } })
+    const n = graph.nodes.find((x) => x.id === 'be-orders')
     if (n) expect(n.position).toEqual({ x: 4321, y: -1234 })
   })
 
   it('applies an admin geometry override to a region box', () => {
     const ov = { x: 1000, y: -500, w: 640, h: 480 }
-    const g = buildGraph(data, { mode: 'dev', layout: { 'region-CSS': ov } })
-    const reg = g.nodes.find((n) => n.id === 'region-CSS')
+    const graph = buildGraph(data, { mode: 'dev', layout: { 'region-CSS': ov } })
+    const reg = graph.nodes.find((n) => n.id === 'region-CSS')
     if (reg) {
       expect(reg.position).toEqual({ x: ov.x, y: ov.y })
       expect(reg.style.width).toBe(ov.w)
@@ -341,7 +417,9 @@ describe('buildGraph', () => {
 
   it('does not balloon a cluster box when one member is dragged far out (outlier-trimmed bounds)', () => {
     const baseline = buildGraph(data, { mode: 'dev' }).nodes.find((n) => n.id === 'region-Resources')
-    const dragged = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 99999, y: 0 } } }).nodes.find((n) => n.id === 'region-Resources')
+    const dragged = buildGraph(data, { mode: 'dev', layout: { 'be-orders': { x: 99999, y: 0 } } }).nodes.find(
+      (n) => n.id === 'region-Resources',
+    )
     if (baseline && dragged) {
       // the moved card must not stretch the outline across the canvas — width stays near baseline
       expect(dragged.style.width).toBeLessThan(baseline.style.width + 600)
@@ -357,12 +435,19 @@ describe('buildGraph', () => {
   })
 
   it('renders a region per configured cluster', () => {
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    const regions = new Set(g.nodes.filter((n) => n.type === 'region').map((n) => n.data.label))
-    // every lane that actually has members draws its outline; an empty lane legitimately draws none
-    const populated = LANES.filter((label) => g.nodes.some((n) => n.data?.repo && n.data.cluster === label))
-    for (const label of populated) expect(regions.has(label), label).toBe(true)
-    expect(regions.size).toBeGreaterThan(0)
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    const regionByLabel = new Map(
+      graph.nodes.filter((n) => n.type === 'region').map((n) => [n.data.label, n]),
+    )
+    // Every repo card routed to a lane sits inside that lane's outline; an empty lane draws none.
+    const laneCards = graph.nodes.filter(
+      (n) => n.data?.repo && LANES.includes(clusterOfInv(n.data.repo.inventory, CLUSTERS)),
+    )
+    expect(laneCards.length).toBeGreaterThan(0)
+    for (const card of laneCards) {
+      const lane = clusterOfInv(card.data.repo.inventory, CLUSTERS)
+      expect(regionByLabel.get(lane)?.data.members, `${card.id} in ${lane}`).toContain(card.id)
+    }
   })
 
   it('a custom cluster config remaps membership, lanes and colors', () => {
@@ -374,12 +459,22 @@ describe('buildGraph', () => {
       ...config,
       clusters: [
         { label: 'Everything', match: owners, color: '#1565c0', defaultOn: true, anchor: -400, dir: -1 },
-        { label: 'Devices', match: ['NOTHING-MATCHES-THIS'], color: '#2e7d32', defaultOn: true, anchor: 400, dir: 1 },
+        {
+          label: 'Devices',
+          match: ['NOTHING-MATCHES-THIS'],
+          color: '#2e7d32',
+          defaultOn: true,
+          anchor: 400,
+          dir: 1,
+        },
         { label: 'Unscoped', match: [], color: '#777', fallback: true, center: true, defaultOn: true },
       ],
     }
-    const g = buildGraph({ ...data, config: custom }, { mode: 'dev', facets: groups('Everything', 'Devices', 'Unscoped') })
-    const regions = g.nodes.filter((n) => n.type === 'region')
+    const graph = buildGraph(
+      { ...data, config: custom },
+      { mode: 'dev', facets: groups('Everything', 'Devices', 'Unscoped') },
+    )
+    const regions = graph.nodes.filter((n) => n.type === 'region')
     const labels = new Set(regions.map((r) => r.data.label))
     // custom labels render; the committed taxonomy's do not
     expect(labels.has('Everything')).toBe(true)
@@ -390,7 +485,7 @@ describe('buildGraph', () => {
   })
 
   it('uses serviceId as the node id (folder stays a resolvable alias) when serviceId !== folder', () => {
-    const d = {
+    const fixture = {
       repos: [
         { folder: 'ui', kind: 'library', name: '@meridian/ui', inventory: { name: 'ui', owner: OWNER_A } },
         {
@@ -408,31 +503,108 @@ describe('buildGraph', () => {
         backends: [{ id: 'be-orders', label: 'orders-service', kind: 'backend', repo: 'orders-service' }],
       },
     }
-    const g = buildGraph(d, { mode: 'dev' })
-    const ids = new Set(g.nodes.map((n) => n.id))
+    const graph = buildGraph(fixture, { mode: 'dev' })
+    const ids = new Set(graph.nodes.map((n) => n.id))
     // (a) the card node id is the serviceId, and the old folder is NOT a node id
     expect(ids.has('device-data-ingestion')).toBe(true)
     expect(ids.has('device-data-service')).toBe(false)
     // (b) repo-derived edges use the serviceId as their source (feBe lookup stays folder-keyed)
-    expect(g.edges.find((e) => e.id.startsWith('dep-'))?.source).toBe('device-data-ingestion')
-    expect(g.edges.find((e) => e.id.startsWith('be-'))?.source).toBe('device-data-ingestion')
+    expect(graph.edges.find((e) => e.id.startsWith('dep-'))?.source).toBe('device-data-ingestion')
+    expect(graph.edges.find((e) => e.id.startsWith('be-'))?.source).toBe('device-data-ingestion')
     // (c) no dangling edges
-    for (const e of g.edges) {
+    for (const e of graph.edges) {
       expect(ids.has(e.source), e.id).toBe(true)
       expect(ids.has(e.target), e.id).toBe(true)
     }
     // (d) folder->serviceId resolver: an old folder-keyed ?sel= / saved view still resolves to the node
-    expect(nodeIdOf(d.repos[1])).toBe('device-data-ingestion')
-    const resolve = (sel) => g.nodes.find((n) => n.type === 'card' && (n.id === sel || n.data.repo?.folder === sel || n.data.repo?.serviceId === sel))
+    expect(nodeIdOf(fixture.repos[1])).toBe('device-data-ingestion')
+    const resolve = (sel) =>
+      graph.nodes.find(
+        (n) =>
+          n.type === 'card' &&
+          (n.id === sel || n.data.repo?.folder === sel || n.data.repo?.serviceId === sel),
+      )
     expect(resolve('device-data-service')?.id).toBe('device-data-ingestion')
     expect(resolve('device-data-ingestion')?.id).toBe('device-data-ingestion')
   })
 
+  it('does not mutate its input, so repeated builds agree', () => {
+    const input = structuredClone({
+      ...data,
+      repos: [
+        ...data.repos,
+        laneApp([
+          { name: lonePkg, version: '0.9.0', dev: true },
+          { name: lonePkg, version: '1.0.0' },
+        ]),
+      ],
+    })
+    const before = structuredClone(input)
+    const first = buildGraph(input, { mode: 'dev' })
+    const second = buildGraph(input, { mode: 'dev' })
+    expect(input).toEqual(before)
+    expect(second).toEqual(first)
+  })
+
+  it('draws design-system dependency edges to the configured hub folder', () => {
+    const hub = data.repos.find((r) => config.uiHubFolders.includes(r.folder))
+    const consumers = data.repos.filter((r) =>
+      (r.internalDeps || []).some((dep) => config.uiPackages.includes(dep.name)),
+    )
+    expect(consumers.length).toBeGreaterThan(0)
+    const graph = buildGraph(data, { mode: 'dev' })
+    for (const consumer of consumers) {
+      const edge = graph.edges.find((e) => e.source === nodeIdOf(consumer) && e.target === nodeIdOf(hub))
+      expect(edge, consumer.folder).toBeTruthy()
+    }
+  })
+
+  it('flags design-system version lag even when one consumer pins no version', () => {
+    const uiPackage = config.uiPackages[0]
+    const app = (folder, version) => ({
+      ...laneApp([{ name: uiPackage, version }]),
+      folder,
+      inventory: { name: folder, owner: OWNER_A },
+    })
+    const fixture = {
+      config,
+      repos: withHub([app('current-app', '2.0.0'), app('lagging-app', '1.0.0'), app('unpinned-app')]),
+      inventory: [],
+    }
+    const graph = buildGraph(fixture, { mode: 'dev' })
+    const lagging = graph.edges.find((e) => e.source === 'lagging-app')
+    expect(lagging.data).toEqual({ drift: true, scdLatest: '2.0.0' })
+    // no pinned version means we can't tell whether it lags
+    const unpinned = graph.edges.find((e) => e.source === 'unpinned-app')
+    expect(unpinned.data.drift).toBe(false)
+    expect(unpinned.label).toBeUndefined()
+  })
+
+  it('skips backendExternals whose backend does not resolve instead of leaving a dangling edge', () => {
+    const fixture = {
+      ...data,
+      backendTopology: {
+        ...data.backendTopology,
+        backendExternals: { ...data.backendTopology.backendExternals, 'be-missing': ['Nowhere'] },
+      },
+    }
+    const graph = buildGraph(fixture, { mode: 'dev', layers: { integrations: true } })
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    expect(ids.has('ext:Nowhere')).toBe(false)
+    for (const e of graph.edges) {
+      expect(ids.has(e.source), e.id).toBe(true)
+      expect(ids.has(e.target), e.id).toBe(true)
+    }
+  })
+
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
-    expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe('device-data-ingestion')
+    expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(
+      'device-data-ingestion',
+    )
     // committed data carries no serviceId yet, so every repo card id is still its folder
-    const g = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    for (const n of g.nodes.filter((n) => n.type === 'card' && n.data.repo)) expect(n.id).toBe(nodeIdOf(n.data.repo))
+    const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
+    for (const n of graph.nodes.filter((n) => n.type === 'card' && n.data.repo))
+      expect(n.id).toBe(nodeIdOf(n.data.repo))
   })
 })
