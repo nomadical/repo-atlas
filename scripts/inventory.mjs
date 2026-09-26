@@ -73,10 +73,12 @@ export const SUBTYPE_PARENTS = {
   Model: ['Library'],
 }
 
-const invertMap = (map) => Object.fromEntries(Object.entries(map).map(([key, value]) => [value, key]))
-const NAME_BY_SLUG = Object.fromEntries(
-  Object.entries(TOPIC_MAPS).map(([dimension, map]) => [dimension, invertMap(map)]),
+// Maps, so a topic like `constructor` can't hit an inherited object key.
+const slugToName = (map) => new Map(Object.entries(map).map(([name, slug]) => [slug, name]))
+const NAME_BY_SLUG = new Map(
+  Object.entries(TOPIC_MAPS).map(([dimension, map]) => [dimension, slugToName(map)]),
 )
+const nameForSlug = (dimension, slug) => NAME_BY_SLUG.get(dimension)?.get(slug)
 
 const CLUSTER_PREFIX = 'cluster-'
 const OWNER_PREFIX = 'owner-'
@@ -112,11 +114,12 @@ const unknownOwnerName = (topic) => topic.slice(OWNER_PREFIX.length).toUpperCase
 export const parseTopics = (topics = []) => {
   const parsed = { type: null, subtype: null, status: null, owner: null, applications: [], cluster: null }
   for (const topic of topics) {
-    if (NAME_BY_SLUG.type[topic]) parsed.type = NAME_BY_SLUG.type[topic]
-    else if (NAME_BY_SLUG.subtype[topic]) parsed.subtype = NAME_BY_SLUG.subtype[topic]
-    else if (NAME_BY_SLUG.status[topic]) parsed.status = NAME_BY_SLUG.status[topic]
-    else if (NAME_BY_SLUG.owner[topic]) parsed.owner = NAME_BY_SLUG.owner[topic]
-    else if (topic.startsWith('app-')) parsed.applications.push(NAME_BY_SLUG.app[topic] || slugToTitle(topic))
+    if (nameForSlug('type', topic)) parsed.type = nameForSlug('type', topic)
+    else if (nameForSlug('subtype', topic)) parsed.subtype = nameForSlug('subtype', topic)
+    else if (nameForSlug('status', topic)) parsed.status = nameForSlug('status', topic)
+    else if (nameForSlug('owner', topic)) parsed.owner = nameForSlug('owner', topic)
+    else if (topic.startsWith('app-'))
+      parsed.applications.push(nameForSlug('app', topic) || slugToTitle(topic))
     else if (topic.startsWith(CLUSTER_PREFIX)) parsed.cluster = clusterName(topic)
     else if (topic.startsWith(OWNER_PREFIX)) parsed.owner = unknownOwnerName(topic)
     // Unknown subtype/type/status slugs still parse (title-cased) so the guard rejects the typo:
@@ -195,16 +198,21 @@ function nonRepoComponent(record) {
   }
 }
 
+// Own keys only, so a name like `constructor` can't resolve to a built-in of a plain object.
+export const ownValue = (object, key) =>
+  object != null && Object.hasOwn(object, key) ? object[key] : undefined
+
+// Plain objects, because assemble.mjs reads them as such.
 function indexInventory(inventory) {
   const byRepo = {}
   const byName = {}
   for (const component of inventory) {
     if (component.repoName) {
-      if (!byRepo[component.repoName]) byRepo[component.repoName] = []
+      if (!ownValue(byRepo, component.repoName)) byRepo[component.repoName] = []
       byRepo[component.repoName].push(component)
     }
     const key = component.name.toLowerCase()
-    if (byName[key]) {
+    if (ownValue(byName, key)) {
       console.warn(`inventory: duplicate component name "${component.name}" — the later entry wins in byName`)
     }
     byName[key] = component
@@ -222,7 +230,7 @@ export function loadInventory() {
   const inventory = []
 
   for (const [repoName, repo] of Object.entries(meta?.repos || {})) {
-    const repoExtra = extra.repoExtras?.[repoName]
+    const repoExtra = ownValue(extra.repoExtras, repoName)
     const topics = parseTopics(repo.topics)
     // Membership needs a topic or a curated extra. Custom properties alone (doc-url etc.) must not
     // put a repo on the map as a default-kind service.

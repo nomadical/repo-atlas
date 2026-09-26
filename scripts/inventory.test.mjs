@@ -2,7 +2,7 @@
 // regression here silently reshapes the map. Run with `node --test`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseCsv, parseTopics, loadIntegrations, TOPIC_MAPS } from './inventory.mjs'
+import { parseCsv, parseTopics, loadIntegrations, ownValue, TOPIC_MAPS } from './inventory.mjs'
 
 // ---- parseCsv (RFC-4180) --------------------------------------------------------------
 
@@ -107,4 +107,24 @@ test('loadIntegrations: "— VERIFY" notes mark rows unverified', () => {
   for (const row of loadIntegrations()) {
     if (/verify/i.test(row.note)) assert.equal(row.verified, false)
   }
+})
+
+test('parseTopics: topics named like Object.prototype keys map to nothing', () => {
+  const parsed = parseTopics(['constructor', 'toString', 'hasOwnProperty', '__proto__'])
+  assert.deepEqual(parsed, {
+    type: null,
+    subtype: null,
+    status: null,
+    owner: null,
+    applications: [],
+    cluster: null,
+  })
+})
+
+test('ownValue: reads own keys only, never Object.prototype built-ins', () => {
+  const byRepo = { svc: ['component'] }
+  assert.deepEqual(ownValue(byRepo, 'svc'), ['component'])
+  assert.equal(ownValue(byRepo, 'constructor'), undefined)
+  assert.equal(ownValue(byRepo, 'toString'), undefined)
+  assert.equal(ownValue(undefined, 'svc'), undefined)
 })

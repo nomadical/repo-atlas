@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { AUDIT } from './_paths.mjs'
-import { parseTopics, TOPIC_MAPS } from './inventory.mjs'
+import { ownValue, parseTopics } from './inventory.mjs'
 
 const readJson = (file) => {
   try {
@@ -28,9 +28,7 @@ if (!meta?.repos) {
   process.exit(1)
 }
 
-// Owners configured in config.json `owners` keep their name; any other owner prints as-is.
-const OWNER_LABEL = Object.fromEntries(Object.keys(TOPIC_MAPS.owner).map((name) => [name, name]))
-const ownerLabel = (owner) => OWNER_LABEL[owner] || owner || '— (no owner topic)'
+const ownerLabel = (owner) => owner || '— (no owner topic)'
 
 const isActive = (repo) => !repo.archived && !(repo.topics || []).includes('arch-map-ignore')
 const byName = (a, b) => a.name.localeCompare(b.name)
@@ -41,7 +39,7 @@ const hasInventoryTopics = (topics) =>
 // Returns 'uncurated', { owner, missing } for a half-curated repo, or null when nothing is due.
 function classifyRepo(name, repo) {
   const topics = parseTopics(repo.topics)
-  const repoExtra = extra.repoExtras?.[name]
+  const repoExtra = ownValue(extra.repoExtras, name)
   const fallback = repoExtra?.fallback || {}
   if (!hasInventoryTopics(topics) && !repoExtra && !repo.props) return 'uncurated'
   // Owner, app or cluster topics without a type don't put a repo on the map either.

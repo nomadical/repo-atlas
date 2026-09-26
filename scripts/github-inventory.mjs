@@ -104,6 +104,8 @@ const toRepoMeta = (repo) => ({
 // Written to github-meta.json as-is, so it stays a plain object keyed by repo name.
 const repos = {}
 for (const repo of orgRepos) repos[repo.name] = toRepoMeta(repo)
+// Own keys only: a repo named like `constructor` must not resolve to a built-in.
+const repoNamed = (name) => (Object.hasOwn(repos, name) ? repos[name] : undefined)
 
 // A rate-limited or flaky per-repo call would otherwise silently drop a field and churn the diff.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -141,7 +143,7 @@ const applyCustomProperties = async () => {
   for (let page = 1; page <= MAX_PROPERTY_PAGES; page++) {
     const batch = await ghApi(`orgs/${ORG}/properties/values?per_page=${PAGE_SIZE}&page=${page}`)
     for (const entry of batch) {
-      const repo = repos[entry.repository_name]
+      const repo = repoNamed(entry.repository_name)
       if (!repo) continue
       const props = nonEmptyProps(entry.properties)
       if (Object.keys(props).length) repo.props = props
@@ -160,7 +162,8 @@ const carryOverPreviousProps = () => {
   try {
     const previous = JSON.parse(fs.readFileSync(OUT, 'utf8'))
     for (const [name, previousRepo] of Object.entries(previous.repos || {})) {
-      if (previousRepo.props && repos[name] && !repos[name].props) repos[name].props = previousRepo.props
+      const repo = repoNamed(name)
+      if (previousRepo.props && repo && !repo.props) repo.props = previousRepo.props
     }
     console.log(
       'github-inventory: property listing not readable — carried over previous custom-property values',
@@ -198,7 +201,7 @@ const alertsFor = async (name) => {
     const bySeverity = { critical: 0, high: 0, medium: 0, low: 0 }
     for (const alert of alerts) {
       const severity = alert?.security_advisory?.severity
-      if (severity in bySeverity) bySeverity[severity]++
+      if (Object.hasOwn(bySeverity, severity)) bySeverity[severity]++
     }
     return { total: alerts.length, ...bySeverity }
   } catch {
