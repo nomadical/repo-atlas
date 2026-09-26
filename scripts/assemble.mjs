@@ -5,6 +5,7 @@ import { ROOT, AUDIT, ORG, inOrg } from './_paths.mjs'
 import { uncloned, OUTSIDE, remoteOf } from './repos.mjs'
 import { loadInventory, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
 import { loadServiceMap, serviceIdentity } from './service-map.mjs'
+import { putFirst } from './lib/assemble-rules.mjs'
 
 const MS_PER_DAY = 86400000
 
@@ -273,10 +274,7 @@ function indexThirdParties(put) {
 // never the bare head ('api'), which would swallow unrelated externals like api.dsv.com.
 function buildNodeIndex(canon) {
   const nodeIndex = new Map()
-  // First entry wins. Note the membership test uses the token as given, the key is lowercased.
-  const put = (token, name) => {
-    if (token && !nodeIndex.has(String(token))) nodeIndex.set(String(token).toLowerCase(), name)
-  }
+  const put = (token, name) => putFirst(nodeIndex, token, name)
   for (const entry of inventory) put(entry.name, canon(entry.name))
   for (const backend of backendTopology.backends) {
     const component = canon(backend.id)
