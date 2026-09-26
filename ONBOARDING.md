@@ -64,7 +64,7 @@ which is how you iterate on a late step without re-running the slow early ones.
 | `extras-gather` → `extras-assemble` | clones + the core model | **`fe-architecture-extras.json`** |
 | `screens-gather` | client routers | per-screen endpoint data |
 
-The nightly workflow tolerates individual step failures ("degraded") but the **guard** then requires
+The pipeline tolerates individual step failures ("degraded") but the **guard** then requires
 the core model to actually be from tonight — otherwise a failed `assemble` would pair yesterday's
 model with today's siblings and commit a mixed-generation dataset.
 
@@ -132,8 +132,6 @@ deploy-and-break:
 - **`pages.yml`** — builds the viz, bakes the data, encrypts it, deploys `published/` to GitHub
   Pages. Runs on push to `main` (viz/data changes) and on dispatch. The `VITE_*` repo variables are
   baked in here.
-- **`regenerate.yml`** — the nightly pipeline refresh. Commits **only if the guard passes**, then
-  dispatches `pages.yml` explicitly (a `GITHUB_TOKEN` push never fires push-triggered workflows).
 - **`curation-report.yml`** — weekly; opens/updates a single tracking issue listing uncurated and
   half-curated repos, grouped by owning team.
 - **Your own container** — `Dockerfile` + `server/server.mjs`, see [`infra/hosting.md`](infra/hosting.md).

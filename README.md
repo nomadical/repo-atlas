@@ -99,7 +99,7 @@ The ones worth setting first:
 | `golden-path/` | Compliance scoring: the rules, the nightly history, and the decision log |
 | `server/server.mjs` | Token-gated `/data` API + static viz server (built by the `Dockerfile`) |
 | `infra/` | [`keycloak.md`](infra/keycloak.md) (login) + [`hosting.md`](infra/hosting.md) (self-hosting) |
-| `.github/workflows/` | `ci.yml`, `pages.yml` (build + deploy), `regenerate.yml` (nightly), `curation-report.yml` (weekly backlog) |
+| `.github/workflows/` | `ci.yml`, `pages.yml` (build + deploy), `curation-report.yml` (weekly backlog) |
 
 ## Commands
 
@@ -115,7 +115,8 @@ Repos are **auto-discovered**: any sibling checkout under the parent directory t
 with a `package.json` is picked up. Java backends have none, so they're discovered separately and
 modelled from their build files. Set `ATLAS_REPOS_DIR` to point elsewhere and `ATLAS_FETCH=1` to
 `git fetch` each repo before reading. The pipeline reads **local clones**, so the data is only as
-fresh as your checkouts — which is what the nightly workflow is for.
+fresh as your checkouts. There is no scheduled refresh: run `npm run regenerate`, commit the
+refreshed data, and push to `main` to redeploy.
 
 ## Hosting
 
