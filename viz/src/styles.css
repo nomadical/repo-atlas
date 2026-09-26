@@ -747,6 +747,8 @@ body {
 }
 .mx-chip.st-sunsetting {
   border-left-color: var(--st-sunsetting);
+  /* a line style per status, so the chip doesn't rely on colour alone (see .node-card.st-*) */
+  border-left-style: dashed;
 }
 .mx-chip.st-removed {
   border-left-color: var(--st-removed);
@@ -1826,7 +1828,6 @@ body {
   background: var(--chip);
   padding: 10px 12px;
   border-radius: 9px;
-  border-left: 3px solid var(--kind, var(--brand));
   margin: 12px 0 0;
 }
 .close {
