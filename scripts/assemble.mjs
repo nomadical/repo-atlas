@@ -38,83 +38,114 @@ for (const e of inventory) {
 }
 const integrations = loadIntegrations()
 
-// ---- code-derived Kafka integrations (backend-scan.mjs messaging channels) -----------------
-// Producers and consumers are matched by TOPIC, so service-to-service links come from the code
-// instead of hand-maintained CSV rows. Attribution: the declaring module when it is itself an
-// inventory component (the device-data-* modules ship as separate services), else the repo's
-// inventory name, else the repo name (which backend nodes resolve by). Matched pairs become
-// direct edges labeled with the topic; producer-only topics point at the shared Kafka bus and
-// consumer-only topics come from it. A curated integrations.csv row for the same pair is kept
-// (its channel/note win) but flips to verified — the code confirms it.
-let beTooling = null
-try {
-  beTooling = JSON.parse(fs.readFileSync(path.join(AUDIT, 'backend-tooling.json'), 'utf8'))
-} catch {}
-if (beTooling?.scanned) {
-  const producers = {},
-    consumers = {} // topic -> Set(component)
-  for (const [folder, s] of Object.entries(beTooling.scanned)) {
-    const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
-    for (const ch of s.messaging || []) {
-      const component = (ch.module && byName[ch.module.toLowerCase()]?.name) || repoComponent
-      const map = ch.direction === 'outgoing' ? producers : consumers
-      ;(map[ch.topic] = map[ch.topic] || new Set()).add(component)
+// ---- Kafka integrations derived from code ----------------------------------------------------
+// Producers and consumers are matched by topic, so service-to-service links come from the code
+// instead of hand-maintained CSV rows. A topic with no consumer points at the shared Kafka bus;
+// one with no producer comes from it. A curated CSV row for the same pair is kept, but marked
+// verified because the code confirms it.
+const KAFKA_BUS = 'Kafka'
+const TOPICS_IN_LABEL = 3
+const PAIR_SEPARATOR = '\u0000'
+
+const backendTooling = readJson(path.join(AUDIT, 'backend-tooling.json'))
+
+function addToSetMap(map, key, value) {
+  if (!map.has(key)) map.set(key, new Set())
+  map.get(key).add(value)
+}
+
+// The declaring module wins when it is an inventory component in its own right (the device-data-*
+// modules ship as separate services); otherwise the repo's inventory name, else the repo name.
+function componentOfRepo(folder, scan) {
+  const repoName = scan.repoName || folder
+  return byRepo[repoName]?.[0]?.name || repoName
+}
+
+function componentOfChannel(channel, repoComponent) {
+  const moduleComponent = channel.module && byName[channel.module.toLowerCase()]?.name
+  return moduleComponent || repoComponent
+}
+
+function collectTopicEnds(scanned) {
+  const producers = new Map() // topic -> Set(component)
+  const consumers = new Map()
+  for (const [folder, scan] of Object.entries(scanned)) {
+    const repoComponent = componentOfRepo(folder, scan)
+    for (const channel of scan.messaging || []) {
+      const ends = channel.direction === 'outgoing' ? producers : consumers
+      addToSetMap(ends, channel.topic, componentOfChannel(channel, repoComponent))
     }
   }
-  const pairs = {} // "source\u0000target" -> Set(topics)
-  const addPair = (s, t, topic) => {
-    if (s !== t) (pairs[s + '\u0000' + t] = pairs[s + '\u0000' + t] || new Set()).add(topic)
+  return { producers, consumers }
+}
+
+// Returns "source<sep>target" -> Set(topic).
+function pairUpTopics({ producers, consumers }) {
+  const pairs = new Map()
+  const link = (source, target, topic) => {
+    if (source !== target) addToSetMap(pairs, source + PAIR_SEPARATOR + target, topic)
   }
-  for (const topic of new Set([...Object.keys(producers), ...Object.keys(consumers)])) {
-    const ps = [...(producers[topic] || [])],
-      cs = [...(consumers[topic] || [])]
-    if (ps.length && cs.length) {
-      for (const p of ps) for (const c of cs) addPair(p, c, topic)
-    } else if (ps.length) for (const p of ps) addPair(p, 'Kafka', topic)
-    else for (const c of cs) addPair('Kafka', c, topic)
-  }
-  // The edge label shows the first few topics; the COMPLETE list is preserved in `channelFull`
-  // whenever it would be truncated, so a busy pair never silently hides a real topic (e.g.
-  // one gateway consuming another service's topic behind a bare "+1"). The renderer shows it on hover.
-  const SHOWN = 3
-  const label = (ts) => {
-    const a = [...ts].sort()
-    return a.slice(0, SHOWN).join(', ') + (a.length > SHOWN ? ` +${a.length - SHOWN}` : '')
-  }
-  const full = (ts) => [...ts].sort().join(', ')
-  // Dedup key is (source, target) over KAFKA rows only — mirroring the REST block's
-  // protocol-aware pkey below: a pair can legitimately talk both REST and Kafka, so Kafka
-  // evidence must only ever confirm a curated Kafka row, never flip a REST row for the same
-  // pair (which would also swallow the derived Kafka edge). First row wins on duplicates.
-  const byPair = {}
-  for (const r of integrations) {
-    if ((r.protocol || '').toLowerCase() !== 'kafka') continue
-    const k = `${r.source}\u0000${r.target}`.toLowerCase()
-    if (!(k in byPair)) byPair[k] = r
-  }
-  let added = 0,
-    confirmed = 0
-  for (const [key, ts] of Object.entries(pairs)) {
-    const [s, t] = key.split('\u0000')
-    const cur = byPair[key.toLowerCase()]
-    const ch = label(ts),
-      cf = full(ts)
-    if (cur) {
-      cur.verified = true
-      cur.via = 'code'
-      cur.curated = true // provenance survives the flip: the Admin panel keeps curated rows in integrations.csv on save
-      if (!cur.channel) {
-        cur.channel = ch
-        if (cf !== ch) cur.channelFull = cf
+  const allTopics = new Set([...producers.keys(), ...consumers.keys()])
+  for (const topic of allTopics) {
+    const topicProducers = [...(producers.get(topic) || [])]
+    const topicConsumers = [...(consumers.get(topic) || [])]
+    if (topicProducers.length && topicConsumers.length) {
+      for (const producer of topicProducers) {
+        for (const consumer of topicConsumers) link(producer, consumer, topic)
       }
+    } else if (topicProducers.length) {
+      for (const producer of topicProducers) link(producer, KAFKA_BUS, topic)
+    } else {
+      for (const consumer of topicConsumers) link(KAFKA_BUS, consumer, topic)
+    }
+  }
+  return pairs
+}
+
+// The edge label shows the first few topics. When that truncates, the full list goes into
+// `channelFull` so the renderer can show it on hover and no topic is silently hidden.
+function channelLabels(topics) {
+  const sorted = [...topics].sort()
+  const hidden = sorted.length - TOPICS_IN_LABEL
+  const channel = sorted.slice(0, TOPICS_IN_LABEL).join(', ') + (hidden > 0 ? ` +${hidden}` : '')
+  const channelFull = sorted.join(', ')
+  return channelFull === channel ? { channel } : { channel, channelFull }
+}
+
+// Only Kafka rows are indexed: a pair can talk both REST and Kafka, and Kafka evidence must never
+// confirm (and so swallow) a REST row. The first row wins on duplicates.
+function indexCuratedKafkaRows(rows) {
+  const byPair = new Map()
+  for (const row of rows) {
+    if ((row.protocol || '').toLowerCase() !== 'kafka') continue
+    const key = (row.source + PAIR_SEPARATOR + row.target).toLowerCase()
+    if (!byPair.has(key)) byPair.set(key, row)
+  }
+  return byPair
+}
+
+function deriveKafkaIntegrations(scanned) {
+  const pairs = pairUpTopics(collectTopicEnds(scanned))
+  const curatedByPair = indexCuratedKafkaRows(integrations)
+  let added = 0
+  let confirmed = 0
+  for (const [pairKey, topics] of pairs) {
+    const labels = channelLabels(topics)
+    const curated = curatedByPair.get(pairKey.toLowerCase())
+    if (curated) {
+      curated.verified = true
+      curated.via = 'code'
+      // Keeps the row's provenance: the Admin panel writes curated rows back to integrations.csv.
+      curated.curated = true
+      if (!curated.channel) Object.assign(curated, labels)
       confirmed++
     } else {
+      const [source, target] = pairKey.split(PAIR_SEPARATOR)
       integrations.push({
-        source: s,
-        target: t,
+        source,
+        target,
         protocol: 'Kafka',
-        channel: ch,
-        ...(cf !== ch ? { channelFull: cf } : {}),
+        ...labels,
         note: 'Derived from mp.messaging topics (backend-scan)',
         verified: true,
         via: 'code',
@@ -124,6 +155,8 @@ if (beTooling?.scanned) {
   }
   console.log(`kafka integrations derived from code: ${added} added, ${confirmed} CSV rows confirmed`)
 }
+
+if (backendTooling?.scanned) deriveKafkaIntegrations(backendTooling.scanned)
 // Curated backend topology (hosts, kind, FE→BE wiring, backend→external SaaS) that can't be
 // auto-derived from the clone/scan/inventory pipeline. graph.js merges this with the live
 // backend scan (extras.backends.scanned) so a newly-cloned backend still appears. Optional:
@@ -164,7 +197,7 @@ try {
 // only REFINE the channel label, never gate an edge. Hosts that pass the scanner's infra filter but
 // resolve to no component are reported for curation (backend-extra.json / inventory alias /
 // third-party-meta.csv), never silently dropped.
-if (beTooling?.scanned) {
+if (backendTooling?.scanned) {
   // Collapse every alias of a backend node (id/repo/label/invAlias) to ONE canonical token so a
   // derived row (keyed by inventory/repo name) dedups against a curated CSV row (often keyed by the
   // backend LABEL) — e.g. orders-service ≡ be-orders, or a service renamed but still pinned under the old name.
@@ -225,7 +258,7 @@ if (beTooling?.scanned) {
 
   // Provider @Path roots per resolved component — used only to confirm/refine a matched edge's label.
   const rootsByComponent = {}
-  for (const [folder, s] of Object.entries(beTooling.scanned)) {
+  for (const [folder, s] of Object.entries(backendTooling.scanned)) {
     const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
     for (const p of s.restProvides || []) {
       const comp = canon((p.module && byName[p.module.toLowerCase()]?.name) || repoComponent)
@@ -255,7 +288,7 @@ if (beTooling?.scanned) {
   let addedR = 0,
     confirmedR = 0
   const unresolved = new Map() // host -> Set(source)
-  for (const [folder, s] of Object.entries(beTooling.scanned)) {
+  for (const [folder, s] of Object.entries(backendTooling.scanned)) {
     const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
     for (const c of s.restConsumes || []) {
       const source = canon((c.module && byName[c.module.toLowerCase()]?.name) || repoComponent)
@@ -785,7 +818,7 @@ if (azure) {
 //   2. FE toolingVersions from the clone (TypeScript/JavaScript + React/Vite version)
 //   3. GitHub primaryLanguage (github-meta.json) — the zero-curation fallback for everything else
 const beStackByRepo = {}
-for (const [folder, s] of Object.entries(beTooling?.scanned || {})) {
+for (const [folder, s] of Object.entries(backendTooling?.scanned || {})) {
   beStackByRepo[(s.repoName || folder).toLowerCase()] = {
     language: s.java || 'Java',
     framework: s.framework || null,
@@ -833,7 +866,7 @@ for (const r of repos) {
 // Which services build on which curated internal framework (backend-extra.json `frameworkDeps`,
 // extracted from build files by backend-scan). Keyed by framework name → consumers with version.
 const frameworkConsumers = {}
-for (const [folder, s] of Object.entries(beTooling?.scanned || {})) {
+for (const [folder, s] of Object.entries(backendTooling?.scanned || {})) {
   const repoComponent = (byRepo[s.repoName || folder] || [])[0]?.name || s.repoName || folder
   for (const [fw, info] of Object.entries(s.frameworks || {})) {
     ;(frameworkConsumers[fw] = frameworkConsumers[fw] || []).push({
