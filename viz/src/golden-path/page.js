@@ -576,7 +576,7 @@ export function mountPage(hostEl, root) {
   // ── Filters ───────────────────────────────────────────────────────────────────────────
 
   // Ownerless rows need a selectable label: undefined would stringify to an option that never matches.
-  const ownerLabel = (repo) => repo.owner || '(no owner)'
+  const ownerLabel = (repo) => repo.owner || 'No owner'
 
   // Same predicate for every night, so the charts show the history of exactly what the table shows.
   function matchesFilters(repo, asOf) {
@@ -831,7 +831,7 @@ export function mountPage(hostEl, root) {
   function groupedRowsHtml(rows) {
     const groups = new Map()
     for (const repo of rows) {
-      const owner = repo.owner || 'No owner'
+      const owner = ownerLabel(repo)
       if (!groups.has(owner)) groups.set(owner, [])
       groups.get(owner).push(repo)
     }
