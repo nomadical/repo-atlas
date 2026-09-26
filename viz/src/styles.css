@@ -1617,7 +1617,8 @@ body {
     0 4px 14px color-mix(in srgb, var(--brand) 25%, transparent);
 }
 .node-kind,
-.panel-eyebrow {
+.panel-eyebrow,
+.region-label {
   color: oklch(from var(--kind, var(--muted)) clamp(var(--kind-l-min), l, var(--kind-l-max)) c h);
 }
 .node-kind {
