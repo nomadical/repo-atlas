@@ -130,7 +130,7 @@ const ghApi = async (endpoint) => {
 }
 
 // ---- Custom properties (technical-contact, abbreviation, doc-url, doc-label) ------------------
-let propsRead = false
+let propsCarriedOver = false
 
 const nonEmptyProps = (properties) =>
   Object.fromEntries(
@@ -148,7 +148,6 @@ const applyCustomProperties = async () => {
       const props = nonEmptyProps(entry.properties)
       if (Object.keys(props).length) repo.props = props
     }
-    propsRead = true
     if (batch.length < PAGE_SIZE) break
     if (page === MAX_PROPERTY_PAGES) {
       console.warn(`github-inventory: property listing hit the ${MAX_PROPERTY_PAGES}-page cap — raise it`)
@@ -165,6 +164,7 @@ const carryOverPreviousProps = () => {
       const repo = repoNamed(name)
       if (previousRepo.props && repo && !repo.props) repo.props = previousRepo.props
     }
+    propsCarriedOver = true
     console.log(
       'github-inventory: property listing not readable — carried over previous custom-property values',
     )
@@ -248,5 +248,5 @@ const allRepos = Object.values(repos)
 const withTopicsCount = allRepos.filter(hasInventoryTopic).length
 const withPropsCount = allRepos.filter((repo) => repo.props).length
 console.log(
-  `wrote github-meta.json; repos: ${Object.keys(repos).length}, with inventory topics: ${withTopicsCount}, with custom properties: ${withPropsCount}${propsRead ? '' : ' (carried over)'}`,
+  `wrote github-meta.json; repos: ${Object.keys(repos).length}, with inventory topics: ${withTopicsCount}, with custom properties: ${withPropsCount}${propsCarriedOver ? ' (carried over)' : ''}`,
 )
