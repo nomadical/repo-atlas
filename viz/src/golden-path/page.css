@@ -231,6 +231,11 @@
   flex-direction: column;
   gap: 14px;
 }
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .panel {
   background: var(--sur);
   border: 1px solid var(--line);

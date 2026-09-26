@@ -43,8 +43,8 @@ const SHELL = `
   <span class="mark"></span>
   <div><h1>Golden Path compliance</h1><div class="sub">Derived 2026-08-11 03:34 UTC</div></div>
   <nav class="tabs" id="tabs" role="tablist">
-    <button role="tab" type="button" data-tab="table" aria-selected="true">Compliance</button>
-    <button role="tab" type="button" data-tab="analytics" aria-selected="false">Analytics</button>
+    <button role="tab" type="button" id="tab-table" data-tab="table" aria-selected="true" aria-controls="view-table">Compliance</button>
+    <button role="tab" type="button" id="tab-analytics" data-tab="analytics" aria-selected="false" aria-controls="analytics" tabindex="-1">Analytics</button>
   </nav>
   <div class="theme" id="theme" role="group" aria-label="Colour theme">
     <button type="button" data-t="light" aria-pressed="false" aria-label="Light theme" title="Light">
@@ -59,6 +59,7 @@ const SHELL = `
 </div>
 
 <div class="wrap">
+  <div class="view" id="view-table" role="tabpanel" aria-labelledby="tab-table">
   <div class="panel summary" id="summary"></div>
   <div class="bar">
     <div class="ms" id="ms-type"></div>
@@ -81,13 +82,6 @@ const SHELL = `
     <input class="search" id="q" type="search" placeholder="Search components" aria-label="Search components">
   </div>
   <div class="panel tablewrap"><table id="tbl"></table></div>
-  <section id="analytics" hidden>
-    <div class="rangetop panel" id="rangetop"></div>
-    <div class="charts">
-      <figure class="panel chart" id="ch-trend"></figure>
-      <figure class="panel chart" id="ch-checks"></figure>
-    </div>
-  </section>
   <div class="foot">
     <span id="hidden-note" style="color:var(--mut)"></span>
     <span class="chip ok">${STATE_ICONS.ok}Conforms</span>
@@ -96,6 +90,14 @@ const SHELL = `
     <span class="chip unk">${STATE_ICONS.unk}Not scanned — counts against the total</span>
     <span class="chip na">${STATE_ICONS.na}Not applicable — excluded from the total</span>
   </div>
+  </div>
+  <section id="analytics" role="tabpanel" aria-labelledby="tab-analytics" hidden>
+    <div class="rangetop panel" id="rangetop"></div>
+    <div class="charts">
+      <figure class="panel chart" id="ch-trend"></figure>
+      <figure class="panel chart" id="ch-checks"></figure>
+    </div>
+  </section>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -1599,12 +1601,12 @@ export function mountPage(hostEl, root) {
     const analytics = name === 'analytics'
     state.tab = analytics ? 'analytics' : 'table'
     for (const button of root.querySelectorAll('#tabs button')) {
-      button.setAttribute('aria-selected', String(button.dataset.tab === name))
+      const selected = button.dataset.tab === state.tab
+      button.setAttribute('aria-selected', String(selected))
+      button.tabIndex = selected ? 0 : -1
     }
     byId('analytics').hidden = !analytics
-    for (const selector of ['.tablewrap', '.bar', '.summary', '.foot']) {
-      root.querySelector(selector).hidden = analytics
-    }
+    byId('view-table').hidden = analytics
     hideTip()
     if (analytics) {
       closeDetails()
@@ -1633,6 +1635,24 @@ export function mountPage(hostEl, root) {
     }
     render()
     writeUrl()
+  }
+
+  // Arrow keys, Home and End move between tabs and select the one they land on.
+  function tabPositionFor(key, index, count) {
+    if (key === 'ArrowRight') return (index + 1) % count
+    if (key === 'ArrowLeft') return (index - 1 + count) % count
+    if (key === 'Home') return 0
+    if (key === 'End') return count - 1
+    return -1
+  }
+
+  function onTabKeydown(event) {
+    const tabs = [...root.querySelectorAll('#tabs [role="tab"]')]
+    const position = tabPositionFor(event.key, tabs.indexOf(event.target), tabs.length)
+    if (position < 0) return
+    event.preventDefault()
+    tabs[position].focus()
+    tabs[position].click()
   }
 
   function onTabButton(event) {
@@ -1692,6 +1712,7 @@ export function mountPage(hostEl, root) {
     resizeTimer = setTimeout(renderAnalytics, RESIZE_DEBOUNCE_MS)
   })
   byId('tabs').onclick = onTabButton
+  byId('tabs').onkeydown = onTabKeydown
 
   // A seam for QA, not an API; dropped from the production bundle.
   if (import.meta.env.DEV) {
