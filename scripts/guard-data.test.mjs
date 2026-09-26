@@ -219,3 +219,12 @@ test('serviceRepo may name an owning repo known only via inventory repoName, not
   const { errors } = validate(data)
   assert.deepEqual(errors, [])
 })
+
+test('non-array repos or inventory is reported instead of crashing', () => {
+  for (const notAnArray of [{}, 'repos', 3]) {
+    const { errors, count } = validate({ ...healthy(), repos: notAnArray, inventory: notAnArray })
+    assert.ok(errors.includes('repos is not an array'), `repos: ${JSON.stringify(notAnArray)}`)
+    assert.ok(errors.includes('inventory is not an array'), `inventory: ${JSON.stringify(notAnArray)}`)
+    assert.equal(count, 0)
+  }
+})

@@ -58,23 +58,27 @@ function checkFreshness(data, maxAgeHours, errors) {
 
 // Mirrors the required fields of schema/fe-architecture.schema.json. The ajv schema test enforces
 // the full contract in CI; this covers the nightly path.
+const arrayOrEmpty = (value) => (Array.isArray(value) ? value : [])
+
 function checkShape(data, errors) {
   if (!Array.isArray(data.repos)) errors.push('repos is not an array')
   if (!Array.isArray(data.inventory)) errors.push('inventory is not an array')
-  if ((data.repos || []).some((repo) => typeof repo.folder !== 'string' || !repo.folder)) {
+  if (arrayOrEmpty(data.repos).some((repo) => typeof repo.folder !== 'string' || !repo.folder)) {
     errors.push('a repo is missing its folder')
   }
-  if ((data.inventory || []).some((component) => typeof component.name !== 'string' || !component.name)) {
+  if (
+    arrayOrEmpty(data.inventory).some((component) => typeof component.name !== 'string' || !component.name)
+  ) {
     errors.push('an inventory component is missing its name')
   }
 }
 
 function checkCoverage(data, repoFolders, errors) {
-  const repoCount = data.repos?.length || 0
+  const repoCount = data.repos.length
   const missingCore = CORE.filter((folder) => !repoFolders.has(folder))
   if (missingCore.length) errors.push(`missing core repos: ${missingCore.join(', ')}`)
   if (repoCount < MIN_REPOS) errors.push(`only ${repoCount} repos (min ${MIN_REPOS})`)
-  const inventoryCount = data.inventory?.length || 0
+  const inventoryCount = data.inventory.length
   if (inventoryCount < MIN_INVENTORY) {
     errors.push(
       `only ${inventoryCount} inventory components (min ${MIN_INVENTORY}) — topics stripped / github-inventory failed?`,
@@ -92,7 +96,7 @@ function checkCoverage(data, repoFolders, errors) {
 // third-party services), backend nodes by id/repo/label/alias (as graph.js beIdByKey), and the
 // shared Kafka bus. External targets (SaaS backends) are not nodes, so only link sources are checked.
 function nodeLookup(data, repoFolders) {
-  const inventoryNames = new Set((data.inventory || []).map((component) => component.name))
+  const inventoryNames = new Set(data.inventory.map((component) => component.name))
   const backendKeys = new Set(
     (data.backendTopology?.backends || []).flatMap((backend) =>
       [backend.id, backend.repo, backend.label, backend.invAlias].filter(Boolean),
@@ -107,9 +111,9 @@ function nodeLookup(data, repoFolders) {
 function checkServiceRepos(data, repoFolders, errors) {
   const knownRepos = new Set([
     ...repoFolders,
-    ...(data.inventory || []).map((component) => component.repoName).filter(Boolean),
+    ...data.inventory.map((component) => component.repoName).filter(Boolean),
   ])
-  for (const entry of [...(data.repos || []), ...(data.inventory || [])]) {
+  for (const entry of [...data.repos, ...data.inventory]) {
     if (entry.serviceRepo == null || knownRepos.has(entry.serviceRepo)) continue
     errors.push(
       `serviceRepo "${entry.serviceRepo}" (of service "${entry.serviceId || entry.name || entry.folder}") is not a known repo`,
@@ -157,7 +161,7 @@ function checkBackendHosts(data, warnings) {
       .map((backend) => normalizeHost(backend.host)),
   )
   if (!backendHosts.size) return
-  for (const repo of data.repos || []) {
+  for (const repo of data.repos) {
     if (!repo.apiUrl || backendHosts.has(normalizeHost(repo.apiUrl))) continue
     warnings.push(
       `"${repo.folder}": apiUrl host "${repo.apiUrl}" has no backend node (FE→backend trace dead-ends; add it to backend-extra.json)`,
@@ -202,7 +206,7 @@ function checkTopicSchema(data, errors, warnings) {
   const knownOwners = new Set(Object.keys(TOPIC_MAPS.owner))
   const knownSubtypes = new Set(Object.keys(TOPIC_MAPS.subtype || {}))
   const halfCurated = [] // repo-backed components with a type but missing a curation field
-  for (const component of data.inventory || []) {
+  for (const component of data.inventory) {
     if (component.type && !knownTypes.has(component.type)) {
       errors.push(`"${component.name}": unknown type "${component.type}" (bad type-* topic?)`)
     }
@@ -230,7 +234,7 @@ function checkScreens(data, extras, repoFolders, warnings) {
   for (const folder of Object.keys(perRepo)) {
     if (!repoFolders.has(folder)) warnings.push(`screens: "${folder}" is not a present repo`)
   }
-  const clients = (data.repos || []).filter((repo) => repo.kind === 'client').map((repo) => repo.folder)
+  const clients = data.repos.filter((repo) => repo.kind === 'client').map((repo) => repo.folder)
   const withScreens = clients.filter((folder) => perRepo[folder]?.screens?.length)
   if (clients.length && withScreens.length < Math.ceil(clients.length / 2)) {
     warnings.push(
@@ -241,20 +245,22 @@ function checkScreens(data, extras, repoFolders, warnings) {
 
 // opts.maxAgeHours: when set, data.generatedAt must be within that window. A plain `npm run guard`
 // on days-old committed data stays valid, so there is no default.
-export function validate(data, extras = null, opts = {}) {
+export function validate(rawData, extras = null, opts = {}) {
   const errors = []
   const warnings = []
-  const repoFolders = new Set((data.repos || []).map((repo) => repo.folder))
+  checkFreshness(rawData, opts.maxAgeHours, errors)
+  checkShape(rawData, errors)
 
-  checkFreshness(data, opts.maxAgeHours, errors)
-  checkShape(data, errors)
+  // The other checks assume lists, so a malformed one is emptied once checkShape has reported it.
+  const data = { ...rawData, repos: arrayOrEmpty(rawData.repos), inventory: arrayOrEmpty(rawData.inventory) }
+  const repoFolders = new Set(data.repos.map((repo) => repo.folder))
   checkCoverage(data, repoFolders, errors)
   checkIntegrity(data, repoFolders, errors, warnings)
   checkBackendHosts(data, warnings)
   checkTopicSchema(data, errors, warnings)
   checkScreens(data, extras, repoFolders, warnings)
 
-  return { errors, warnings, count: data.repos?.length || 0 }
+  return { errors, warnings, count: data.repos.length }
 }
 
 // ---- CLI -------------------------------------------------------------------------------------
