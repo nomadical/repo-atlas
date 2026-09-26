@@ -401,7 +401,7 @@ export default function App() {
       }
       setToast('Failed to load data: ' + error)
     }
-    getData().then(showData).catch(showError)
+    return getData().then(showData).catch(showError)
   }, [])
   useEffect(() => {
     load()
