@@ -805,7 +805,7 @@ function InventorySection({ inv, docSearchUrl }) {
           href={inv.repo}
           target="_blank"
           rel="noreferrer"
-          title="Edit topics, description, and custom properties on GitHub — the map refreshes nightly"
+          title="Edit topics, description, and custom properties on GitHub — the map picks it up on the next data refresh"
         >
           <Icon name="github" /> Edit on GitHub <Icon name="external" />
         </a>

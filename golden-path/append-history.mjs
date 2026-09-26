@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-/* Appends tonight to history.json from the files the pipeline just wrote, rather than replaying
-   git log. Runs before the commit step, so a bad night fails the guard instead of being baked in.
+/* Appends this run to history.json from the files the pipeline just wrote, rather than replaying
+   git log. Run it (npm run history:append) after npm run regenerate and before committing, so a
+   bad run fails the guard instead of being baked in. Nothing schedules it: the history only grows
+   when someone refreshes the data.
 
      node golden-path/append-history.mjs */
 import { readFileSync, writeFileSync } from 'node:fs'

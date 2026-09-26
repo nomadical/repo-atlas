@@ -75,7 +75,7 @@ The ones worth setting first:
 | `internalScopes` | The npm scopes your org publishes under — what counts as an internal-dependency edge. |
 | `uiPackages` / `uiHubFolders` | Your design system. Consumers collapse onto one hub card, and version drift against it is drawn. |
 | `owners` / `applications` | Your team and application vocabulary. Both are **open** — an undeclared topic is accepted and auto-titled, so declare one only when the automatic title is wrong. |
-| `guard` | Coverage tripwires for the nightly run. Set them once your map looks right. |
+| `guard` | Coverage tripwires for a regenerate run. Set them once your map looks right. |
 | `apiDomains` | Your own API domains, so a CDN link isn't mistaken for an endpoint. |
 
 ## Layout
@@ -96,7 +96,7 @@ The ones worth setting first:
 | `config.json` | Your configuration — see above |
 | `viz/` | The React Flow + Vite app |
 | `viz/src/graph.js` | Graph and cluster layout |
-| `golden-path/` | Compliance scoring: the rules, the nightly history, and the decision log |
+| `golden-path/` | Compliance scoring: the rules, the history of past runs, and the decision log |
 | `server/server.mjs` | Token-gated `/data` API + static viz server (built by the `Dockerfile`) |
 | `infra/` | [`keycloak.md`](infra/keycloak.md) (login) + [`hosting.md`](infra/hosting.md) (self-hosting) |
 | `.github/workflows/` | `ci.yml`, `pages.yml` (build + deploy), `curation-report.yml` (weekly backlog) |

@@ -164,7 +164,7 @@ const sendJsonText = (body, missingMessage) => (_req, res) => {
 // Same gate as /data, deliberately not static: these list the whole estate's scan results.
 const history = readGoldenPathFile('history.json')
 const rules = readGoldenPathFile('rules.json')
-router.get('/golden-path/history', requireAuth, sendJsonText(history, 'no nightly history in this build'))
+router.get('/golden-path/history', requireAuth, sendJsonText(history, 'no run history in this build'))
 router.get('/golden-path/rules', requireAuth, sendJsonText(rules, 'no rules document in this build'))
 
 // Empty GP_CURATORS means nobody curates: fail closed.
@@ -207,7 +207,7 @@ const hoursSince = (timestamp) => Math.round((Date.now() - new Date(timestamp).g
 
 // Under the base path so they're reachable through an ingress that only routes /repo-atlas/*.
 // The data is baked into the image, so its age is the time since the last successful build and
-// deploy, which lets monitoring catch a stalled nightly.
+// deploy, which lets monitoring catch data that has gone stale.
 router.get('/health', (_req, res) => res.json({ status: 'ok' }))
 router.get('/readiness', (_req, res) => {
   const generatedAt = data.generatedAt || null

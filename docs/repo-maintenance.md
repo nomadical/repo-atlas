@@ -1,7 +1,8 @@
 # Repo Maintenance for the Architecture Map
 
 The architecture map is **built live from each repo's own GitHub metadata** — descriptions, topics,
-and org custom properties — re-read on every nightly refresh.
+and org custom properties — re-read on every data refresh (`npm run regenerate`, then a push to
+`main`).
 There is no central spreadsheet to edit: **you curate your repo on GitHub, and the map updates
 itself.** This page is the practical checklist for repo owners. For the exact field-by-field
 schema (closed enums, display names), see [`topic-schema.md`](topic-schema.md).
@@ -28,7 +29,7 @@ description / `status` / `owner` renders on the map *with gaps* and is flagged
 "half-curated" in the [health pill](#staying-on-top-of-it).
 
 > **Backends too, automatically.** A Java (or other non-JS/TS) service joins the map the moment you
-> give it a `type-service` topic — the nightly clones it and reads its `build.gradle`/`pom.xml` for
+> give it a `type-service` topic — the next data refresh clones it and reads its `build.gradle`/`pom.xml` for
 > the tooling chips. No list to add it to. Renames are followed automatically, so moving or renaming
 > a backend needs no edit anywhere.
 
@@ -60,13 +61,13 @@ description / `status` / `owner` renders on the map *with gaps* and is flagged
    resources:
    `azure-app-key` (your `{env}<key>website` static-site key, space-separated for several) and
    `acr-image` (the container image name if it differs from the component). A just-set value takes
-   effect on the next nightly refresh.
+   effect on the next data refresh.
 
 ### The topics, at a glance
 
 | Topic | Pick from | Notes |
 | --- | --- | --- |
-| `type-*` | `client` · `service` · `library` · `assets` · `tests` · `third-party-service` · `firmware` · `infra` · `hardware` · `data` · `config` | **Closed list** — a typo fails the nightly build |
+| `type-*` | `client` · `service` · `library` · `assets` · `tests` · `third-party-service` · `firmware` · `infra` · `hardware` · `data` · `config` | **Closed list** — a typo fails the data refresh |
 | `status-*` | `current` · `planned` · `sunsetting` · `removed` | **Closed list**. Keep it honest — a `sunsetting` repo still shipping is flagged as drift |
 | `owner-*` | your team (`owner-iss`, `owner-css-at`, …) | Open — new teams welcome |
 | `app-*` | one per app served (`app-skytrack`, `app-ci`, …) | Open — new apps auto-title |

@@ -12,7 +12,7 @@ import { rowsAfter } from './lib/history.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.join(HERE, '..')
-const MAX_NIGHTLY_SHRINK = 0.9
+const MAX_RUN_SHRINK = 0.9
 
 const sinceReset = (nights, resetAt) => (resetAt ? nights.filter((night) => night.date >= resetAt) : nights)
 
@@ -40,12 +40,12 @@ function checkDates(nights, errors) {
   if (lastDate > today) errors.push(`last night "${lastDate}" is in the future`)
 }
 
-// The last night didn't collapse against the night before.
-function checkNightlyShrink(relevant, lastCount, errors) {
+// The latest run didn't collapse against the one before.
+function checkRunShrink(relevant, lastCount, errors) {
   if (relevant.length <= 1) return
   const previousCount = Object.keys(rowsAfter(relevant.slice(0, -1))).length
-  if (previousCount && lastCount < previousCount * MAX_NIGHTLY_SHRINK) {
-    errors.push(`last night has ${lastCount} repos, down from ${previousCount} (>10% drop)`)
+  if (previousCount && lastCount < previousCount * MAX_RUN_SHRINK) {
+    errors.push(`the latest run has ${lastCount} repos, down from ${previousCount} (>10% drop)`)
   }
 }
 
@@ -98,7 +98,7 @@ export function validate(history, prevHistory = null) {
   const lastCount = Object.keys(lastRows).length
 
   checkDates(nights, errors)
-  checkNightlyShrink(relevant, lastCount, errors)
+  checkRunShrink(relevant, lastCount, errors)
   checkFloor(lastCount, errors)
   checkRowShape(lastRows, errors)
   checkAgainstCommitted(relevant, prevHistory, history.resetAt, errors)

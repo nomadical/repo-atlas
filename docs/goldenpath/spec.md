@@ -80,7 +80,7 @@ One entry per night, listing only the repositories that changed since the night 
 entry carries everything. Any night is rebuilt by applying entries in order. A night on which
 nothing moved is still recorded — the series keeps one point per night.
 
-The nightly job **appends** rather than replaying git, so the work does not grow with the age of the
+Each data refresh **appends** (`npm run history:append`) rather than replaying git, so the work does not grow with the age of the
 repository, and it is idempotent: a retried run replaces that date instead of duplicating it.
 
 A guard runs before the commit and fails the run rather than publishing a bad night: dates strictly

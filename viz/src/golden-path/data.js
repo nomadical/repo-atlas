@@ -25,7 +25,7 @@ export async function loadHistory() {
   if (response.status === 401 || response.status === 403) {
     throw new Error('Not signed in — reload the page to sign in again.')
   }
-  if (!response.ok) throw new Error(`The nightly history could not be loaded (${response.status}).`)
+  if (!response.ok) throw new Error(`The run history could not be loaded (${response.status}).`)
   // A server without this route answers 200 with the SPA's index.html (the static fallback).
   if (!isJson(response)) {
     throw new Error(

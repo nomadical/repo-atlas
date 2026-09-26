@@ -396,9 +396,7 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
       })
       const result = await response.json()
       if (!response.ok || result.ok === false) throw new Error(JSON.stringify(result))
-      setMsg(
-        `Saved ${result.written.join(', ')}. Run “Regenerate data” to apply, or it lands on the next nightly.`,
-      )
+      setMsg(`Saved ${result.written.join(', ')}. Run “Regenerate data” to apply.`)
       onSaved?.()
     } catch (error) {
       setMsg(
@@ -535,7 +533,7 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
             <span className={'adm-msg' + (/fail/i.test(msg) ? ' err' : '')}>{msg}</span>
           ) : (
             <span className="adm-msg muted">
-              Source of truth is git-committed; changes apply on regenerate / nightly.
+              Source of truth is git-committed; changes apply on the next regenerate.
             </span>
           )}
           <div className="adm-foot-btns">
@@ -647,8 +645,8 @@ function SettingsTab({
     <>
       <p className="adm-hint">
         App-wide appearance & defaults (config.json). Applies for everyone after you save and
-        {DEV ? ' hit “Regenerate data” / publish' : ' republish'} (or on the next nightly). Leave a field
-        blank to use the built-in default.
+        {DEV ? ' hit “Regenerate data” / publish' : ' republish'}. Leave a field blank to use the built-in
+        default.
       </p>
       <h4 className="adm-sub">Branding</h4>
       <TextField

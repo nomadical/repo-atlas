@@ -669,7 +669,7 @@ const uiConsumers = repos
 const legacyPackages = repos.filter((repo) => repo.legacyPackages).map((repo) => repo.folder)
 
 // Read from the ui repo's own package.json. Never hardcode it: a literal would be re-emitted
-// nightly as if measured.
+// on every refresh as if measured.
 function uiLibrarySourceVersions() {
   const version = repos.find((repo) => UI_HUB_FOLDERS.includes(repo.folder))?.version
   return version ? [{ repo: 'ui (library source HEAD)', version }] : []

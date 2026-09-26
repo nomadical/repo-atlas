@@ -276,8 +276,8 @@ function bucketDays(spanDays) {
 
 function grainDescription(grain) {
   if (grain === 1) return 'one point per night'
-  if (grain === 7) return 'weekly means of nightly samples'
-  return 'monthly means of nightly samples'
+  if (grain === 7) return 'weekly means of daily samples'
+  return 'monthly means of daily samples'
 }
 
 const middleOf = (chunk) => chunk[Math.floor(chunk.length / 2)]
@@ -512,7 +512,7 @@ export function mountPage(hostEl, root) {
   }
 
   function renderProvenance() {
-    const parts = [`${nights.length} nightly runs`, `latest ${latestNight.d}`]
+    const parts = [`${nights.length} runs`, `latest ${latestNight.d}`]
     const source = sourceNote(SOURCE)
     if (source) parts.push(source)
     // Without the decision log an approved deviation reads as an open one, so say so.
@@ -1441,7 +1441,7 @@ export function mountPage(hostEl, root) {
     const host = byId('ch-trend')
     const daily = statsIn(range.from, range.to)
     if (!daily.length) {
-      host.innerHTML = `<h3>Overall state</h3><p class="grain">No nightly run falls inside this window.
+      host.innerHTML = `<h3>Overall state</h3><p class="grain">No run falls inside this window.
         The record starts on ${isoDay(allTimeFrom)}.</p>`
       return
     }
@@ -1624,7 +1624,7 @@ export function mountPage(hostEl, root) {
     const host = byId('ch-checks')
     const windowStats = statsIn(range.from, range.to)
     if (!windowStats.length) {
-      host.innerHTML = '<h3>State by rule</h3><p class="grain">No nightly run in this window.</p>'
+      host.innerHTML = '<h3>State by rule</h3><p class="grain">No run in this window.</p>'
       return
     }
     const facets = CHECKS.map((check, index) => checkFacet(check, index, windowStats, grain))

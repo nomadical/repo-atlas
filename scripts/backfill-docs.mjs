@@ -218,7 +218,7 @@ if (dryRun) {
 } else if (changedCount) {
   fs.writeFileSync(EXTRA, JSON.stringify(extra, null, 2) + '\n')
   console.log(`\nWrote ${linked.length} link(s) + ${labelled.length} label(s) to inventory-extra.json.`)
-  console.log('Run "npm run regenerate" (or the nightly) to publish, then commit inventory-extra.json.')
+  console.log('Run "npm run regenerate" to publish, then commit inventory-extra.json.')
 } else {
   console.log('\nNothing to change — every matched component already has an up-to-date doc.')
 }

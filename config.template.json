@@ -99,7 +99,7 @@
   "_docSearchUrl": "Base URL for documentation links. An inventory `doc` value that's a full URL links straight through; a bare title is url-encoded and appended to this base (e.g. your wiki's search). Unset: a bare title just isn't a link.",
   "docSearchUrl": "https://wiki.acme.example/search?q=",
 
-  "_guard": "Coverage tripwires for the nightly regenerate: it refuses to commit data that regressed, so a half-failed clone step can't silently drop nodes. Set these once your map looks right — take the real counts and back off ~20%. Unset, they're inert: a fresh fork isn't blocked by numbers it hasn't earned, but it isn't protected either. coreRepos are folders that must always be present (cloned, not topic-derived, so they survive a token losing topic scope).",
+  "_guard": "Coverage tripwires for a regenerate run: it refuses to commit data that regressed, so a half-failed clone step can't silently drop nodes. Set these once your map looks right — take the real counts and back off ~20%. Unset, they're inert: a fresh fork isn't blocked by numbers it hasn't earned, but it isn't protected either. coreRepos are folders that must always be present (cloned, not topic-derived, so they survive a token losing topic scope).",
   "guard": {
     "coreRepos": ["acme-portal", "acme-admin"],
     "minRepos": 10,
