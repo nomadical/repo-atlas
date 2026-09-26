@@ -72,14 +72,17 @@ function listSourceFiles(dir, files = []) {
 
 // ---- Module resolution -----------------------------------------------------------------------
 
-// tsconfig allows comments and trailing commas, which JSON.parse doesn't.
+// tsconfig allows comments and trailing commas, which JSON.parse doesn't. Strings are matched
+// first so a `/*` or `//` inside one (like "@/*") is kept.
+const STRING_OR_COMMENT = /("(?:[^"\\\n]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g
+const STRING_OR_TRAILING_COMMA = /("(?:[^"\\\n]|\\.)*")|,(\s*[}\]])/g
+
 const stripJsonComments = (raw) =>
   raw
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    .replace(/,(\s*[}\]])/g, '$1')
+    .replace(STRING_OR_COMMENT, (match, string) => string ?? '')
+    .replace(STRING_OR_TRAILING_COMMA, (match, string, closing) => string ?? closing)
 
-function readTsPaths(repoDir) {
+export function readTsPaths(repoDir) {
   for (const name of TSCONFIG_NAMES) {
     const raw = readFile(path.join(repoDir, name))
     if (!raw) continue

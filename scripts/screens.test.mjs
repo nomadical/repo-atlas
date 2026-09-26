@@ -3,10 +3,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseRoutes, importMap, extractUiComponents } from './screens-gather.mjs'
+import { parseRoutes, importMap, extractUiComponents, readTsPaths } from './screens-gather.mjs'
 import { extractEndpointsFromText, extractApiCallsFromText, normalizeEndpoint } from './lib/endpoints.mjs'
 
 const CONFIG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config.json')
@@ -128,4 +129,21 @@ test(
 test('normalizeEndpoint: interpolation → {id}, slashes trimmed', () => {
   assert.equal(normalizeEndpoint('/companies/${id}/settings/'), 'companies/{id}/settings')
   assert.equal(normalizeEndpoint('${cond ? a : b}/x'), 'x') // conditional fragment dropped
+})
+
+test('readTsPaths: keeps "/*" inside strings while stripping comments and trailing commas', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screens-tsconfig-'))
+  fs.writeFileSync(
+    path.join(repoDir, 'tsconfig.json'),
+    `{
+      /* block comment */
+      "compilerOptions": {
+        "baseUrl": ".", // line comment
+        "paths": { "@/*": ["src/*"], "~/*": ["./lib/*"], },
+        "strict": true /* a later block comment */
+      },
+    }`,
+  )
+  assert.deepEqual(readTsPaths(repoDir), { baseUrl: '.', paths: { '@/*': ['src/*'], '~/*': ['./lib/*'] } })
+  fs.rmSync(repoDir, { recursive: true, force: true })
 })
