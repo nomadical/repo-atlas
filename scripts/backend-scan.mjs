@@ -266,7 +266,7 @@ function isInfraEndpoint({ propKey, host, hostHead, path: pathPrefix }) {
 }
 
 // One entry per (module, host, first path segment).
-function scanRestConsumes(propFiles, repoDir) {
+export function scanRestConsumes(propFiles, repoDir) {
   const consumers = new Map() // "module|host|segment" -> { module, propKey, host, hostHead, path, rawUrl }
   for (const file of propFiles) {
     const module = moduleOf(repoDir, file)
@@ -276,7 +276,7 @@ function scanRestConsumes(propFiles, repoDir) {
       const propKey = propertyMatch[1]
       const urlMatch = resolvePlaceholders(propertyMatch[2]).match(HTTP_URL)
       if (!urlMatch) continue
-      const [, rawHost, rawPath] = urlMatch
+      const [rawUrl, rawHost, rawPath] = urlMatch
       const host = normalizeHost(rawHost)
       const hostHead = host.split('.')[0]
       const segments = (rawPath || '/').split('/').filter(Boolean)
@@ -286,7 +286,7 @@ function scanRestConsumes(propFiles, repoDir) {
         host,
         hostHead,
         path: '/' + segments.slice(0, PATH_SEGMENTS_IN_PREFIX).join('/'),
-        rawUrl: `https://${rawHost}${rawPath || ''}`,
+        rawUrl,
       }
       if (isInfraEndpoint(entry)) continue
       const key = `${module}|${host}|${segments[0] || ''}`
@@ -493,5 +493,5 @@ function main() {
   )
 }
 
-// Run only when invoked directly, so tests can import extractFrameworkDeps.
+// Run only when invoked directly, not when imported by a test.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

@@ -2,7 +2,10 @@
 // repos, so only the parsing is unit-tested). Run with `node --test`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractFrameworkDeps } from './backend-scan.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { extractFrameworkDeps, scanRestConsumes } from './backend-scan.mjs'
 
 const CONF = {
   _comment: 'ignored',
@@ -56,4 +59,16 @@ test('unresolvable version degrades to null, artifacts still reported', () => {
     CONF,
   )
   assert.deepEqual(frameworks['platform-core'], { version: null, artifacts: ['platform-core'] })
+})
+
+test('restConsumes keeps the configured URL scheme in rawUrl', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-scan-'))
+  const propFile = path.join(repoDir, 'application.properties')
+  fs.writeFileSync(
+    propFile,
+    'plain.service.url=http://plain-service:8080/api/v1\nsecure.service.url=https://secure-service/api\n',
+  )
+  const rawUrls = scanRestConsumes([propFile], repoDir).map((consumer) => consumer.rawUrl)
+  assert.deepEqual(rawUrls, ['http://plain-service:8080/api/v1', 'https://secure-service/api'])
+  fs.rmSync(repoDir, { recursive: true, force: true })
 })
