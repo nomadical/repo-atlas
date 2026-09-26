@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { extractFrameworkDeps, scanRestConsumes } from './backend-scan.mjs'
+import { collectSourceFiles, extractFrameworkDeps, scanRestConsumes } from './backend-scan.mjs'
 
 const CONF = {
   _comment: 'ignored',
@@ -71,4 +71,25 @@ test('restConsumes keeps the configured URL scheme in rawUrl', () => {
   const rawUrls = scanRestConsumes([propFile], repoDir).map((consumer) => consumer.rawUrl)
   assert.deepEqual(rawUrls, ['http://plain-service:8080/api/v1', 'https://secure-service/api'])
   fs.rmSync(repoDir, { recursive: true, force: true })
+})
+
+test('source files count only under src/main inside the repo, not in folders above it', () => {
+  const outerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-scan-'))
+  const repoDir = path.join(outerDir, 'src', 'main', 'java', 'repo')
+  const resourcesDir = path.join(repoDir, 'src', 'main', 'resources')
+  const javaDir = path.join(repoDir, 'src', 'main', 'java', 'app')
+  fs.mkdirSync(resourcesDir, { recursive: true })
+  fs.mkdirSync(javaDir, { recursive: true })
+  for (const file of [
+    path.join(repoDir, 'application.properties'),
+    path.join(repoDir, 'Stray.java'),
+    path.join(resourcesDir, 'application.properties'),
+    path.join(javaDir, 'App.java'),
+  ]) {
+    fs.writeFileSync(file, '')
+  }
+  const { propFiles, javaFiles } = collectSourceFiles(repoDir)
+  assert.deepEqual(propFiles, [path.join(resourcesDir, 'application.properties')])
+  assert.deepEqual(javaFiles, [path.join(javaDir, 'App.java')])
+  fs.rmSync(outerDir, { recursive: true, force: true })
 })

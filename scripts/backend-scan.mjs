@@ -141,7 +141,7 @@ function listDirectory(dir) {
 
 // One walk for all scanners, so a 3000-file backend is read once. Build files are collected from
 // subprojects too: a multi-module repo declares its datasource in the module, not the root.
-function collectSourceFiles(repoDir) {
+export function collectSourceFiles(repoDir) {
   const propFiles = []
   const javaFiles = []
   const buildFiles = []
@@ -154,9 +154,11 @@ function collectSourceFiles(repoDir) {
         continue
       }
       const file = path.join(dir, entry.name)
-      if (/^application[^/]*\.properties$/.test(entry.name) && dir.includes(RESOURCES_DIR)) {
+      // Relative, so folders above the repo (a clone under some src/main/java) don't count.
+      const repoRelativeDir = path.relative(repoDir, dir)
+      if (/^application[^/]*\.properties$/.test(entry.name) && repoRelativeDir.includes(RESOURCES_DIR)) {
         propFiles.push(file)
-      } else if (entry.name.endsWith('.java') && dir.includes(JAVA_DIR)) {
+      } else if (entry.name.endsWith('.java') && repoRelativeDir.includes(JAVA_DIR)) {
         javaFiles.push(file)
       } else if (/^(pom\.xml|build\.gradle(\.kts)?)$/.test(entry.name) && !isInTestModule(repoDir, dir)) {
         buildFiles.push(file)
