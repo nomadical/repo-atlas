@@ -206,6 +206,18 @@ body {
   outline-offset: 2px;
 }
 /* React Flow strips the outline from focused nodes, so draw the ring on what the node renders */
+/* On the teal gradient a teal ring vanishes: white outside, deep teal in the offset gap */
+.toolbar :focus-visible,
+.toolbar .switch input:focus-visible + .switch-track {
+  outline-color: #fff;
+  box-shadow: 0 0 0 2px var(--brand-dark);
+}
+/* ...but popovers opened from the toolbar sit on the panel surface */
+.toolbar .dd-menu :focus-visible,
+.toolbar .health-pop :focus-visible {
+  outline-color: var(--focus);
+  box-shadow: none;
+}
 .react-flow__node:focus-visible .node-card {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
