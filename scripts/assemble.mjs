@@ -5,7 +5,7 @@ import { ROOT, AUDIT, ORG, inOrg } from './_paths.mjs'
 import { uncloned, OUTSIDE, remoteOf } from './repos.mjs'
 import { loadInventory, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
 import { loadServiceMap, serviceIdentity } from './service-map.mjs'
-import { putFirst } from './lib/assemble-rules.mjs'
+import { putFirst, recordRestPair } from './lib/assemble-rules.mjs'
 
 const MS_PER_DAY = 86400000
 
@@ -367,9 +367,12 @@ function deriveRestIntegrations(scanned) {
     `${canon(source)}${PAIR_SEPARATOR}${canon(target)}${PAIR_SEPARATOR}${(protocol || DEFAULT_PROTOCOL).toLowerCase()}`
   const nodeIndex = buildNodeIndex(canon)
   const rootsByComponent = collectProviderRoots(scanned, canon)
-  const rowsByKey = new Map(
-    integrations.map((row) => [integrationKey(row.source, row.target, row.protocol), row]),
-  )
+  const restRows = {
+    curatedByKey: new Map(
+      integrations.map((row) => [integrationKey(row.source, row.target, row.protocol), row]),
+    ),
+    derivedByKey: new Map(),
+  }
   const unresolvedHosts = new Map() // host -> Set(source)
   let added = 0
   let confirmed = 0
@@ -385,16 +388,6 @@ function deriveRestIntegrations(scanned) {
       }
       if (target === source) continue // e.g. ip.be.application.url pointing at its own host
       const channel = restChannel(consumer, rootsByComponent.get(target))
-      const key = integrationKey(source, target, DEFAULT_PROTOCOL)
-      const existing = rowsByKey.get(key)
-      if (existing) {
-        existing.verified = true
-        existing.via = 'code'
-        existing.curated = true // see the Kafka block
-        if (!existing.channel) existing.channel = channel
-        confirmed++
-        continue
-      }
       const row = {
         source,
         target,
@@ -404,9 +397,12 @@ function deriveRestIntegrations(scanned) {
         verified: true,
         via: 'code',
       }
-      integrations.push(row)
-      rowsByKey.set(key, row)
-      added++
+      const outcome = recordRestPair(restRows, integrationKey(source, target, DEFAULT_PROTOCOL), row)
+      if (outcome === 'confirmed') confirmed++
+      if (outcome === 'added') {
+        integrations.push(row)
+        added++
+      }
     }
   }
 
