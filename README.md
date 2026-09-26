@@ -34,6 +34,7 @@ are configuration.*
 
 ```bash
 npm --prefix viz ci
+npm run hooks      # once per clone: refuse commits that put real data over the demo
 npm run dev        # the demo estate, at http://localhost:5173
 ```
 
@@ -60,6 +61,10 @@ Then point it at your own org:
 > and `github-meta.json` with your own estate. The demo's curated overlays — `backend-extra.json`,
 > `repo-extra.json`, `inventory-extra.json`, `integrations.csv`, `third-party-meta.csv`,
 > `golden-path/` — are yours to edit; each file documents its own shape in a `_comment` field.
+>
+> This repo's `config.json` sets `demoDataOrg`, so the pre-commit hook (`npm run hooks`) and CI
+> refuse to commit data files that describe any other estate. Copying the template over
+> `config.json` (step 5) drops it, which is what a fork committing its own data wants.
 
 ## Configuration
 
