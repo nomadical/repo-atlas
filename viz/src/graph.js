@@ -782,10 +782,12 @@ function addExternalLayer(ctx) {
   for (const repo of ctx.repos) {
     for (const external of repo.externals || []) linkToExternal(nodeIdOf(repo), external.name)
   }
-  // Make sure the backend card exists so its external edges have a source.
+  // Make sure the backend card exists so its external edges have a source. A curated id that
+  // names no backend draws nothing, like the other curated references.
   for (const [backendId, names] of Object.entries(ctx.topology.backendExternals)) {
     if (!names.length) continue
     if (!graph.has(backendId)) addBackendCard(ctx, backendId)
+    if (!graph.has(backendId)) continue
     for (const name of names) linkToExternal(backendId, name)
   }
 }

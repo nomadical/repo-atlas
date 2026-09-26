@@ -570,6 +570,23 @@ describe('buildGraph', () => {
     expect(lagging.data).toEqual({ drift: true, scdLatest: '2.0.0' })
   })
 
+  it('skips backendExternals whose backend does not resolve instead of leaving a dangling edge', () => {
+    const fixture = {
+      ...data,
+      backendTopology: {
+        ...data.backendTopology,
+        backendExternals: { ...data.backendTopology.backendExternals, 'be-missing': ['Nowhere'] },
+      },
+    }
+    const graph = buildGraph(fixture, { mode: 'dev', layers: { integrations: true } })
+    const ids = new Set(graph.nodes.map((n) => n.id))
+    expect(ids.has('ext:Nowhere')).toBe(false)
+    for (const e of graph.edges) {
+      expect(ids.has(e.source), e.id).toBe(true)
+      expect(ids.has(e.target), e.id).toBe(true)
+    }
+  })
+
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
     expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(
