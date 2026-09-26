@@ -1,4 +1,4 @@
-// Tests for the service<->repo identity resolver (backlog #16). Run with `node --test`.
+// Tests for the service <-> repo identity resolver. Run with `node --test`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -36,25 +36,28 @@ test('an explicit null override wins over the scanned repo', () => {
 })
 
 test('serviceId is always the name verbatim; unmapped falls back to ownRepo', () => {
-  assert.equal(serviceIdentity('X', 'r', { other: { repo: 'z' } }).serviceId, 'X')
-  assert.equal(serviceIdentity('X', 'r', { other: { repo: 'z' } }).serviceRepo, 'r')
+  const unrelatedMap = { other: { repo: 'z' } }
+  assert.equal(serviceIdentity('X', 'r', unrelatedMap).serviceId, 'X')
+  assert.equal(serviceIdentity('X', 'r', unrelatedMap).serviceRepo, 'r')
 })
 
-// Integration: the committed service-map.json overrides must resolve against the committed model —
-// every override key is a real inventory service, and every override repo is a real repo folder.
+// Every override key must be a real inventory service and every override repo a real repo folder.
 test('committed service-map.json overrides resolve against the committed data', () => {
-  const map = loadServiceMap()
+  const serviceMap = loadServiceMap()
   const data = JSON.parse(fs.readFileSync(path.join(AUDIT, 'fe-architecture.json'), 'utf8'))
-  const names = new Set((data.inventory || []).map((e) => e.name))
-  // known repos = drawn folders ∪ repoNames referenced by inventory (owning repo may be a real repo
-  // that isn't cloned in a given run), matching the guard's resolution rule.
+  const inventory = data.inventory || []
+  const inventoryNames = new Set(inventory.map((entry) => entry.name))
+  // An owning repo may be real but not cloned in a given run, so inventory repoNames count too.
   const knownRepos = new Set([
-    ...(data.repos || []).map((r) => r.folder),
-    ...(data.inventory || []).map((e) => e.repoName).filter(Boolean),
+    ...(data.repos || []).map((repo) => repo.folder),
+    ...inventory.map((entry) => entry.repoName).filter(Boolean),
   ])
-  for (const [name, ov] of Object.entries(map)) {
-    assert.ok(names.has(name), `service-map key "${name}" is not a known inventory service`)
-    if (ov.repo != null)
-      assert.ok(knownRepos.has(ov.repo), `service-map "${name}".repo "${ov.repo}" is not a known repo`)
+  for (const [name, override] of Object.entries(serviceMap)) {
+    assert.ok(inventoryNames.has(name), `service-map key "${name}" is not a known inventory service`)
+    if (override.repo == null) continue
+    assert.ok(
+      knownRepos.has(override.repo),
+      `service-map "${name}".repo "${override.repo}" is not a known repo`,
+    )
   }
 })
