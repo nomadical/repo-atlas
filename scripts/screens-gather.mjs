@@ -190,8 +190,6 @@ const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
 const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*\[([^\]]*)\]/g
 // `sufficientRoles: testDataRoles`: a named list, resolved through roleConstantLookup.
 const ROUTE_ROLE_CONSTANT = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*)(?![\w$.([])/g
-// userRoles.ASSET or a quoted 'ASSET'.
-const ROLE_ENTRY = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g
 const TAG_NAME = /[\w$]*/y
 
 // Index just past the `}` matching the `{` at openIndex.
@@ -306,40 +304,97 @@ function constantListIn(text, name) {
   return declaration.exec(text)?.[1] ?? null
 }
 
-// Finds a named roles list: declared in the router file itself, or exported by the file the
-// router imports it from. Re-exports and computed lists are not followed.
-export function roleConstantLookup(text, fromFile, resolve) {
-  const specifierByName = importMap(text)
-  return (name) => {
-    const local = constantListIn(text, name)
-    if (local != null) return local
-    const specifier = specifierByName[name]
-    const file = specifier && fromFile && resolve ? resolve(fromFile, specifier) : null
-    return file ? constantListIn(readFile(file), name) : null
+// `import { a, b as c } from 'x'` and `export { a, b as c } from 'x'`.
+const NAMED_BINDINGS =
+  /(?:import|export)\s+(?:type\s+)?(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g
+const STAR_EXPORT = /export\s*\*\s*from\s*['"]([^'"]+)['"]/g
+// Name lookups (files followed plus spreads resolved) allowed per route list, so a long or cyclic
+// barrel chain ends.
+const MAX_ROLE_LOOKUPS = 24
+
+// Where `name` comes from when this file imports or re-exports it: the specifier and the name it
+// has in that module.
+function bindingSource(text, name) {
+  for (const [, bindings, specifier] of text.matchAll(NAMED_BINDINGS)) {
+    for (const binding of bindings.split(',')) {
+      const [sourceName, localName = sourceName] = binding
+        .trim()
+        .split(/\s+as\s+/)
+        .map((part) => part.trim())
+      if (localName === name) return { specifier, sourceName }
+    }
   }
+  return null
 }
 
-const sameFileLookup = (text) => (name) => constantListIn(text, name)
+// A list body's roles in order. `...name` spreads are resolved through lookupName; spreads it can't
+// resolve (or member spreads like `...groups.ADMIN`) add nothing.
+function rolesInList(body, lookupName) {
+  const roles = []
+  for (const entry of body.split(',').map((part) => part.trim())) {
+    if (entry.startsWith('...')) {
+      const spreadName = /^\.\.\.([A-Za-z_$][\w$]*)$/.exec(entry)?.[1]
+      for (const role of (spreadName && lookupName(spreadName)) || []) pushUnique(roles, role)
+      continue
+    }
+    // userRoles.ASSET or a quoted 'ASSET'
+    const match = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/.exec(entry)
+    const role = match?.[1] || match?.[2]
+    if (role) pushUnique(roles, role)
+  }
+  return roles
+}
+
+// Resolves a named roles list to its roles: declared in the router file, or imported from another
+// file, following named, renamed and `export *` re-exports, and resolving spreads inside the list
+// the same way. Without fromFile/resolve only the router file itself is searched.
+export function roleConstantLookup(text, fromFile, resolve) {
+  const visited = new Set()
+  const followable = Boolean(fromFile && resolve)
+
+  const rolesFor = (file, fileText, name) => {
+    const key = `${file}\u0000${name}`
+    if (visited.has(key) || visited.size >= MAX_ROLE_LOOKUPS) return null
+    visited.add(key)
+    const body = constantListIn(fileText, name)
+    if (body != null) return rolesInList(body, (spreadName) => rolesFor(file, fileText, spreadName))
+    if (!followable) return null
+    const source = bindingSource(fileText, name)
+    if (source) return rolesInModule(file, source.specifier, source.sourceName)
+    for (const [, specifier] of fileText.matchAll(STAR_EXPORT)) {
+      const roles = rolesInModule(file, specifier, name)
+      if (roles) return roles
+    }
+    return null
+  }
+
+  const rolesInModule = (fromPath, specifier, name) => {
+    const target = resolve(fromPath, specifier)
+    return target ? rolesFor(target, readFile(target), name) : null
+  }
+
+  // A fresh visited set per lookup, so one route's walk never blocks another's.
+  return (name) => {
+    visited.clear()
+    return rolesFor(fromFile, text, name)
+  }
+}
 
 // Every role in every roles list (necessary and sufficient), in order, without repeats.
 function rolesIn(texts, lookupConstant) {
-  const lists = []
-  for (const text of texts) {
-    for (const [, list] of text.matchAll(ROUTE_ROLES)) lists.push(list)
-    for (const [, name] of text.matchAll(ROUTE_ROLE_CONSTANT)) {
-      const list = lookupConstant(name)
-      if (list != null) lists.push(list)
-    }
-  }
   const roles = []
-  for (const list of lists) {
-    for (const match of list.matchAll(ROLE_ENTRY)) pushUnique(roles, match[1] || match[2])
+  const add = (list) => {
+    for (const role of list || []) pushUnique(roles, role)
   }
-  return roles.filter(Boolean)
+  for (const text of texts) {
+    for (const [, list] of text.matchAll(ROUTE_ROLES)) add(rolesInList(list, lookupConstant))
+    for (const [, name] of text.matchAll(ROUTE_ROLE_CONSTANT)) add(lookupConstant(name))
+  }
+  return roles
 }
 
 // One route per `element` anchor, with the path and roles of the same route object or tag.
-export const parseRoutes = (text, lookupConstant = sameFileLookup(text)) => {
+export const parseRoutes = (text, lookupConstant = roleConstantLookup(text)) => {
   const routes = []
   for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
     const elementStart = elementMatch.index + elementMatch[0].length
