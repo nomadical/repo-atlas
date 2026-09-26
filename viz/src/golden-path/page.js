@@ -930,6 +930,7 @@ export function mountPage(hostEl, root) {
       <input id="f-ref" placeholder="Ticket, document or meeting note" autocomplete="off">
       <label for="f-why">Reason <span class="opt">optional</span></label>
       <textarea id="f-why" placeholder="Why this decision was taken"></textarea>
+      <div class="err" id="f-err" role="alert" hidden></div>
       <div class="btnrow">
         <button class="btn primary" type="button" id="f-save" data-i="${index}">Save</button>
         <button class="btn" type="button" id="f-cancel">Cancel</button>
@@ -1048,14 +1049,11 @@ export function mountPage(hostEl, root) {
     try {
       await recordDecision(entry)
     } catch (error) {
-      const errorNode = host?.querySelector('#f-err')
-      if (errorNode) {
-        errorNode.textContent = error.message
-        errorNode.hidden = false
-        errorNode.scrollIntoView({ block: 'center' })
-      } else {
-        toast(error.message)
-      }
+      // Both forms carry one inline `.err` node: the error shows in the form that was submitted.
+      const errorNode = host.querySelector('.err')
+      errorNode.textContent = error.message
+      errorNode.hidden = false
+      errorNode.scrollIntoView({ block: 'center' })
       return
     }
     render()
@@ -1105,6 +1103,7 @@ export function mountPage(hostEl, root) {
       openDetails(repo.repository, { keepScroll: true })
     }
     editor.querySelector('#f-save').onclick = () => {
+      editor.querySelector('#f-err').hidden = true
       const index = +editor.querySelector('#f-save').dataset.i
       const type = editor.querySelector('input[name="f-move"]:checked').value
       editing = null

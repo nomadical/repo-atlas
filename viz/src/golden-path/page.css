@@ -1353,7 +1353,8 @@ tr.grp .gm {
   resize: vertical;
   min-height: 56px;
 }
-.form .err {
+.form .err,
+.rowedit .err {
   color: var(--bad);
   font-size: 12px;
   margin-top: 7px;
