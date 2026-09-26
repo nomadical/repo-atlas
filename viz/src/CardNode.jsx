@@ -19,6 +19,8 @@ function cardTooltip(kind, status, inventory) {
     .join('\n')
 }
 
+const integrationCount = (count) => `${count} integration${count === 1 ? '' : 's'}`
+
 // Both "new" and "curate" mean "metadata still missing", so show a single flag.
 function CurationFlag({ flags }) {
   if (flags?.incomplete) {
@@ -125,7 +127,7 @@ export default function CardNode({ data, selected }) {
       ) : null}
       {data.repo?.externals?.length ? (
         <div className="node-ext" title={data.repo.externals.map((external) => external.name).join(', ')}>
-          <Icon name="integrations" /> {data.repo.externals.length} integrations
+          <Icon name="integrations" /> {integrationCount(data.repo.externals.length)}
         </div>
       ) : null}
     </div>
