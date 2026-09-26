@@ -1,6 +1,6 @@
 // Per-FE-client screen extraction with best-effort endpoint attribution. For each FE repo:
 //   1. find router files (*Router*.tsx, or files using <Route>/createBrowserRouter),
-//   2. pair each route `element` with its nearest `path` literal and its roles,
+//   2. pair each route `element` with the `path` and roles of the same route object or tag,
 //   3. resolve the screen component to a file (relative or tsconfig path alias),
 //   4. walk that file's local import graph collecting endpoints and design-system imports.
 // Repos with no parseable routers fall back to folder convention (src/pages|screens|views/*).
@@ -31,9 +31,6 @@ const SKIP_COMPONENTS = new Set([
 ])
 const MAX_TRACED_FILES = 600
 const MAX_TRACE_DEPTH = 8
-const PATH_LOOKAHEAD_CHARS = 600
-// For path-first JSX: <Route path=… element=…>.
-const PATH_LOOKBEHIND_CHARS = 200
 
 const readFile = (file) => {
   try {
@@ -45,8 +42,6 @@ const readFile = (file) => {
 
 const relativePosix = (repoDir, absolutePath) =>
   path.relative(repoDir, absolutePath).split(path.sep).join('/')
-
-const lastItem = (items) => (items.length ? items[items.length - 1] : null)
 
 const pushUnique = (items, item) => {
   if (!items.includes(item)) items.push(item)
@@ -190,7 +185,6 @@ export const importMap = (text) => {
 // Ends where the element's JSX starts: `element={<X />}`, `element: <X />` or `element: (<X />)`.
 const ROUTE_ELEMENT = /element\s*[:=]\s*[{(]?\s*(?=<)/g
 const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
-const ROUTE_PATHS = new RegExp(ROUTE_PATH, 'g')
 const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\[([^\]]*)\]/
 // userRoles.ASSET or a quoted 'ASSET'.
 const ROLE_ENTRY = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g
@@ -259,34 +253,66 @@ function screenComponentOf(tags) {
   return screen?.name
 }
 
-// Element-first: the nearest path after the element. Path-first JSX: the last path before it
-// (the closest one, not an earlier sibling's).
-function routePathNear(text, elementIndex) {
-  const ahead = text.slice(elementIndex, elementIndex + PATH_LOOKAHEAD_CHARS)
-  const behind = text.slice(Math.max(0, elementIndex - PATH_LOOKBEHIND_CHARS), elementIndex)
-  const pathMatch = ahead.match(ROUTE_PATH) || lastItem([...behind.matchAll(ROUTE_PATHS)])
-  return pathMatch ? pathMatch[1] : null
+// The route owning an element: the `{…}` object or JSX tag (<Route>, <PrivateRoute>…) around it.
+// Walks back over balanced brackets and whole JSX elements; null when the element is in neither.
+function enclosingRoute(text, elementIndex) {
+  let bracketDepth = 0
+  let closedTags = 0
+  for (let i = elementIndex - 1; i >= 0; i--) {
+    const char = text[i]
+    if ('}])'.includes(char)) {
+      bracketDepth++
+    } else if ('{[('.includes(char)) {
+      if (bracketDepth === 0) {
+        return char === '{' ? { start: i, end: closingBraceEnd(text, i), isObject: true } : null
+      }
+      bracketDepth--
+    } else if (bracketDepth > 0) {
+      continue
+    } else if (char === '>' && text[i - 1] !== '=') {
+      closedTags++
+    } else if (char === '<' && /[A-Za-z/]/.test(text[i + 1])) {
+      if (closedTags === 0 && text[i + 1] !== '/') return { start: i, end: tagEnd(text, i), isObject: false }
+      closedTags--
+    }
+  }
+  return null
 }
 
-function routeRolesNear(text, elementIndex) {
-  const ahead = text.slice(elementIndex, elementIndex + PATH_LOOKAHEAD_CHARS)
-  const rolesMatch = ROUTE_ROLES.exec(ahead)
+// The route's own properties, without its element and, for objects, without nested child routes.
+function routeOwnText(text, route, element) {
+  const ownText =
+    text.slice(route.start, element.start) +
+    ' '.repeat(element.end - element.start) +
+    text.slice(element.end, route.end)
+  if (!route.isObject) return ownText
+  let depth = 0
+  let topLevel = ''
+  for (const char of ownText) {
+    if (char === '{') depth++
+    if (depth === 1) topLevel += char
+    if (char === '}') depth--
+  }
+  return topLevel
+}
+
+function rolesIn(routeText) {
+  const rolesMatch = ROUTE_ROLES.exec(routeText)
   if (!rolesMatch) return []
   return [...rolesMatch[1].matchAll(ROLE_ENTRY)].map((match) => match[1] || match[2]).filter(Boolean)
 }
 
-// One route per `element` anchor, with its nearest path and roles.
+// One route per `element` anchor, with the path and roles of the same route object or tag.
 export const parseRoutes = (text) => {
   const routes = []
   for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
     const elementStart = elementMatch.index + elementMatch[0].length
-    const component = screenComponentOf(walkJsxElement(text, elementStart).tags)
+    const { tags, end } = walkJsxElement(text, elementStart)
+    const component = screenComponentOf(tags)
     if (!component) continue
-    routes.push({
-      component,
-      path: routePathNear(text, elementMatch.index),
-      roles: routeRolesNear(text, elementMatch.index),
-    })
+    const route = enclosingRoute(text, elementMatch.index)
+    const routeText = route ? routeOwnText(text, route, { start: elementStart, end }) : ''
+    routes.push({ component, path: routeText.match(ROUTE_PATH)?.[1] ?? null, roles: rolesIn(routeText) })
   }
   return routes
 }

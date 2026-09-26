@@ -162,3 +162,33 @@ test('parseRoutes: looks through wrapper elements to the screen component', () =
   assert.ok(!byComponent.Spinner, 'a Suspense fallback is not the screen')
   assert.ok(!byComponent.RequireAuth && !byComponent.Layout, 'wrappers are not the screen')
 })
+
+test('parseRoutes: pairs each element with the path of its own route object or tag', () => {
+  const src = `
+    const routes = [
+      { path: '/home', element: <Home />, necessaryRoles: [userRoles.HOME] },
+      { element: <Assets />, path: '/assets' },
+      { errorElement: <Oops />, path: '/parent', element: <Parent />, children: [
+        { path: 'child', element: <Child /> },
+      ] },
+      { index: true, element: <NoPath /> },
+      { path: '/after-no-path', element: <AfterNoPath /> },
+    ]
+    <Routes>
+      <PrivateRoute path="/private" element={<Private />} />
+      <Route element={<JsxNoPath />} />
+      <Route path="/jsx-after" element={<JsxAfter />} />
+    </Routes>`
+  const byComponent = routesByComponent(src)
+  assert.equal(byComponent.Home.path, '/home')
+  assert.deepEqual(byComponent.Home.roles, ['HOME'])
+  assert.equal(byComponent.Assets.path, '/assets')
+  assert.deepEqual(byComponent.Assets.roles, [])
+  assert.equal(byComponent.Parent.path, '/parent')
+  assert.equal(byComponent.Child.path, 'child')
+  assert.equal(byComponent.NoPath.path, null)
+  assert.equal(byComponent.AfterNoPath.path, '/after-no-path')
+  assert.equal(byComponent.Private.path, '/private')
+  assert.equal(byComponent.JsxNoPath.path, null)
+  assert.equal(byComponent.JsxAfter.path, '/jsx-after')
+})
