@@ -29,6 +29,7 @@ body {
   --chip-ink: #45506a;
   --region-bg: rgba(99, 110, 140, 0.05);
   --label-bg: #fff;
+  --focus: #007391;
 }
 .app.dark {
   --canvas: #0c1322;
@@ -42,6 +43,7 @@ body {
   --chip-ink: #aebbd6;
   --region-bg: rgba(120, 140, 180, 0.06);
   --label-bg: #0c1322;
+  --focus: #5dcbe8;
 }
 .app {
   display: flex;
@@ -195,13 +197,23 @@ body {
 
 /* Accessibility: visible keyboard focus + honour reduced-motion */
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--focus, #007391);
   outline-offset: 2px;
   border-radius: 6px;
 }
 .switch input:focus-visible + .switch-track {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+/* React Flow strips the outline from focused nodes, so draw the ring on what the node renders */
+.react-flow__node:focus-visible .node-card {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.react-flow__node.react-flow__node-region:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 16px;
 }
 @media (prefers-reduced-motion: reduce) {
   *,
