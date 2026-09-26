@@ -18,6 +18,8 @@ typography:
   body:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
     fontSize: "12px"
+  mono:
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
   title:
     fontSize: "13px"
     fontWeight: 600
@@ -47,7 +49,7 @@ A dense engineering tool. A teal gradient toolbar sits over a quiet canvas of wh
 
 ## Typography
 
-One system sans. The scale is dense: 10px uppercase labels (kind, section heads), 11–12px body and metadata, 13px card titles, 18px panel headings. Nothing is smaller than 10px except the 9px flags that sit inside cards.
+One system sans, plus the system monospace (`--font-mono`) for repo names, package names and paths. The scale is dense: 10px uppercase labels (kind, section heads), 11–12px body and metadata, 13px card titles, 18px panel headings. Nothing is smaller than 10px except the 9px flags that sit inside cards.
 
 ## Layout
 
