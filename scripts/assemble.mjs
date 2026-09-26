@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { ROOT, AUDIT, ORG, inOrg } from './_paths.mjs'
 import { uncloned, OUTSIDE, remoteOf } from './repos.mjs'
-import { loadInventory, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
+import { loadInventory, ownValue, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
 import { loadServiceMap, serviceIdentity } from './service-map.mjs'
 import { putFirst, recordRestPair, azureAppAddress } from './lib/assemble-rules.mjs'
 
@@ -79,11 +79,11 @@ function addToSetMap(map, key, value) {
 // modules ship as separate services); otherwise the repo's inventory name, else the repo name.
 function componentOfRepo(folder, scan) {
   const repoName = scan.repoName || folder
-  return byRepo[repoName]?.[0]?.name || repoName
+  return ownValue(byRepo, repoName)?.[0]?.name || repoName
 }
 
 function componentOfChannel(channel, repoComponent) {
-  const moduleComponent = channel.module && byName[channel.module.toLowerCase()]?.name
+  const moduleComponent = channel.module && ownValue(byName, channel.module.toLowerCase())?.name
   return moduleComponent || repoComponent
 }
 
@@ -260,7 +260,7 @@ function pathSegments(urlPath) {
 // service is a drawn node, so the edge renders.
 function indexThirdParties(put) {
   for (const [lowerName, meta] of Object.entries(thirdPartyMeta)) {
-    const name = byName[lowerName]?.name || lowerName
+    const name = ownValue(byName, lowerName)?.name || lowerName
     if (meta.url) put(registeredDomain(normalizeHost(meta.url)), name)
     for (const host of meta.hosts || []) {
       const normalized = normalizeHost(host)
@@ -286,7 +286,7 @@ function buildNodeIndex(canon) {
   // token, so they must beat any derived entry already indexed under it.
   for (const [token, target] of Object.entries(backendTopology.restHostAliases)) {
     if (token.startsWith('_')) continue // the _comment key
-    nodeIndex.set(token.toLowerCase(), canon(byName[target.toLowerCase()]?.name || target))
+    nodeIndex.set(token.toLowerCase(), canon(ownValue(byName, target.toLowerCase())?.name || target))
   }
   return nodeIndex
 }
@@ -460,10 +460,10 @@ function collectRemotes() {
 collectRemotes()
 
 function inventoryFor(folder) {
-  const direct = byRepo[folder]?.[0]
+  const direct = ownValue(byRepo, folder)?.[0]
   if (direct) return direct
   const renamed = renamedBasenames.get(folder)
-  return (renamed && byRepo[renamed]?.[0]) || null
+  return (renamed && ownValue(byRepo, renamed)?.[0]) || null
 }
 
 // Graph node kind from the component's type-* topic. type-third-party-service never applies to a
