@@ -257,6 +257,34 @@ describe('buildGraph', () => {
     expect(pkg.position.x).toBeGreaterThan(-600)
   })
 
+  it('marks a package shared by the configured fallback cluster, not a fixed label', () => {
+    const custom = {
+      ...config,
+      clusters: [
+        { label: LANE_A, match: [OWNER_A] },
+        { label: 'Unscoped', match: [], fallback: true, center: true },
+      ],
+    }
+    const graph = buildGraph(
+      {
+        config: custom,
+        repos: withHub([
+          laneApp([
+            { name: sharedPkg, version: '1.0.0' },
+            { name: lonePkg, version: '1.0.0' },
+          ]),
+        ]),
+        inventory: [
+          { name: 'kb-react', cluster: 'Unscoped', type: 'Library' },
+          { name: 'some-lib', cluster: 'Shared', type: 'Library' },
+        ],
+      },
+      { mode: 'dev' },
+    )
+    expect(graph.nodes.find((n) => n.id === `pkg:${sharedPkg}`).data.sharedPkg).toBe(true)
+    expect(graph.nodes.find((n) => n.id === `pkg:${lonePkg}`).data.sharedPkg).toBe(false)
+  })
+
   it('a package with no cluster override stays in the (far-left) package column', () => {
     const withOverride = buildGraph(
       {

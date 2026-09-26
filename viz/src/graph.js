@@ -598,8 +598,8 @@ function uniqueDeps(deps) {
 }
 
 // A package can be curated under its short name; its cluster override places it (a cross-cutting
-// lib marked Shared lands in the centre, not the package column).
-function packageCard(id, packageName, inventory) {
+// lib in the fallback cluster lands in the centre, not the package column).
+function packageCard(id, packageName, inventory, fallbackLabel) {
   const shortName = packageName.replace(PACKAGE_SCOPE, '')
   const entry = inventory.byName.get(shortName.toLowerCase()) || null
   const subtitle = packageName.startsWith('@')
@@ -610,8 +610,7 @@ function packageCard(id, packageName, inventory) {
     subtitle,
     kind: 'package',
     inventory: entry,
-    sharedPkg: entry?.cluster === 'Shared',
-    cssPkg: entry?.cluster === 'CSS',
+    sharedPkg: !!entry?.cluster && entry.cluster === fallbackLabel,
   })
 }
 
@@ -621,7 +620,7 @@ function dependencyTarget(ctx, dep, isUi, cardIdByPackage, hubId) {
   const repoCardId = cardIdByPackage.get(dep.name)
   if (repoCardId) return repoCardId
   const id = 'pkg:' + dep.name
-  ctx.graph.addNode(packageCard(id, dep.name, ctx.inventory))
+  ctx.graph.addNode(packageCard(id, dep.name, ctx.inventory, fallbackLabelOf(ctx.clusters)))
   return id
 }
 
@@ -1013,6 +1012,7 @@ export function buildGraph(data, opts = {}) {
     data,
     mode,
     layers,
+    clusters,
     repos,
     topology,
     inventory,
