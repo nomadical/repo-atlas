@@ -231,6 +231,15 @@ test('a component named __proto__ is a decision log key, not a prototype write',
   assert.equal(Object.getPrototypeOf({}), Object.prototype, 'Object.prototype is untouched')
 })
 
+test('revoking a check named like an Object property leaves built-ins untouched', () => {
+  replay([
+    { ts: '2026-07-01T00:00:00.000Z', type: 'revoke', component: 'no-decisions', check: 'constructor' },
+    { ts: '2026-07-01T00:00:00.000Z', type: 'revoke', component: 'no-decisions', check: 'toString' },
+  ])
+  assert.ok(!Object.hasOwn(Object, 'revokedAt'), 'Object.prototype.constructor is untouched')
+  assert.ok(!Object.hasOwn(Object.prototype.toString, 'revokedAt'), 'Object.prototype.toString is untouched')
+})
+
 test('validateEntry refuses a check that is not a plain identifier', () => {
   assert.ok(validateEntry({ type: 'deviation', component: 'x', check: ['db', 'log'] }), 'array check refused')
   assert.ok(validateEntry({ type: 'deviation', component: 'x', check: 'db,log' }), 'comma check refused')

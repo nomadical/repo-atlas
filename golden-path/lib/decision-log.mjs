@@ -25,7 +25,15 @@ function auditOf(entry) {
 
 // Replaces the component's per-check map rather than mutating it.
 function recordCheckDecision(byComponent, entry, audit) {
-  byComponent[entry.component] = { ...byComponent[entry.component], [entry.check]: audit }
+  const checks = Object.assign(Object.create(null), byComponent[entry.component])
+  checks[entry.check] = audit
+  byComponent[entry.component] = checks
+}
+
+// Own keys only: a check named `constructor` must not find Object.prototype.constructor.
+function checkDecision(byComponent, component, check) {
+  const checks = byComponent[component]
+  return checks && Object.hasOwn(checks, check) ? checks[check] : undefined
 }
 
 function markRevoked(audit, day) {
@@ -53,8 +61,8 @@ export function replay(entries) {
       if (!entry.check) {
         markRevoked(excluded[entry.component], day)
       } else {
-        markRevoked((approved[entry.component] || {})[entry.check], day)
-        markRevoked((notApplicable[entry.component] || {})[entry.check], day)
+        markRevoked(checkDecision(approved, entry.component, entry.check), day)
+        markRevoked(checkDecision(notApplicable, entry.component, entry.check), day)
       }
     }
   }
