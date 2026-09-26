@@ -314,3 +314,65 @@ test('roleConstantLookup: stops on import cycles', () => {
   const [route] = parseRoutes(router, roleConstantLookup(router, path.join(repoDir, 'Router.tsx'), resolve))
   assert.deepEqual(route.roles, [])
 })
+
+test('parseRoutes: role lists built with .concat()', () => {
+  const src = `
+    const baseRoles = [userRoles.BASIC_ACCESS]
+    const extraRoles = ['EXTRA'] as const
+    return [
+      { element: <Admin />, path: '/admin', necessaryRoles: baseRoles.concat([userRoles.ADMIN], extraRoles) },
+      { element: <Audit />, path: '/audit', sufficientRoles: [userRoles.AUDIT].concat(baseRoles) },
+    ]`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Admin.roles, ['BASIC_ACCESS', 'ADMIN', 'EXTRA'])
+  assert.deepEqual(byComponent.Audit.roles, ['AUDIT', 'BASIC_ACCESS'])
+})
+
+test('parseRoutes: role lists returned by zero-argument helpers', () => {
+  const src = `
+    const baseRoles = [userRoles.BASIC_ACCESS]
+    const adminRoles = () => [userRoles.ADMIN]
+    const reportRoles = () => ([...baseRoles, 'REPORTS'])
+    function auditRoles() {
+      return ['AUDIT', ...adminRoles()]
+    }
+    return (
+      <Routes>
+        <Route path="/admin" necessaryRoles={adminRoles()} element={<Admin />} />
+        <Route path="/reports" sufficientRoles={reportRoles()} element={<Reports />} />
+        <Route path="/audit" sufficientRoles={auditRoles()} element={<Audit />} />
+      </Routes>
+    )`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Admin.roles, ['ADMIN'])
+  assert.deepEqual(byComponent.Reports.roles, ['BASIC_ACCESS', 'REPORTS'])
+  assert.deepEqual(byComponent.Audit.roles, ['AUDIT', 'ADMIN'])
+})
+
+test('parseRoutes: role lists that need runtime values are reported, not guessed', () => {
+  const src = `
+    const baseRoles = [userRoles.BASIC_ACCESS]
+    return [
+      { element: <Scoped />, path: '/scoped', necessaryRoles: rolesFor('admin') },
+      { element: <Filtered />, path: '/filtered', sufficientRoles: baseRoles.filter(isEnabled) },
+      { element: <Known />, path: '/known', necessaryRoles: baseRoles },
+    ]`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Scoped.roles, [])
+  assert.deepEqual(byComponent.Scoped.unresolvedRoles, ["rolesFor('admin')"])
+  assert.deepEqual(byComponent.Filtered.roles, [])
+  assert.deepEqual(byComponent.Filtered.unresolvedRoles, ['baseRoles.filter(isEnabled)'])
+  assert.deepEqual(byComponent.Known.unresolvedRoles, [])
+})
+
+test('roleConstantLookup: follows an imported helper function', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screens-helper-'))
+  fs.writeFileSync(
+    path.join(repoDir, 'access.ts'),
+    "const base = [userRoles.BASIC_ACCESS]\nexport function testDataRoles() {\n  return base.concat(['TEST_DATA'])\n}\n",
+  )
+  const router = `import { testDataRoles } from './access'\n[{ element: <TestData />, path: '/t', sufficientRoles: testDataRoles() }]`
+  const resolve = (fromFile, specifier) => path.resolve(path.dirname(fromFile), specifier + '.ts')
+  const [route] = parseRoutes(router, roleConstantLookup(router, path.join(repoDir, 'Router.tsx'), resolve))
+  assert.deepEqual(route.roles, ['BASIC_ACCESS', 'TEST_DATA'])
+})
