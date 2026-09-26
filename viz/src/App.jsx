@@ -40,6 +40,7 @@ import {
   ViewsMenu,
 } from './app/Toolbar.jsx'
 import { contextMenuItems } from './app/contextMenuItems.js'
+import { activatedNodeId } from './app/keyboard.js'
 import {
   EMPTY_LAYOUT,
   UNDO_LIMIT,
@@ -145,7 +146,8 @@ function canvasKey({ layers, viewMode, facets, hiddenEdges, generatedAt }) {
   return `${layerBits}-${viewMode}-${facetKey}-${sortedKey(hiddenEdges)}-${generatedAt || ''}`
 }
 
-// Region boxes become movable/resizable for admins, persisting their geometry via onResize.
+// Region boxes become movable/resizable for admins, persisting their geometry via onResize. Every
+// viewer can focus a region, since Enter on it spotlights its members like a click.
 function withRegionEditing(nodes, admin, setRegionGeom) {
   return nodes.map((node) => {
     if (node.type !== 'region') return node
@@ -153,7 +155,8 @@ function withRegionEditing(nodes, admin, setRegionGeom) {
       ...node,
       draggable: admin,
       selectable: admin,
-      focusable: admin,
+      focusable: true,
+      ariaLabel: `${node.data.label} cluster`,
       data: { ...node.data, editable: admin, onResize: (geom) => setRegionGeom(node.id, geom) },
     }
   })
@@ -830,6 +833,17 @@ export default function App() {
     },
     [graph, config],
   )
+  // Enter/Space on a focused card or region does what a click does.
+  const onCanvasKeyDown = useCallback(
+    (event) => {
+      const id = activatedNodeId(event)
+      const node = id && rfRef.current?.getNode(id)
+      if (!node) return
+      event.preventDefault()
+      onNodeClick(event, node)
+    },
+    [onNodeClick],
+  )
   // Double-clicking a client card drills into its screens; a single click still selects.
   const onNodeDoubleClick = useCallback(
     (_, node) => {
@@ -1221,7 +1235,7 @@ export default function App() {
             setSel={setSel}
           />
         ) : (
-          <div className="canvas" key={flowKey}>
+          <div className="canvas" key={flowKey} onKeyDown={onCanvasKeyDown}>
             <ReactFlow
               onInit={(instance) => (rfRef.current = instance)}
               nodes={rfNodes}
