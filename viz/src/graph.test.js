@@ -494,6 +494,24 @@ describe('buildGraph', () => {
     expect(resolve('device-data-ingestion')?.id).toBe('device-data-ingestion')
   })
 
+  it('does not mutate its input, so repeated builds agree', () => {
+    const input = structuredClone({
+      ...data,
+      repos: [
+        ...data.repos,
+        laneApp([
+          { name: lonePkg, version: '0.9.0', dev: true },
+          { name: lonePkg, version: '1.0.0' },
+        ]),
+      ],
+    })
+    const before = structuredClone(input)
+    const first = buildGraph(input, { mode: 'dev' })
+    const second = buildGraph(input, { mode: 'dev' })
+    expect(input).toEqual(before)
+    expect(second).toEqual(first)
+  })
+
   it('nodeIdOf falls back to the folder when no serviceId is present (byte-invariant)', () => {
     expect(nodeIdOf({ folder: 'skygate-client' })).toBe('skygate-client')
     expect(nodeIdOf({ folder: 'device-data-service', serviceId: 'device-data-ingestion' })).toBe(

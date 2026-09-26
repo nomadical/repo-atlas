@@ -587,13 +587,12 @@ function latestUiVersion(data, isUiPackage) {
 }
 
 // A package listed as both a prod and a dev dependency would collide on edge id, so keep one entry
-// per name, preferring the prod one. Note: this merges into the input dependency object in place.
+// per name, preferring the prod one.
 function uniqueDeps(deps) {
   const byName = new Map()
   for (const dep of deps || []) {
     const seen = byName.get(dep.name)
-    if (!seen) byName.set(dep.name, dep)
-    else if (seen.dev && !dep.dev) Object.assign(seen, dep)
+    if (!seen || (seen.dev && !dep.dev)) byName.set(dep.name, dep)
   }
   return [...byName.values()]
 }
