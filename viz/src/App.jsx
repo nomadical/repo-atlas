@@ -50,6 +50,7 @@ import {
   withoutOverride,
 } from './app/layout.js'
 import { clientScreenCount, findSelNode, singleLineTitle } from './app/nodes.js'
+import { filterSummary } from './app/filterSummary.js'
 import { pipelineHealth } from './app/pipelineHealth.js'
 import {
   EMBED,
@@ -973,26 +974,7 @@ export default function App() {
   const fitView = useCallback(() => rfRef.current?.fitView({ duration: FRAME_DURATION, padding: 0.15 }), [])
   const extras = data?.extras
 
-  // The Filters badge counts what's switched on or away from its default, so clearing reads 0.
-  const layerDeviations =
-    view === 'graph' ? LAYERS.filter((layer) => layers[layer.key] !== layer.default).length : 0
-  // Hidden arrows only count where the Arrows section exists, or the badge couldn't be explained.
-  const hasArrowSection = view === 'graph' || view === 'integrations'
-  const filterCount =
-    facets.group.size +
-    facets.status.size +
-    facets.health.size +
-    facets.hidden.size +
-    layerDeviations +
-    (hasArrowSection ? hiddenEdges.size : 0)
-  // Clearing every group is a deviation too (groupParam is then '').
-  const isDefaultFilters =
-    groupParam == null &&
-    !facets.status.size &&
-    !facets.health.size &&
-    !facets.hidden.size &&
-    !layerDeviations &&
-    !hiddenEdges.size
+  const { filterCount, isDefaultFilters } = filterSummary({ view, facets, layers, hiddenEdges, groupParam })
   const resetFilters = useCallback(() => {
     setFacets({ group: new Set(defaultGroups), status: new Set(), health: new Set(), hidden: new Set() })
     setLayers(Object.fromEntries(LAYERS.map((layer) => [layer.key, layer.default])))
