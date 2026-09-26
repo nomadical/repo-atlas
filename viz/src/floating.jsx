@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useStore, getBezierPath, EdgeLabelRenderer, Position } from '@xyflow/react'
+import { LABEL_FRACTIONS, edgeLabelSize, pickLabelPoint, regionLabelBox } from './edgeLabelPlacement.js'
 
 // Floating-edge geometry, adapted from the React Flow floating-edges example.
 const EDGE_CURVATURE = 0.3
@@ -60,16 +61,42 @@ function getEdgeParams(source, target) {
   }
 }
 
+// One detached SVG path, reused to sample points along each edge's curve.
+let samplingPath = null
+function pointsAlongPath(path, fractions) {
+  if (typeof document === 'undefined') return null
+  samplingPath ??= document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  // jsdom has no SVG geometry
+  if (typeof samplingPath.getTotalLength !== 'function') return null
+  samplingPath.setAttribute('d', path)
+  const length = samplingPath.getTotalLength()
+  return fractions.map((fraction) => samplingPath.getPointAtLength(length * fraction))
+}
+
+const selectNodes = (state) => state.nodes
+
+function regionLabelBoxes(nodes) {
+  return nodes
+    .filter((node) => node.type === 'region' && node.data?.label)
+    .map((node) => regionLabelBox(node.position, node.data.label))
+}
+
 export function FloatingEdge({ id, source, target, markerEnd, style, label, labelStyle, data }) {
   const sourceNode = useStore((state) => state.nodeLookup.get(source))
   const targetNode = useStore((state) => state.nodeLookup.get(target))
+  const nodes = useStore(selectNodes)
+  const regionLabels = useMemo(() => regionLabelBoxes(nodes), [nodes])
   if (!sourceNode || !targetNode) return null
   if (!sourceNode.measured?.width || !targetNode.measured?.width) return null
 
-  const [path, labelX, labelY] = getBezierPath({
+  const [path, midX, midY] = getBezierPath({
     ...getEdgeParams(sourceNode, targetNode),
     curvature: EDGE_CURVATURE,
   })
+  const candidates = label ? pointsAlongPath(path, LABEL_FRACTIONS) : null
+  const { x: labelX, y: labelY } = candidates
+    ? pickLabelPoint(candidates, edgeLabelSize(label), regionLabels)
+    : { x: midX, y: midY }
   // Labels render in a separate portal, out of reach of the .react-flow__edge.dim CSS, so the
   // focus state comes through edge data instead.
   const showLabel = label && !data?.dim
