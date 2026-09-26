@@ -752,7 +752,7 @@ export default function App() {
     restoredSel.current = true
   }, [graph])
 
-  const health = useMemo(() => pipelineHealth(data, graph), [data, graph])
+  const health = useMemo(() => pipelineHealth(data, graph, { dataStaleDays }), [data, graph, dataStaleDays])
 
   const exportPng = useCallback(async () => {
     const viewport = document.querySelector('.react-flow__viewport')

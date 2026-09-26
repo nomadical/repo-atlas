@@ -3,18 +3,11 @@ import { getUser, logout } from '../auth.js'
 import { Dropdown } from '../ui.jsx'
 import { Icon } from '../icons.jsx'
 import { GROUP_BY_LABELS, VIEW_LABELS, fullMapUrl } from './urlState.js'
-
-const MS_PER_DAY = 86400000
-
-function daysAgoLabel(days) {
-  if (days <= 0) return 'today'
-  if (days === 1) return '1 day ago'
-  return `${days} days ago`
-}
+import { dataAgeDays, daysAgoLabel } from './dataAge.js'
 
 // "data N days ago" badge; turns amber once the generated data is older than `staleDays`.
 export function DataAge({ generatedAt, staleDays }) {
-  const days = Math.floor((Date.now() - new Date(generatedAt).getTime()) / MS_PER_DAY)
+  const days = dataAgeDays(generatedAt)
   return (
     <span className={'gen' + (days > staleDays ? ' old' : '')} title={new Date(generatedAt).toLocaleString()}>
       data {daysAgoLabel(days)}
@@ -232,6 +225,7 @@ export function HealthButton({ health, org, open, setOpen, wrapRef }) {
           {health.items.map((item) => (
             <div key={item.kind} className="health-item">
               <div className="health-kind">{item.kind}</div>
+              {item.note ? <div className="health-note">{item.note}</div> : null}
               <div className="chiprow">
                 {item.list.map((token) => (
                   <HealthChip key={token} token={token} org={org} />

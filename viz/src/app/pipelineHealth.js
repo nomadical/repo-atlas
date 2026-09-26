@@ -1,5 +1,8 @@
-// Pipeline-health warnings for the toolbar popover: the assemble step's validation block plus any
-// repos the layout left in the Unclassified region.
+import { dataAgeDays, daysAgoLabel } from './dataAge.js'
+
+// Pipeline-health warnings for the toolbar popover: out-of-date data, the assemble step's
+// validation block, and any repos the layout left in the Unclassified region. The warnings button
+// shows at every toolbar width, unlike the data-age badge, so stale data can't go unnoticed.
 const UNCLASSIFIED_REGION = 'region-Unclassified'
 
 // [validation key, heading], in display order.
@@ -22,16 +25,30 @@ const validationChecks = (org) => [
   ['azureAcrNotInInventory', 'In container registry, no matching GitHub repo'],
 ]
 
-export function pipelineHealth(data, graph) {
+function staleDataItem(generatedAt, dataStaleDays, now) {
+  if (!generatedAt || !(dataStaleDays > 0)) return null
+  const days = dataAgeDays(generatedAt, now)
+  if (!(days > dataStaleDays)) return null
+  return {
+    kind: 'Map data is out of date',
+    note: `Last regenerated ${daysAgoLabel(days)}, past the ${dataStaleDays}-day limit.`,
+    list: [],
+  }
+}
+
+export function pipelineHealth(data, graph, { dataStaleDays, now = Date.now() } = {}) {
   const validation = data?.validation || {}
   const unclassified = graph.nodes.find((node) => node.id === UNCLASSIFIED_REGION)?.data.members || []
   const items = []
+  const staleData = staleDataItem(data?.generatedAt, dataStaleDays, now)
+  if (staleData) items.push(staleData)
   if (unclassified.length) {
     items.push({ kind: 'Unclassified repos (no cluster assigned)', list: unclassified })
   }
   for (const [key, kind] of validationChecks(data?.org)) {
     if (validation[key]?.length) items.push({ kind, list: validation[key] })
   }
-  const count = items.reduce((sum, item) => sum + item.list.length, 0)
+  // stale data has no list but is still one warning
+  const count = items.reduce((sum, item) => sum + (item.list.length || 1), 0)
   return { items, count }
 }
