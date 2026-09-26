@@ -131,8 +131,9 @@ body {
   gap: 9px;
   font-size: 15px;
   /* zero basis: the brand only takes leftover space (up to its natural width), truncating the
-     tagline first, so it never forces the controls onto a second row */
-  flex: 1 1 0;
+     tagline first, so it never forces the controls onto a second row. The high grow factor lets it
+     claim that space before .spacer does. */
+  flex: 100 1 0;
   min-width: 0;
   max-width: max-content;
   overflow: hidden;
@@ -577,10 +578,6 @@ body {
   min-width: 86px;
   justify-content: space-between;
 }
-.more-dd {
-  display: none;
-}
-
 /* Inventory table view */
 .table-wrap {
   flex: 1;
@@ -1064,13 +1061,6 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: none;
-}
-
 .auth-chip {
   display: flex;
   align-items: center;
@@ -1086,8 +1076,10 @@ body {
   white-space: nowrap;
 }
 
-/* responsive toolbar: drop labels first, then collapse actions into the ⋯ menu */
-@media (max-width: 1200px) {
+/* responsive toolbar: drop labels first, then tighten spacing */
+/* below this the controls leave the brand ~270px: spend it on the title, not a clipped tagline */
+@media (max-width: 1600px) {
+  .brand-sub,
   .gen {
     display: none;
   }
@@ -1112,20 +1104,30 @@ body {
     display: none;
   }
 }
-@media (max-width: 880px) {
-  .actions {
-    display: none;
-  }
-  .more-dd {
-    display: block;
-  }
-}
+/* phones: two rows at most. Separators, the spacer, carets and the search glyph each cost a
+   gap-plus-width that pushed the icons onto a third row. */
 @media (max-width: 560px) {
   .toolbar {
-    gap: 7px;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+  .toolbar .tb-sep,
+  .toolbar .spacer,
+  .toolbar .dd-caret,
+  .toolbar .search-icon {
+    display: none;
   }
   .search {
-    flex: 1 1 90px;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+  }
+  .search-wrap {
+    flex: 1 1 84px;
+    min-width: 0;
+  }
+  .toolbar .dd-btn {
+    padding: 7px 9px;
   }
   .view-dd .dd-btn {
     min-width: 0;
