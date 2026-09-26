@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* One-shot backfill: replays the nightly commits in git into the daily series. The nightly path is
-   append-history.mjs, not this.
+/* One-shot backfill: replays the data-refresh commits in git into the daily series. The normal
+   path is append-history.mjs, not this.
 
      node golden-path/build-history.mjs           # full history
      node golden-path/build-history.mjs --days 2  # last 2 nights, for a smoke test
@@ -131,7 +131,7 @@ const keep = daysToKeep()
 const shaByDay = lastCommitPerDay()
 const days = selectDays([...shaByDay.keys()].sort(), keep)
 const snapshots = replayNights(shaByDay, days)
-if (!snapshots.length) throw new Error('no nightly snapshots found in git history')
+if (!snapshots.length) throw new Error('no data-refresh snapshots found in git history')
 
 // The first night lists everything; after that, only what moved.
 const history = snapshots.map(({ d, rows }, index) => ({

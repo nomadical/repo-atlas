@@ -2,7 +2,8 @@ name: Curation backlog report (weekly)
 
 # Turns the inventory-coverage gap into an actionable, per-owner checklist and keeps it in a single
 # pinned tracking issue (updated in place, never duplicated). Reads the committed github-meta.json,
-# which the nightly Regenerate workflow refreshes from the org — so no org token is needed here;
+# which `npm run regenerate` refreshes from the org (so the report is only as current as the last
+# data refresh) — so no org token is needed here;
 # the built-in GITHUB_TOKEN is enough to open/edit an issue on this repo.
 #
 # See scripts/curation-report.mjs and docs/repo-maintenance.md.

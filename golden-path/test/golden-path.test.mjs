@@ -35,7 +35,7 @@ const BUILD = CHECKS.findIndex((check) => check.k === 'build')
 
 // ── 1. segments partition the estate ──────────────────────────────────────────────────────────
 
-/* These run against the real history.json, which the nightly job rewrites — so they assert
+/* These run against the real history.json, which every data refresh rewrites — so they assert
    invariants that hold at any size, never today's numbers. An exact repository count here would
    turn a normal night (a repo created or archived) into a red CI on somebody else's pull request. */
 test('segmentCounts sums to the whole estate and every row lands in exactly one segment', () => {
@@ -259,7 +259,7 @@ test('not-applicable is curated, dated, and drops out of the denominator', () =>
   assert.equal(totalOf(cells).of, 5, 'one curated exemption shrinks the denominator by one')
 })
 
-// ── 4. expanding the nightly history ─────────────────────────────────────────────────────────
+// ── 4. expanding the run history ───────────────────────────────────────────────────────────
 
 test('expandHistory: one night per entry, dates strictly increasing, estate intact at the end', () => {
   assert.equal(NIGHTS.length, FILE.history.length, 'one night per history entry')

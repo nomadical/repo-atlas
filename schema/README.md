@@ -17,7 +17,7 @@ type/status enums, edge endpoints resolve, core repos present), and the topic vo
 
 - **CI (every PR/push):** `viz/src/schema.test.js` validates the committed data against these
   schemas with ajv (`npm test`).
-- **Nightly data refresh:** `guard-data.mjs` re-checks the schema's required fields structurally
+- **Data refresh (`npm run guard`):** `guard-data.mjs` re-checks the schema's required fields structurally
   (dependency-free) before committing refreshed data.
 - **Editor hints:** `viz/src/types.d.ts` mirrors the schema as TypeScript types, referenced from
   JSDoc in the JS sources.

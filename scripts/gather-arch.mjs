@@ -72,8 +72,8 @@ const SAAS_BY_DEP = [
 const CURATED_EXTERNALS = repoExtra.externals?.curated || {}
 const EXCLUDED_EXTERNALS = repoExtra.externals?.exclude || {}
 
-// Repo custom properties from the committed github-meta.json (refreshed nightly by
-// github-inventory.mjs), so a just-set property takes effect on the next run.
+// Repo custom properties from the committed github-meta.json (refreshed by
+// github-inventory.mjs on every regenerate), so a just-set property takes effect on the next run.
 const readGithubProps = () => {
   const meta = readJson(path.join(AUDIT, 'github-meta.json'))
   const propsByRepo = new Map()

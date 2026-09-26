@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { AUDIT } from './_paths.mjs'
 import { TOPIC_MAPS, SUBTYPE_PARENTS } from './inventory.mjs'
 
-// Coverage tripwires, from config.json `guard`. They stop a half-failed nightly run from
+// Coverage tripwires, from config.json `guard`. They stop a half-failed regenerate run from
 // committing a map with half the estate missing: set them to today's real counts minus ~20%. Unset
 // they're inert, so a fresh fork isn't blocked, but it isn't protected either.
 //
@@ -42,7 +42,7 @@ const KAFKA_BUS = 'Kafka'
 const CURATION_FIELDS = ['owner', 'status', 'description']
 const ENV_INFIX = /\.(dev|test|pre|prod|demo|poc|nonprod|sandbox|e2e)(?=\.)/g
 
-// Only the nightly run requests this. Its pipeline tolerates individual script failures, so a
+// Requested with GUARD_MAX_AGE_HOURS after a regenerate. The pipeline tolerates individual script failures, so a
 // failed gather can leave a stale fe-architecture.json next to refreshed sibling files.
 function checkFreshness(data, maxAgeHours, errors) {
   if (!(maxAgeHours > 0)) return
@@ -57,7 +57,7 @@ function checkFreshness(data, maxAgeHours, errors) {
 }
 
 // Mirrors the required fields of schema/fe-architecture.schema.json. The ajv schema test enforces
-// the full contract in CI; this covers the nightly path.
+// the full contract in CI; this covers the data-refresh path.
 const arrayOrEmpty = (value) => (Array.isArray(value) ? value : [])
 
 function checkShape(data, errors) {

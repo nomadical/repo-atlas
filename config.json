@@ -72,7 +72,7 @@
 
   "docSearchUrl": "https://wiki.meridian.example/search?q=",
 
-  "_guard": "Coverage tripwires for the nightly regenerate: a run producing less than this refuses to commit, so a failed clone can't silently drop half the map.",
+  "_guard": "Coverage tripwires for a regenerate run: a run producing less than this refuses to commit, so a failed clone can't silently drop half the map.",
   "guard": {
     "coreRepos": ["design-system", "storefront-web", "ops-console", "edge-gateway"],
     "minRepos": 6,

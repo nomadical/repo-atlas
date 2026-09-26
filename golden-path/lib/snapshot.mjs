@@ -1,4 +1,4 @@
-// One night's rows, shared by the backfill (git log replay) and the nightly append —
+// One run's rows, shared by the backfill (git log replay) and the per-run append —
 // the two must not diverge on what a row is.
 export const TYPE = {
   service: 'Service',

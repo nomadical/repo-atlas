@@ -34,7 +34,7 @@ the `owners` / `applications` vocabularies in [`config.json`](../config.template
 | Azure app key / ACR image | org custom properties `azure-app-key` / `acr-image` | override `repo-extra.json` azure maps |
 | Dates, comments, review trail | `inventory-extra.json` | can't live on a repo |
 
-`type`/`status` are **closed** enums — `scripts/guard-data.mjs` fails the nightly commit if a
+`type`/`status` are **closed** enums — `scripts/guard-data.mjs` fails the data refresh if a
 component carries an unknown value (catches typos like `status-currnet`). `owner`/`app` are
 **open** so new teams and applications can be added without a code change; the guard only warns
 on an unrecognized owner.
@@ -49,7 +49,7 @@ GitHub topic rules: lowercase, dashes only. A team name containing dots maps dot
 | Topic | Inventory value |
 | --- | --- |
 | `type-client` | Client (FE app) |
-| `type-service` | Service (backend / internal) — a non-JS/TS `type-service` repo is auto-cloned nightly and scanned for its tooling (Java `build.gradle`/`pom.xml`); no central list |
+| `type-service` | Service (backend / internal) — a non-JS/TS `type-service` repo is cloned on every data refresh and scanned for its tooling (Java `build.gradle`/`pom.xml`); no central list |
 | `type-third-party-service` | Third-Party Service |
 | `type-library` | Library |
 | `type-assets` | Assets |
@@ -159,7 +159,7 @@ These aren't topics because they're free-text and shouldn't pollute the topic na
 map links to it directly; a bare `doc-label` with no `doc-url` routes to a wiki quick-search.
 The host + Azure properties are **owner-owned overrides**: each falls back to the
 [`repo-extra.json`](../repo-extra.json) curated map, so setting the property on your repo replaces
-the central entry (a just-set value takes effect on the next nightly). Leave them unset and nothing
+the central entry (a just-set value takes effect on the next data refresh). Leave them unset and nothing
 changes.
 Property values cap at 75 characters. If your wiki has a short canonical URL form (many do — a page
 id without the title slug, which still redirects), use it.

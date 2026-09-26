@@ -65,7 +65,7 @@ which is how you iterate on a late step without re-running the slow early ones.
 | `screens-gather` | client routers | per-screen endpoint data |
 
 The pipeline tolerates individual step failures ("degraded") but the **guard** then requires
-the core model to actually be from tonight — otherwise a failed `assemble` would pair yesterday's
+the core model to actually be from this run — otherwise a failed `assemble` would pair yesterday's
 model with today's siblings and commit a mixed-generation dataset.
 
 ## Admin panel & config (⚙ Settings)
@@ -153,7 +153,7 @@ deploy-and-break:
 | `viz/src/data.js` | Data fetch: token endpoint → static bundle → encrypted fallback |
 | `viz/vite.config.mjs` | Dev server APIs (`/api/data`, `/curation`, `/regenerate`, `/publish`) |
 | `server/server.mjs` | Token-gated `/data` server (+ CORS) |
-| `golden-path/` | Compliance scoring — rules, nightly history, decision log |
+| `golden-path/` | Compliance scoring — rules, history of past runs, decision log |
 | `screens-extra.json` | Curated overrides for the heuristic screen data (drop/patch/add) |
 | `config.template.json` | Documented template for every `config.json` field |
 
