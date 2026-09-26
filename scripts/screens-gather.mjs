@@ -46,6 +46,7 @@ const relativePosix = (repoDir, absolutePath) =>
 const pushUnique = (items, item) => {
   if (!items.includes(item)) items.push(item)
 }
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 function listSourceFiles(dir, files = []) {
   let entries = []
@@ -187,6 +188,8 @@ const ROUTE_ELEMENT = /element\s*[:=]\s*[{(]?\s*(?=<)/g
 const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
 // `necessaryRoles: [...]` in route objects, `necessaryRoles={[...]}` as a JSX attribute.
 const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*\[([^\]]*)\]/g
+// `sufficientRoles: testDataRoles`: a named list, resolved through roleConstantLookup.
+const ROUTE_ROLE_CONSTANT = /(?:necessary|sufficient)Roles\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*)(?![\w$.([])/g
 // userRoles.ASSET or a quoted 'ASSET'.
 const ROLE_ENTRY = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g
 const TAG_NAME = /[\w$]*/y
@@ -297,19 +300,46 @@ function routeOwnText(text, route, element) {
   return topLevel
 }
 
+// The array body of `const name = [...]` in `text`, exported or not; null when there is none.
+function constantListIn(text, name) {
+  const declaration = new RegExp(`\\bconst\\s+${escapeRegex(name)}\\s*(?::[^=]+)?=\\s*\\[([^\\]]*)\\]`)
+  return declaration.exec(text)?.[1] ?? null
+}
+
+// Finds a named roles list: declared in the router file itself, or exported by the file the
+// router imports it from. Re-exports and computed lists are not followed.
+export function roleConstantLookup(text, fromFile, resolve) {
+  const specifierByName = importMap(text)
+  return (name) => {
+    const local = constantListIn(text, name)
+    if (local != null) return local
+    const specifier = specifierByName[name]
+    const file = specifier && fromFile && resolve ? resolve(fromFile, specifier) : null
+    return file ? constantListIn(readFile(file), name) : null
+  }
+}
+
+const sameFileLookup = (text) => (name) => constantListIn(text, name)
+
 // Every role in every roles list (necessary and sufficient), in order, without repeats.
-function rolesIn(...texts) {
-  const roles = []
+function rolesIn(texts, lookupConstant) {
+  const lists = []
   for (const text of texts) {
-    for (const [, list] of text.matchAll(ROUTE_ROLES)) {
-      for (const match of list.matchAll(ROLE_ENTRY)) pushUnique(roles, match[1] || match[2])
+    for (const [, list] of text.matchAll(ROUTE_ROLES)) lists.push(list)
+    for (const [, name] of text.matchAll(ROUTE_ROLE_CONSTANT)) {
+      const list = lookupConstant(name)
+      if (list != null) lists.push(list)
     }
+  }
+  const roles = []
+  for (const list of lists) {
+    for (const match of list.matchAll(ROLE_ENTRY)) pushUnique(roles, match[1] || match[2])
   }
   return roles.filter(Boolean)
 }
 
 // One route per `element` anchor, with the path and roles of the same route object or tag.
-export const parseRoutes = (text) => {
+export const parseRoutes = (text, lookupConstant = sameFileLookup(text)) => {
   const routes = []
   for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
     const elementStart = elementMatch.index + elementMatch[0].length
@@ -319,7 +349,7 @@ export const parseRoutes = (text) => {
     const route = enclosingRoute(text, elementMatch.index)
     const routeText = route ? routeOwnText(text, route, { start: elementStart, end }) : ''
     // Roles can sit on the route itself or on a guard wrapping the screen inside `element`.
-    const roles = rolesIn(routeText, text.slice(elementStart, end))
+    const roles = rolesIn([routeText, text.slice(elementStart, end)], lookupConstant)
     routes.push({ component, path: routeText.match(ROUTE_PATH)?.[1] ?? null, roles })
   }
   return routes
@@ -339,7 +369,6 @@ function readAppConfig() {
 
 const appConfig = readAppConfig()
 const UI_PACKAGES = Array.isArray(appConfig.uiPackages) ? appConfig.uiPackages : []
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const UI_IMPORT = UI_PACKAGES.length
   ? new RegExp(
       `import\\s+(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]*)\\}\\s+from\\s*['"](?:${UI_PACKAGES.map(escapeRegex).join('|')})['"]`,
@@ -433,7 +462,7 @@ function screensFromRouters(routerFiles, resolve) {
   for (const routerFile of routerFiles) {
     const text = readFile(routerFile)
     const specifierByName = importMap(text)
-    for (const route of parseRoutes(text)) {
+    for (const route of parseRoutes(text, roleConstantLookup(text, routerFile, resolve))) {
       const specifier = specifierByName[route.component]
       const file = specifier ? resolve(routerFile, specifier) : null
       const existing = screenByComponent.get(route.component)

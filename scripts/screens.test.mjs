@@ -7,7 +7,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseRoutes, importMap, extractUiComponents, readTsPaths } from './screens-gather.mjs'
+import {
+  parseRoutes,
+  importMap,
+  extractUiComponents,
+  readTsPaths,
+  roleConstantLookup,
+} from './screens-gather.mjs'
 import { extractEndpointsFromText, extractApiCallsFromText, normalizeEndpoint } from './lib/endpoints.mjs'
 
 const CONFIG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config.json')
@@ -220,4 +226,32 @@ test('parseRoutes: a route with both necessary and sufficient roles keeps both l
       { element: <Lanes />, path: '/lanes', necessaryRoles: [userRoles.LANES], sufficientRoles: [userRoles.ADMIN] },
     ]`
   assert.deepEqual(routesByComponent(src).Lanes.roles, ['LANES', 'ADMIN'])
+})
+
+test('parseRoutes: roles given as a named constant in the same file', () => {
+  const src = `
+    const adminRoles = [userRoles.ADMIN, 'AUDIT'] as const
+    return [
+      { element: <Admin />, path: '/admin', necessaryRoles: adminRoles },
+      { element: <Open />, path: '/open', sufficientRoles: unknownRoles },
+    ]`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Admin.roles, ['ADMIN', 'AUDIT'])
+  assert.deepEqual(byComponent.Open.roles, [], 'a constant that cannot be found adds no roles')
+})
+
+test('roleConstantLookup: follows the import to the file that exports the constant', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screens-roles-'))
+  const routerFile = path.join(repoDir, 'AdminRouter.tsx')
+  const router = `
+    import { testDataRoles } from './access'
+    export const routes = [{ element: <TestData />, path: '/test-data', sufficientRoles: testDataRoles }]`
+  fs.writeFileSync(routerFile, router)
+  fs.writeFileSync(
+    path.join(repoDir, 'access.ts'),
+    'export const testDataRoles = [userRoles.BASIC_ACCESS, userRoles.SKYMIND_ADMIN];\n',
+  )
+  const resolve = (fromFile, specifier) => path.resolve(path.dirname(fromFile), specifier + '.ts')
+  const [route] = parseRoutes(router, roleConstantLookup(router, routerFile, resolve))
+  assert.deepEqual(route.roles, ['BASIC_ACCESS', 'SKYMIND_ADMIN'])
 })
