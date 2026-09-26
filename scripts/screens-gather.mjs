@@ -187,17 +187,77 @@ export const importMap = (text) => {
   return specifierByName
 }
 
-const ROUTE_ELEMENT = /element\s*[:=]\s*\{?\s*(<[\s\S]{0,200}?>)/g
+// Ends where the element's JSX starts: `element={<X />}`, `element: <X />` or `element: (<X />)`.
+const ROUTE_ELEMENT = /element\s*[:=]\s*[{(]?\s*(?=<)/g
 const ROUTE_PATH = /path\s*[:=]\s*['"]([^'"]+)['"]/
 const ROUTE_PATHS = new RegExp(ROUTE_PATH, 'g')
 const ROUTE_ROLES = /(?:necessary|sufficient)Roles\s*[:=]\s*\[([^\]]*)\]/
 // userRoles.ASSET or a quoted 'ASSET'.
 const ROLE_ENTRY = /\.([A-Za-z0-9_]+)|['"]([^'"]+)['"]/g
+const TAG_NAME = /[\w$]*/y
 
-const screenComponentOf = (elementText) =>
-  [...elementText.matchAll(/<([A-Z][\w$]*)/g)]
-    .map((match) => match[1])
-    .find((component) => !SKIP_COMPONENTS.has(component))
+// Index just past the `}` matching the `{` at openIndex.
+function closingBraceEnd(text, openIndex) {
+  let depth = 0
+  for (let i = openIndex; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    if (text[i] === '}') depth--
+    if (depth === 0) return i + 1
+  }
+  return text.length
+}
+
+// Index just past the `>` closing the tag at tagIndex, skipping `{…}` attribute values.
+function tagEnd(text, tagIndex) {
+  let i = tagIndex + 1
+  while (i < text.length && text[i] !== '>') {
+    i = text[i] === '{' ? closingBraceEnd(text, i) : i + 1
+  }
+  return i + 1
+}
+
+function tagName(text, tagIndex) {
+  TAG_NAME.lastIndex = tagIndex + 1
+  return TAG_NAME.exec(text)[0]
+}
+
+// The opening tags (with nesting depth) of the JSX element starting at `start`, and where it ends.
+// `{…}` children are skipped, so a Suspense fallback is not mistaken for the screen.
+function walkJsxElement(text, start) {
+  const tags = []
+  let depth = 0
+  let i = start
+  while (i < text.length) {
+    if (text[i] === '{') {
+      i = closingBraceEnd(text, i)
+      continue
+    }
+    if (text[i] !== '<') {
+      i++
+      continue
+    }
+    const end = tagEnd(text, i)
+    if (text[i + 1] === '/') {
+      depth--
+    } else {
+      tags.push({ name: tagName(text, i), depth })
+      if (text[end - 2] !== '/') depth++
+    }
+    i = end
+    if (depth === 0) break
+  }
+  return { tags, end: i }
+}
+
+// The deepest component, so wrappers like <Suspense> or <RequireAuth> are looked through.
+function screenComponentOf(tags) {
+  let screen = null
+  for (const tag of tags) {
+    if (!/^[A-Z]/.test(tag.name) || SKIP_COMPONENTS.has(tag.name)) continue
+    if (!screen || tag.depth > screen.depth) screen = tag
+  }
+  return screen?.name
+}
 
 // Element-first: the nearest path after the element. Path-first JSX: the last path before it
 // (the closest one, not an earlier sibling's).
@@ -219,7 +279,8 @@ function routeRolesNear(text, elementIndex) {
 export const parseRoutes = (text) => {
   const routes = []
   for (const elementMatch of text.matchAll(ROUTE_ELEMENT)) {
-    const component = screenComponentOf(elementMatch[1])
+    const elementStart = elementMatch.index + elementMatch[0].length
+    const component = screenComponentOf(walkJsxElement(text, elementStart).tags)
     if (!component) continue
     routes.push({
       component,

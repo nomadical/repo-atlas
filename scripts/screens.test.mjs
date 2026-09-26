@@ -147,3 +147,18 @@ test('readTsPaths: keeps "/*" inside strings while stripping comments and traili
   assert.deepEqual(readTsPaths(repoDir), { baseUrl: '.', paths: { '@/*': ['src/*'], '~/*': ['./lib/*'] } })
   fs.rmSync(repoDir, { recursive: true, force: true })
 })
+
+test('parseRoutes: looks through wrapper elements to the screen component', () => {
+  const src = `
+    const routes = [
+      { element: <Suspense fallback={<Spinner />}><Lazy /></Suspense>, path: '/lazy' },
+      { element: (<RequireAuth><Layout><Dashboard /></Layout></RequireAuth>), path: '/guarded' },
+    ]
+    <Route path="/jsx" element={<Suspense><JsxLazy /></Suspense>} />`
+  const byComponent = routesByComponent(src)
+  assert.equal(byComponent.Lazy?.path, '/lazy')
+  assert.equal(byComponent.Dashboard?.path, '/guarded')
+  assert.equal(byComponent.JsxLazy?.path, '/jsx')
+  assert.ok(!byComponent.Spinner, 'a Suspense fallback is not the screen')
+  assert.ok(!byComponent.RequireAuth && !byComponent.Layout, 'wrappers are not the screen')
+})
