@@ -25,3 +25,10 @@ export function recordRestPair({ curatedByKey, derivedByKey }, key, row) {
   derivedByKey.set(key, row)
   return 'added'
 }
+
+// Prod's first domain when prod has one, else the first env that has any.
+export function azureAppAddress(envs) {
+  const hasDomains = (env) => env?.domains?.length
+  const env = hasDomains(envs.prod) ? envs.prod : Object.values(envs).find(hasDomains)
+  return env ? `${env.domains[0]}${env.path || ''}` : null
+}

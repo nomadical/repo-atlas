@@ -1,7 +1,7 @@
 // Tests for the pure rules assemble.mjs is built on. Run with `node --test`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { putFirst, recordRestPair } from './lib/assemble-rules.mjs'
+import { putFirst, recordRestPair, azureAppAddress } from './lib/assemble-rules.mjs'
 
 // ---- putFirst -------------------------------------------------------------------------
 
@@ -46,4 +46,21 @@ test('recordRestPair: a curated CSV row is confirmed once, then merged', () => {
     via: 'code',
     curated: true,
   })
+})
+
+// ---- azureAppAddress ------------------------------------------------------------------
+
+test('azureAppAddress: prefers prod', () => {
+  const envs = { dev: { domains: ['dev.example.com'] }, prod: { domains: ['example.com'], path: '/app' } }
+  assert.equal(azureAppAddress(envs), 'example.com/app')
+})
+
+test('azureAppAddress: falls back when prod has no domains', () => {
+  const envs = { prod: { domains: [] }, test: { domains: ['test.example.com'] } }
+  assert.equal(azureAppAddress(envs), 'test.example.com')
+})
+
+test('azureAppAddress: falls back when prod is missing, null when no env has domains', () => {
+  assert.equal(azureAppAddress({ dev: { domains: ['dev.example.com'] } }), 'dev.example.com')
+  assert.equal(azureAppAddress({ prod: {}, dev: { domains: [] } }), null)
 })

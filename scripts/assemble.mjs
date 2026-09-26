@@ -5,7 +5,7 @@ import { ROOT, AUDIT, ORG, inOrg } from './_paths.mjs'
 import { uncloned, OUTSIDE, remoteOf } from './repos.mjs'
 import { loadInventory, loadIntegrations, loadThirdPartyMeta } from './inventory.mjs'
 import { loadServiceMap, serviceIdentity } from './service-map.mjs'
-import { putFirst, recordRestPair } from './lib/assemble-rules.mjs'
+import { putFirst, recordRestPair, azureAppAddress } from './lib/assemble-rules.mjs'
 
 const MS_PER_DAY = 86400000
 
@@ -907,11 +907,7 @@ function unmappedAzureApps() {
       ([app, appData]) =>
         !azureAppMap.get(app) && Object.values(appData.envs).some((env) => env.domains?.length),
     )
-    .map(([app, appData]) => {
-      const env =
-        appData.envs.prod || Object.values(appData.envs).find((candidate) => candidate.domains?.length)
-      return `${app} → ${env.domains[0]}${env.path || ''}`
-    })
+    .map(([app, appData]) => `${app} → ${azureAppAddress(appData.envs)}`)
 }
 
 // Deployed envs the repo's workflows don't know about. Sandbox is expected to be ad hoc.
