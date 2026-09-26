@@ -185,6 +185,14 @@ const toJson = (value) => JSON.stringify(value, null, 2)
 const replaceAt = (list, index, patch) => list.map((item, i) => (i === index ? { ...item, ...patch } : item))
 const removeAt = (list, index) => list.filter((_, i) => i !== index)
 
+function Tab({ id, tab, setTab, children }) {
+  return (
+    <button className={'adm-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
+      {children}
+    </button>
+  )
+}
+
 export default function AdminPanel({ data, layout, onResetLayout, onClose, onSaved }) {
   const [tab, setTab] = useState('settings')
   const [comment, setComment] = useState('')
@@ -402,14 +410,6 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
     }
   }
 
-  // Defined inside the component, so it is a new component type on every render and the tab
-  // buttons remount each time.
-  const Tab = ({ id, children }) => (
-    <button className={'adm-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
-      {children}
-    </button>
-  )
-
   return (
     <div
       className="legend-overlay"
@@ -427,12 +427,24 @@ export default function AdminPanel({ data, layout, onResetLayout, onClose, onSav
         </div>
 
         <div className="adm-tabs">
-          <Tab id="settings">Settings</Tab>
-          <Tab id="wiring">FE→BE wiring</Tab>
-          <Tab id="saas">External SaaS ({beIds.length})</Tab>
-          <Tab id="services">Services ({svcRows.length})</Tab>
-          <Tab id="integrations">Integrations ({rows.length})</Tab>
-          <Tab id="inventory">Inventory gaps ({gapRepos.length})</Tab>
+          <Tab tab={tab} setTab={setTab} id="settings">
+            Settings
+          </Tab>
+          <Tab tab={tab} setTab={setTab} id="wiring">
+            FE→BE wiring
+          </Tab>
+          <Tab tab={tab} setTab={setTab} id="saas">
+            External SaaS ({beIds.length})
+          </Tab>
+          <Tab tab={tab} setTab={setTab} id="services">
+            Services ({svcRows.length})
+          </Tab>
+          <Tab tab={tab} setTab={setTab} id="integrations">
+            Integrations ({rows.length})
+          </Tab>
+          <Tab tab={tab} setTab={setTab} id="inventory">
+            Inventory gaps ({gapRepos.length})
+          </Tab>
         </div>
 
         {orphanRefs.length ? (

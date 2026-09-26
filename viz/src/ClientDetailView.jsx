@@ -111,6 +111,18 @@ function ScreenRow({ screen, links, backendOf, onSelect }) {
   )
 }
 
+function Th({ k, sort, setSort, children }) {
+  return (
+    <th
+      className={'sortable' + (sort.key === k ? ' sorted' : '')}
+      onClick={() => setSort((current) => ({ key: k, dir: current.key === k ? -current.dir : 1 }))}
+    >
+      {children}
+      {sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
+    </th>
+  )
+}
+
 // The default drill-down view: comfortable for reading per-screen endpoint usage.
 function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
   const [filterText, setFilterText] = useState('')
@@ -128,18 +140,6 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
     })
   }, [rep.screens, filterText, sort])
 
-  // Defined inside the component, so it is a new component type on every render and the header
-  // cells remount each time.
-  const Th = ({ k, children }) => (
-    <th
-      className={'sortable' + (sort.key === k ? ' sorted' : '')}
-      onClick={() => setSort((current) => ({ key: k, dir: current.key === k ? -current.dir : 1 }))}
-    >
-      {children}
-      {sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
-    </th>
-  )
-
   return (
     <div className="table-wrap">
       <div className="table-meta">
@@ -156,12 +156,18 @@ function ScreensTable({ rep, onSelectScreen, clientTitle, backendOf }) {
       <table className="inv-table">
         <thead>
           <tr>
-            <Th k="name">Screen</Th>
-            <Th k="route">Route</Th>
+            <Th sort={sort} setSort={setSort} k="name">
+              Screen
+            </Th>
+            <Th sort={sort} setSort={setSort} k="route">
+              Route
+            </Th>
             <th>Roles</th>
             <th>UI components</th>
             <th>Backend</th>
-            <Th k="endpoints">Endpoints</Th>
+            <Th sort={sort} setSort={setSort} k="endpoints">
+              Endpoints
+            </Th>
           </tr>
         </thead>
         <tbody>
