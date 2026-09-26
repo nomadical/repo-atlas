@@ -34,7 +34,6 @@ const ERROR_SNIPPET_LENGTH = 120
 const ENVS = ['sandbox', 'demo', 'prod', 'test', 'dev', 'poc', 'pre', 'e2e']
 // Infra resources carry the env as an infix instead: {service}-{env}-postgres-db.
 const ENV_INFIX_PATTERN = new RegExp(`(?:^|-)(${ENVS.join('|')})(?:-|$)`)
-const WEBSITE_SUFFIX = 'website'
 
 const INFRA_TYPES = [
   'microsoft.dbforpostgresql/flexibleservers',
@@ -92,21 +91,18 @@ const fetchPooled = (items, fetch) =>
     AZ_CONCURRENCY,
   )
 
-// Versioned sites keep the version on the app: {env}{app}websitev2 -> app '{app}v2'.
-const parseEnvApp = (name, suffixes = [WEBSITE_SUFFIX, 'storage']) => {
+// {env}{app}website -> { env, app }. Versioned sites keep the version on the app:
+// {env}{app}websitev2 -> app '{app}v2'.
+const WEBSITE_NAME = /^(.*)website(v\d+)?$/
+
+const parseEnvApp = (name) => {
   const env = ENVS.find((candidate) => name.startsWith(candidate))
   if (!env) return null
-  const rest = name.slice(env.length)
-  const versionMatch = rest.match(/website(v\d+)$/)
-  if (versionMatch) {
-    const version = versionMatch[1]
-    const app = rest.slice(0, -(WEBSITE_SUFFIX.length + version.length)) + version
-    return app ? { env, app, suffix: WEBSITE_SUFFIX } : null
-  }
-  const suffix = suffixes.find((candidate) => rest.endsWith(candidate))
-  if (!suffix) return null
-  const app = rest.slice(0, -suffix.length)
-  return app ? { env, app, suffix } : null
+  const websiteMatch = name.slice(env.length).match(WEBSITE_NAME)
+  if (!websiteMatch) return null
+  const [, base, version = ''] = websiteMatch
+  const app = base + version
+  return app ? { env, app } : null
 }
 
 const readAccount = async () => {
@@ -140,7 +136,7 @@ const storageAccounts = await graphQuery(
   "Resources | where type == 'microsoft.storage/storageaccounts' | project name, resourceGroup, location, tags",
 )
 for (const storageAccount of storageAccounts) {
-  const parsed = parseEnvApp(storageAccount.name, [WEBSITE_SUFFIX])
+  const parsed = parseEnvApp(storageAccount.name)
   if (parsed) envSlot(parsed.app, parsed.env).storage = storageAccount.name
 }
 
@@ -193,7 +189,7 @@ const isPrimaryHost = (host) => !host.startsWith('www.') && !host.startsWith('ol
 const isCatchAllPattern = (pattern) => pattern === '/*' || pattern === '/'
 
 const applyRoute = (route, endpointHost) => {
-  const parsed = parseEnvApp(route.name, [WEBSITE_SUFFIX])
+  const parsed = parseEnvApp(route.name)
   if (!parsed) return
   const hosts = (route.customDomains || [])
     .map((domain) => hostByDomainId.get(domain.id.toLowerCase()))
