@@ -41,12 +41,11 @@ npm run dev        # the demo estate, at http://localhost:5173
 Then point it at your own org:
 
 1. **Fork** this repo and enable Pages (*Settings → Pages → Source: GitHub Actions*).
-2. **Give the pipeline read access**: a fine-grained PAT (or GitHub App token) with
-   **Contents: read** + **Metadata: read** on the repos you want mapped, saved as the `REPOS_TOKEN`
-   repo secret. That's the only access it ever needs.
-3. **Set the `GITHUB_ORG` repo variable** to your org (*Settings → Secrets and variables → Actions
-   → Variables*). Optional: `EXTRA_CLONE_URLS` for repos outside the org, `BACKEND_REPOS` for extra
-   backends beyond the auto-discovered ones.
+2. **Clone the repos you want mapped** next to this one (or set `ATLAS_REPOS_DIR` to the folder
+   holding them). The pipeline reads those clones, and GitHub metadata (topics, renames) through
+   your `gh` login, so read access to the repos is all it needs.
+3. **Scope it to your org**: `export GITHUB_ORG=your-org`. Unset, every cloned repo with a remote
+   is mapped. Optional: `BACKEND_REPOS` for backends beyond the auto-discovered ones.
 4. **Curate your repos** with `type-*` / `status-*` / `owner-*` / `app-*` topics — see
    [`docs/repo-maintenance.md`](docs/repo-maintenance.md) for the owner's checklist and
    [`docs/topic-schema.md`](docs/topic-schema.md) for the field reference. A repo joins the map as
@@ -54,8 +53,8 @@ Then point it at your own org:
 5. **Make it yours**: copy [`config.template.json`](config.template.json) over `config.json` and set
    the title, your `clusters` taxonomy, `internalScopes`, and `uiPackages`. Most of it is also
    editable in-app via ⚙ Settings.
-6. Run the **`regenerate`** workflow (or `npm run regenerate` against local clones); `pages.yml`
-   publishes the result.
+6. **Run `npm run regenerate`** against those clones, then commit the refreshed data and push to
+   `main`; `pages.yml` publishes it.
 
 > **Replacing the demo data.** `npm run regenerate` overwrites the committed `fe-architecture*.json`
 > and `github-meta.json` with your own estate. The demo's curated overlays — `backend-extra.json`,
