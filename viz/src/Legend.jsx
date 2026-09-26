@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { KIND, edgeTypesFor, canonKind } from './graph.js'
 import { Icon } from './icons.jsx'
 
@@ -29,6 +29,22 @@ const KIND_GROUPS = [
   ['Diagram context (not inventory components)', ['infra', 'storage', 'bus', 'content', 'package']],
 ]
 const GROUPED_KINDS = new Set(KIND_GROUPS.flatMap(([, members]) => members))
+// The key starts collapsed so it doesn't cover the first lane; the viewer's choice sticks.
+const LEGEND_OPEN_KEY = 'archmap-legend-open'
+
+function readLegendOpen() {
+  try {
+    return localStorage.getItem(LEGEND_OPEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveLegendOpen(open) {
+  try {
+    localStorage.setItem(LEGEND_OPEN_KEY, open ? '1' : '0')
+  } catch {}
+}
 
 // A present kind also counts under its canonical type (backend -> service, extsvc -> external), so a
 // map with backends doesn't get a duplicate "Service" swatch.
@@ -81,11 +97,28 @@ function ArrowSwatch({ edgeType, hidden }) {
   )
 }
 
-export function Legend({ kinds, edgeTypesPresent = [], hiddenEdges, config }) {
+export function Legend(props) {
+  const [open, setOpen] = useState(readLegendOpen)
+  const toggle = () => {
+    setOpen(!open)
+    saveLegendOpen(!open)
+  }
+  return (
+    <div className={'legend' + (open ? ' open' : '')}>
+      <button className="legend-toggle" onClick={toggle} aria-expanded={open}>
+        <Icon name="caretDown" className="legend-caret" />
+        Legend
+      </button>
+      {open ? <LegendKey {...props} /> : null}
+    </div>
+  )
+}
+
+function LegendKey({ kinds, edgeTypesPresent = [], hiddenEdges, config }) {
   const presentEdgeTypes = new Set(edgeTypesPresent)
   const arrows = edgeTypesFor(config).filter((edgeType) => presentEdgeTypes.has(edgeType.key))
   return (
-    <div className="legend">
+    <>
       {shownKindGroups(kinds).map(({ caption, shown }) => (
         <React.Fragment key={caption}>
           <div className="legend-cap">{caption}</div>
@@ -101,7 +134,7 @@ export function Legend({ kinds, edgeTypesPresent = [], hiddenEdges, config }) {
       {arrows.map((edgeType) => (
         <ArrowSwatch key={edgeType.key} edgeType={edgeType} hidden={!!hiddenEdges?.has(edgeType.key)} />
       ))}
-    </div>
+    </>
   )
 }
 
@@ -126,8 +159,8 @@ export function LegendOverlay({ onClose }) {
         </div>
         <div className="legend-help">
           <p className="lg-note">
-            The colour key — node types, status styles and arrow classes — is always shown in the panel at the
-            top-left of the map.
+            The colour key — node types, status styles and arrow classes — is in the Legend at the top-left of
+            the map.
           </p>
           <section>
             <h4>Reading the map</h4>

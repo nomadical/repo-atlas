@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './app/behaviour.css'
 import CardNode from './CardNode.jsx'
 import RegionNode from './RegionNode.jsx'
 import {
