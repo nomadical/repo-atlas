@@ -9,6 +9,10 @@ viz/dist/
 scripts/*-out.json
 scripts/extras-mid.json
 
+# live Azure inventory written by azure-gather.mjs: the real tenant's apps, registries and resource
+# groups, which must never land in this public repo
+azure-resources.json
+
 # editor / OS
 .idea/
 .vscode/
