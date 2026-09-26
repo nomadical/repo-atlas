@@ -33,6 +33,7 @@ const PIPELINE = [
   'scripts/assemble.mjs',
   'scripts/extras-gather.mjs',
   'scripts/depcruise-accurate.mjs',
+  'scripts/screens-gather.mjs',
   'scripts/extras-assemble.mjs',
 ]
 const SCRATCH = [
@@ -41,6 +42,7 @@ const SCRATCH = [
   'scripts/modulegraph-out.json',
   'scripts/extras-mid.json',
   'scripts/depcruise-out.json',
+  'scripts/screens-out.json',
 ]
 
 const EXEC_MAX_BUFFER = 256 * 1024 * 1024
