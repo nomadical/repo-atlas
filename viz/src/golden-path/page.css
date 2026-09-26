@@ -348,6 +348,7 @@
   display: block;
 }
 .ms-opt {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -359,6 +360,19 @@
 }
 .ms-opt:hover {
   background: var(--canvas);
+}
+/* The native checkbox keeps focus and state; .ms-box is what shows. */
+.ms-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.ms-opt:has(input:focus-visible) {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
 }
 .ms-opt .cnt {
   margin-left: auto;
@@ -380,12 +394,12 @@
   height: 10px;
   opacity: 0;
 }
-.ms-opt[aria-selected='true'] .ms-box {
+.ms-opt input:checked + .ms-box {
   background: var(--acc);
   border-color: var(--acc);
   color: #fff;
 }
-.ms-opt[aria-selected='true'] .ms-box svg {
+.ms-opt input:checked + .ms-box svg {
   opacity: 1;
 }
 .ms-clear {

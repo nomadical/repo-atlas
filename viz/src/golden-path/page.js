@@ -69,10 +69,10 @@ const SHELL = `
       <button type="button" data-f="unk" aria-pressed="false">Not scanned</button>
     </div>
     <div class="ms" id="settings">
-      <button class="ms-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="View settings">
+      <button class="ms-btn" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="View settings">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.04Z"/></svg>
         Settings<span class="car"></span></button>
-      <div class="ms-panel" style="min-width:290px">
+      <div class="ms-panel" id="settings-panel" style="min-width:290px">
         <label class="set"><input type="checkbox" id="grp"><span>Group by owner</span></label>
         <p class="set-title" id="seg-title">Repositories shown</p>
         <div id="segments"></div>
@@ -593,52 +593,70 @@ export function mountPage(hostEl, root) {
     return true
   }
 
+  function setDropdownOpen(node, open) {
+    node.classList.toggle('open', open)
+    node.querySelector('.ms-btn').setAttribute('aria-expanded', String(open))
+  }
+
   function closeAllDropdowns() {
-    for (const dropdown of root.querySelectorAll('.ms.open')) dropdown.classList.remove('open')
+    for (const dropdown of root.querySelectorAll('.ms.open')) setDropdownOpen(dropdown, false)
   }
 
   function toggleDropdown(node) {
     const open = !node.classList.contains('open')
     closeAllDropdowns()
-    node.classList.toggle('open', open)
-    node.querySelector('.ms-btn').setAttribute('aria-expanded', String(open))
+    setDropdownOpen(node, open)
   }
 
-  function multiSelectHtml(name, values, selected, counts) {
+  // Escape closes an open dropdown before it closes the drawer, and hands focus back to the trigger.
+  function closeDropdownOnEscape(event) {
+    const open = root.querySelector('.ms.open')
+    if (event.key !== 'Escape' || !open) return false
+    setDropdownOpen(open, false)
+    open.querySelector('.ms-btn').focus()
+    return true
+  }
+
+  // Real checkboxes, so Tab and Space work; the input is hidden and .ms-box draws the tick.
+  function multiSelectHtml(node, name, values, selected, counts) {
     const options = values
       .map(
         (
           value,
-        ) => `<div class="ms-opt" role="option" data-v="${esc(value)}" aria-selected="${selected.has(value)}">
-            <span class="ms-box">${TICK_ICON}</span>${esc(value)}<span class="cnt">${counts.get(value) || 0}</span></div>`,
+        ) => `<label class="ms-opt"><input type="checkbox" value="${esc(value)}"${selected.has(value) ? ' checked' : ''}>
+            <span class="ms-box">${TICK_ICON}</span>${esc(value)}<span class="cnt">${counts.get(value) || 0}</span></label>`,
       )
       .join('')
     return `
-      <button class="ms-btn" type="button" aria-haspopup="listbox" aria-expanded="false"
+      <button class="ms-btn" type="button" aria-expanded="false" aria-controls="${node.id}-panel"
         aria-label="${name}${selected.size ? `, ${selected.size} selected` : ''}">
         <span aria-hidden="true">${name}</span><span class="ms-count"${selected.size ? '' : ' hidden'} aria-hidden="true">${selected.size}</span><span class="car"></span></button>
-      <div class="ms-panel" role="listbox" aria-multiselectable="true">
+      <div class="ms-panel" id="${node.id}-panel" role="group" aria-label="${name}">
         ${options}
         <button class="ms-clear" type="button">Clear selection</button></div>`
   }
 
   function renderMultiSelect(node, name, values, selected, counts) {
-    node.innerHTML = multiSelectHtml(name, values, selected, counts)
-    const refresh = () => {
+    node.innerHTML = multiSelectHtml(node, name, values, selected, counts)
+    // The rebuild replaces the focused control, so focus its replacement for keyboard readers.
+    const refresh = (focusTarget) => {
       render(node.id)
       writeUrl()
+      focusTarget(byId(node.id))?.focus()
     }
     node.querySelector('.ms-btn').onclick = () => toggleDropdown(node)
-    for (const option of node.querySelectorAll('.ms-opt')) {
-      option.onclick = () => {
-        if (selected.has(option.dataset.v)) selected.delete(option.dataset.v)
-        else selected.add(option.dataset.v)
-        refresh()
+    for (const checkbox of node.querySelectorAll('.ms-opt input')) {
+      checkbox.onchange = () => {
+        if (checkbox.checked) selected.add(checkbox.value)
+        else selected.delete(checkbox.value)
+        refresh((fresh) =>
+          [...fresh.querySelectorAll('.ms-opt input')].find((input) => input.value === checkbox.value),
+        )
       }
     }
     node.querySelector('.ms-clear').onclick = () => {
       selected.clear()
-      refresh()
+      refresh((fresh) => fresh.querySelector('.ms-clear'))
     }
   }
 
@@ -660,9 +678,7 @@ export function mountPage(hostEl, root) {
 
   function reopenDropdown(nodeId) {
     const node = byId(nodeId)
-    if (!node) return
-    node.classList.add('open')
-    node.querySelector('.ms-btn').setAttribute('aria-expanded', 'true')
+    if (node) setDropdownOpen(node, true)
   }
 
   // Rebuilt every render: a curated exclusion moves a repository from one group to another.
@@ -1232,6 +1248,11 @@ export function mountPage(hostEl, root) {
     }
   }
 
+  function onKeydown(event) {
+    if (closeDropdownOnEscape(event)) return
+    onDrawerKeydown(event)
+  }
+
   function onDrawerKeydown(event) {
     if (!drawerIsOpen()) return
     if (event.key === 'Escape') {
@@ -1626,7 +1647,7 @@ export function mountPage(hostEl, root) {
     if (!clickedElement(event).closest('.ms')) closeAllDropdowns()
   })
   listen(document, 'mousedown', onDocumentMousedown)
-  listen(document, 'keydown', onDrawerKeydown)
+  listen(document, 'keydown', onKeydown)
   listen(window, 'popstate', onPopState)
   byId('d-close').onclick = () => escapeOnce()
 
