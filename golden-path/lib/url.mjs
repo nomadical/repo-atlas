@@ -62,6 +62,10 @@ function segmentsFrom(param) {
   return new Set(param.split(',').filter(Boolean))
 }
 
+// Links shared before the Owner filter adopted the table's "No owner" label.
+const LEGACY_OWNER_LABELS = { '(no owner)': 'No owner' }
+const ownerFrom = (owners) => new Set(owners.map((owner) => LEGACY_OWNER_LABELS[owner] ?? owner))
+
 // An unparsable date reads as null, so the caller can fall back.
 const dateFrom = (param) => Date.parse(param || '') || null
 
@@ -77,7 +81,7 @@ export function fromParams(search) {
       tab: params.get('tab') === 'analytics' ? 'analytics' : 'table',
       segments: segmentsFrom(params.get('segments')),
       type: new Set(listParam('type')),
-      owner: new Set(listParam('owner')),
+      owner: ownerFrom(listParam('owner')),
       filter: SHOW_STATE[params.get('show')] || 'all',
       q: params.get('search') || '',
       group: params.get('group') === 'true',

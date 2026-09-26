@@ -148,3 +148,8 @@ test('defaultState hands out fresh sets', () => {
   first.type.add('Service')
   assert.deepEqual([...defaultState().type], [], 'a new state must not carry the previous one’s selection')
 })
+
+test('links shared with the old "(no owner)" label still select ownerless rows', () => {
+  const { state } = fromParams('?owner=(no owner),Platform')
+  assert.deepEqual([...state.owner], ['No owner', 'Platform'])
+})
