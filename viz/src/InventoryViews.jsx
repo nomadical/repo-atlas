@@ -1,209 +1,213 @@
 import { useState, useMemo } from 'react'
 import { StatusChip, docHref } from './ui.jsx'
 
-// Full Component Inventory as a sortable, filterable table — the list counterpart to the graph,
-// the list counterpart to the graph — so a hand-maintained inventory page can be retired.
-// `externals` maps a repo basename -> its auto-detected integrations (data.repos[].externals), so the
-// realistic third-party picture shows here without hand-maintaining it.
-export function InventoryTable({ inventory, query, onSelect, externals = {}, docSearchUrl }) {
-  const [sort, setSort] = useState({ key: 'name', dir: 1 })
-  const q = query.trim().toLowerCase()
-  const val = (e, k) =>
-    k === 'deployed'
-      ? e.azure?.lastPush || ''
-      : k === 'alerts'
-        ? (e.health?.alerts?.total ?? -1)
-        : k === 'ci'
-          ? e.health?.ci?.conclusion || ''
-          : e[k] || ''
-  const rows = useMemo(() => {
-    let r = inventory
-    if (q)
-      r = r.filter((e) =>
-        [
-          e.name,
-          e.abbr,
-          e.type,
-          e.status,
-          e.owner,
-          e.contact,
-          e.description,
-          (e.applications || []).join(' '),
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(q),
-      )
-    return [...r].sort((a, b) => {
-      const av = val(a, sort.key)
-      const bv = val(b, sort.key)
-      return (
-        (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) *
-        sort.dir
-      )
-    })
-  }, [inventory, q, sort])
-  const th = (key, label) => (
-    <th
-      className={'sortable' + (sort.key === key ? ' sorted' : '')}
-      onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}
-    >
+const DESCRIPTION_PREVIEW_LENGTH = 100
+// Sorts components without alert data below those with zero alerts.
+const NO_ALERT_DATA = -1
+
+const toggledSort = (key) => (sort) => ({ key, dir: sort.key === key ? -sort.dir : 1 })
+
+function SortableHeader({ sortKey, label, sort, setSort }) {
+  const isSorted = sort.key === sortKey
+  return (
+    <th className={'sortable' + (isSorted ? ' sorted' : '')} onClick={() => setSort(toggledSort(sortKey))}>
       {label}
-      {sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
+      {isSorted ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
   )
+}
+
+const matchesQuery = (fields, query) => fields.join(' ').toLowerCase().includes(query)
+
+const Dash = () => <span className="muted">—</span>
+
+const stopPropagation = (event) => event.stopPropagation()
+
+function inventorySortValue(entry, key) {
+  if (key === 'deployed') return entry.azure?.lastPush || ''
+  if (key === 'alerts') return entry.health?.alerts?.total ?? NO_ALERT_DATA
+  if (key === 'ci') return entry.health?.ci?.conclusion || ''
+  return entry[key] || ''
+}
+
+function compareSortValues(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b))
+}
+
+function inventorySearchFields(entry) {
+  return [
+    entry.name,
+    entry.abbr,
+    entry.type,
+    entry.status,
+    entry.owner,
+    entry.contact,
+    entry.description,
+    (entry.applications || []).join(' '),
+  ]
+}
+
+function alertBreakdown(alerts) {
+  return `${alerts.critical}C / ${alerts.high}H / ${alerts.medium}M / ${alerts.low}L`
+}
+
+function InventoryRow({ entry, externalsOfRepo, docSearchUrl, onSelect }) {
+  const onKeyDown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onSelect(entry)
+  }
+  const ci = entry.health?.ci
+  const alerts = entry.health?.alerts
+  const documentationUrl = entry.doc || entry.docUrl ? docHref(entry.doc, entry.docUrl, docSearchUrl) : null
+  return (
+    <tr onClick={() => onSelect(entry)} tabIndex={0} onKeyDown={onKeyDown}>
+      <td>
+        <b>{entry.name}</b>
+        {entry.description ? (
+          <div className="muted small">
+            {entry.description.slice(0, DESCRIPTION_PREVIEW_LENGTH)}
+            {entry.description.length > DESCRIPTION_PREVIEW_LENGTH ? '…' : ''}
+          </div>
+        ) : null}
+      </td>
+      <td className="mono small">
+        {entry.repo ? (
+          <a href={entry.repo} target="_blank" rel="noreferrer" onClick={stopPropagation}>
+            {entry.repoName}
+          </a>
+        ) : (
+          <Dash />
+        )}
+      </td>
+      <td className="mono small">{entry.abbr}</td>
+      <td className="small">
+        {entry.type}
+        {entry.subtype ? <div className="muted small">{entry.subtype}</div> : null}
+      </td>
+      <td className="small">{[entry.language, entry.framework].filter(Boolean).join(' · ') || <Dash />}</td>
+      <td>
+        <StatusChip status={entry.status} />
+      </td>
+      <td className="small mono" title={entry.azure?.image}>
+        {entry.azure?.lastPush ? entry.azure.lastPush.slice(0, 10) : <Dash />}
+      </td>
+      <td className="small">{entry.owner}</td>
+      <td className="small">
+        {ci ? (
+          <span className={'ci-chip ci-' + (ci.conclusion || ci.status || 'unknown')}>
+            {ci.conclusion || ci.status}
+          </span>
+        ) : (
+          <Dash />
+        )}
+      </td>
+      <td className="small">
+        {alerts ? (
+          <span
+            className={alerts.total ? 'alerts-bad' : 'muted'}
+            title={alerts.total ? alertBreakdown(alerts) : 'no open alerts'}
+          >
+            {alerts.total}
+          </span>
+        ) : (
+          <Dash />
+        )}
+      </td>
+      <td className="small">{entry.contact}</td>
+      <td className="small">{(entry.applications || []).join(', ')}</td>
+      <td className="small">
+        {documentationUrl ? (
+          <a href={documentationUrl} target="_blank" rel="noreferrer" onClick={stopPropagation}>
+            {entry.doc || entry.docUrl}
+          </a>
+        ) : (
+          <Dash />
+        )}
+      </td>
+      <td className="small">
+        {externalsOfRepo.length ? (
+          <div className="chiprow">
+            {externalsOfRepo.map((external) => (
+              <span key={external.name} className="ext-chip" title={external.via}>
+                {external.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <Dash />
+        )}
+      </td>
+    </tr>
+  )
+}
+
+// The full Component Inventory as a sortable, filterable table: the list counterpart to the graph.
+// `externals` maps a repo name to its auto-detected integrations.
+export function InventoryTable({ inventory, query, onSelect, externals = {}, docSearchUrl }) {
+  const [sort, setSort] = useState({ key: 'name', dir: 1 })
+  const normalizedQuery = query.trim().toLowerCase()
+  const rows = useMemo(() => {
+    const matching = normalizedQuery
+      ? inventory.filter((entry) => matchesQuery(inventorySearchFields(entry), normalizedQuery))
+      : inventory
+    return [...matching].sort(
+      (a, b) =>
+        compareSortValues(inventorySortValue(a, sort.key), inventorySortValue(b, sort.key)) * sort.dir,
+    )
+  }, [inventory, normalizedQuery, sort])
+  const header = (key, label) => <SortableHeader sortKey={key} label={label} sort={sort} setSort={setSort} />
   return (
     <div className="table-wrap">
       <div className="table-meta">
-        {rows.length} of {inventory.length} components{q ? ` matching “${query}”` : ''}
+        {rows.length} of {inventory.length} components{normalizedQuery ? ` matching “${query}”` : ''}
       </div>
       <table className="inv-table">
         <thead>
           <tr>
-            {th('name', 'Component')}
-            {th('repoName', 'Repo')}
-            {th('abbr', 'Abbr')}
-            {th('type', 'Type')}
-            {th('language', 'Stack')}
-            {th('status', 'Status')}
-            {th('deployed', 'Deployed')}
-            {th('owner', 'Owner (team)')}
-            {th('ci', 'CI')}
-            {th('alerts', 'Alerts')}
-            {th('contact', 'Tech contact')}
+            {header('name', 'Component')}
+            {header('repoName', 'Repo')}
+            {header('abbr', 'Abbr')}
+            {header('type', 'Type')}
+            {header('language', 'Stack')}
+            {header('status', 'Status')}
+            {header('deployed', 'Deployed')}
+            {header('owner', 'Owner (team)')}
+            {header('ci', 'CI')}
+            {header('alerts', 'Alerts')}
+            {header('contact', 'Tech contact')}
             <th>Application</th>
             <th>Documentation</th>
             <th>Integrations</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((e, i) => {
-            const exts = (e.repoName && externals[e.repoName]) || []
-            return (
-              <tr
-                key={e.name + ':' + i}
-                onClick={() => onSelect(e)}
-                tabIndex={0}
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Enter' || ev.key === ' ') {
-                    ev.preventDefault()
-                    onSelect(e)
-                  }
-                }}
-              >
-                <td>
-                  <b>{e.name}</b>
-                  {e.description ? (
-                    <div className="muted small">
-                      {e.description.slice(0, 100)}
-                      {e.description.length > 100 ? '…' : ''}
-                    </div>
-                  ) : null}
-                </td>
-                <td className="mono small">
-                  {e.repo ? (
-                    <a href={e.repo} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()}>
-                      {e.repoName}
-                    </a>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td className="mono small">{e.abbr}</td>
-                <td className="small">
-                  {e.type}
-                  {e.subtype ? <div className="muted small">{e.subtype}</div> : null}
-                </td>
-                <td className="small">
-                  {[e.language, e.framework].filter(Boolean).join(' · ') || <span className="muted">—</span>}
-                </td>
-                <td>
-                  <StatusChip status={e.status} />
-                </td>
-                <td className="small mono" title={e.azure?.image}>
-                  {e.azure?.lastPush ? e.azure.lastPush.slice(0, 10) : <span className="muted">—</span>}
-                </td>
-                <td className="small">{e.owner}</td>
-                <td className="small">
-                  {e.health?.ci ? (
-                    <span
-                      className={'ci-chip ci-' + (e.health.ci.conclusion || e.health.ci.status || 'unknown')}
-                    >
-                      {e.health.ci.conclusion || e.health.ci.status}
-                    </span>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td className="small">
-                  {e.health?.alerts ? (
-                    <span
-                      className={e.health.alerts.total ? 'alerts-bad' : 'muted'}
-                      title={
-                        e.health.alerts.total
-                          ? `${e.health.alerts.critical}C / ${e.health.alerts.high}H / ${e.health.alerts.medium}M / ${e.health.alerts.low}L`
-                          : 'no open alerts'
-                      }
-                    >
-                      {e.health.alerts.total}
-                    </span>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td className="small">{e.contact}</td>
-                <td className="small">{(e.applications || []).join(', ')}</td>
-                <td className="small">
-                  {(e.doc || e.docUrl) && docHref(e.doc, e.docUrl, docSearchUrl) ? (
-                    <a
-                      href={docHref(e.doc, e.docUrl, docSearchUrl)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(ev) => ev.stopPropagation()}
-                    >
-                      {e.doc || e.docUrl}
-                    </a>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td className="small">
-                  {exts.length ? (
-                    <div className="chiprow">
-                      {exts.map((x) => (
-                        <span key={x.name} className="ext-chip" title={x.via}>
-                          {x.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
+          {rows.map((entry, index) => (
+            <InventoryRow
+              key={entry.name + ':' + index}
+              entry={entry}
+              externalsOfRepo={(entry.repoName && externals[entry.repoName]) || []}
+              docSearchUrl={docSearchUrl}
+              onSelect={onSelect}
+            />
+          ))}
         </tbody>
       </table>
     </div>
   )
 }
 
-// Roadmap-style application columns: full inventory name -> short header, in display order. Set
-// yours in config.json `applicationLabels` (an ordered {full: short} map) to give long application
-// names a column-width abbreviation and to fix their left-to-right order. Applications present in
-// the data but absent from the map still render — the full name doubles as its own short header
-// (see MatrixView) — so this is curation, not a gate, and an empty map is fine.
+// config.json `applicationLabels` is an ordered { full name: short header } map that sets the
+// matrix column order and abbreviations. Applications missing from it still get a column, headed by
+// their full name, so an empty map is fine.
 const DEFAULT_APP_LABELS = {}
-const appLabelsOf = (config) => {
-  const m =
-    config?.applicationLabels && Object.keys(config.applicationLabels).length
-      ? config.applicationLabels
-      : DEFAULT_APP_LABELS
-  return Object.entries(m)
+function appLabelsOf(config) {
+  const hasLabels = config?.applicationLabels && Object.keys(config.applicationLabels).length
+  return Object.entries(hasLabels ? config.applicationLabels : DEFAULT_APP_LABELS)
 }
-// Rows reflect the component Type directly (a fixed, sensible order); only types actually present
-// render, and any unknown type appends after the known ones.
+
+// Fixed row order; only types present render, and unknown types append after these.
 const TYPE_ROWS = [
   'Client',
   'Service',
@@ -218,41 +222,52 @@ const TYPE_ROWS = [
   'Assets',
 ]
 const rowOf = (type) => type || 'Other'
-const MX_STATUS_MOD = { Sunsetting: 'st-sunsetting', Planned: 'st-planned', Removed: 'st-removed' }
+const MATRIX_STATUS_CLASS = { Sunsetting: 'st-sunsetting', Planned: 'st-planned', Removed: 'st-removed' }
 const UNASSIGNED = '(no application)'
+const UNASSIGNED_HEADER = '—'
 
-// Two-dimensional grouping (Application × Type), like the architecture roadmap. A component that
-// serves several applications appears in each of those columns. The inventory arrives already
-// narrowed by the active group/status filters (facetInventory), so this just lays it out.
+const applicationsOf = (entry) =>
+  entry.applications && entry.applications.length ? entry.applications : [UNASSIGNED]
+
+// [full name, header] pairs: labelled apps in their configured order, then unlabelled apps, then the
+// "no application" column.
+function matrixColumns(presentApps, appLabels) {
+  const columns = appLabels.filter(([full]) => presentApps.has(full))
+  for (const app of presentApps) {
+    const isLabelled = appLabels.some(([full]) => full === app)
+    if (!isLabelled && app !== UNASSIGNED) columns.push([app, app])
+  }
+  if (presentApps.has(UNASSIGNED)) columns.push([UNASSIGNED, UNASSIGNED_HEADER])
+  return columns
+}
+
+function matrixRows(items) {
+  const presentTypes = new Set(items.map((entry) => rowOf(entry.type)))
+  const knownTypes = TYPE_ROWS.filter((type) => presentTypes.has(type))
+  const unknownTypes = [...presentTypes].filter((type) => !TYPE_ROWS.includes(type)).sort()
+  return [...knownTypes, ...unknownTypes]
+}
+
+// Application × Type grid, like the architecture roadmap. A component serving several applications
+// appears in each of their columns. The inventory arrives already narrowed by the group/status filters.
 export function MatrixView({ inventory, query, onSelect, config }) {
-  const q = query.trim().toLowerCase()
-  const items = q
-    ? inventory.filter((e) =>
-        [e.name, e.owner, e.type, e.abbr, (e.applications || []).join(' ')]
-          .join(' ')
-          .toLowerCase()
-          .includes(q),
+  const normalizedQuery = query.trim().toLowerCase()
+  const items = normalizedQuery
+    ? inventory.filter((entry) =>
+        matchesQuery(
+          [entry.name, entry.owner, entry.type, entry.abbr, (entry.applications || []).join(' ')],
+          normalizedQuery,
+        ),
       )
     : inventory
-  const appsOf = (e) => (e.applications && e.applications.length ? e.applications : [UNASSIGNED])
-  const present = new Set(items.flatMap(appsOf))
-  const appLabels = appLabelsOf(config)
-  // columns: known apps (in display order) then any extra; the "no application" column shows as "—".
-  const wanted = (full) => present.has(full)
-  const cols = appLabels.filter(([full]) => wanted(full))
-  for (const a of present)
-    if (wanted(a) && !appLabels.some(([full]) => full === a) && a !== UNASSIGNED) cols.push([a, a])
-  if (wanted(UNASSIGNED)) cols.push([UNASSIGNED, '—'])
-  const rowsPresent = new Set(items.map((e) => rowOf(e.type)))
-  const rows = [
-    ...TYPE_ROWS.filter((t) => rowsPresent.has(t)),
-    ...[...rowsPresent].filter((t) => !TYPE_ROWS.includes(t)).sort(),
-  ]
-  const cell = (full, row) => items.filter((e) => appsOf(e).includes(full) && rowOf(e.type) === row)
+  const columns = matrixColumns(new Set(items.flatMap(applicationsOf)), appLabelsOf(config))
+  const rows = matrixRows(items)
+  const itemsInCell = (app, row) =>
+    items.filter((entry) => applicationsOf(entry).includes(app) && rowOf(entry.type) === row)
   return (
     <div className="matrix-wrap">
       <div className="table-meta">
-        {items.length} components · Application × Type{q ? ` · matching “${query}”` : ''}
+        {items.length} components · Application × Type{normalizedQuery ? ` · matching “${query}”` : ''}
       </div>
       <table className="matrix">
         <thead>
@@ -260,9 +275,9 @@ export function MatrixView({ inventory, query, onSelect, config }) {
             <th className="corner" scope="col" title="Rows = Type, columns = Application">
               Type ↓ / App →
             </th>
-            {cols.map(([full, short]) => (
+            {columns.map(([full, header]) => (
               <th key={full} title={full}>
-                {short}
+                {header}
               </th>
             ))}
           </tr>
@@ -271,16 +286,16 @@ export function MatrixView({ inventory, query, onSelect, config }) {
           {rows.map((row) => (
             <tr key={row}>
               <th className="matrix-layer">{row}</th>
-              {cols.map(([full]) => (
+              {columns.map(([full]) => (
                 <td key={full}>
-                  {cell(full, row).map((e) => (
+                  {itemsInCell(full, row).map((entry) => (
                     <button
-                      key={e.name + full}
-                      className={'mx-chip ' + (MX_STATUS_MOD[e.status] || '')}
-                      title={`${e.name} · ${e.status}${e.description ? '\n' + e.description : ''}`}
-                      onClick={() => onSelect(e)}
+                      key={entry.name + full}
+                      className={'mx-chip ' + (MATRIX_STATUS_CLASS[entry.status] || '')}
+                      title={`${entry.name} · ${entry.status}${entry.description ? '\n' + entry.description : ''}`}
+                      onClick={() => onSelect(entry)}
                     >
-                      {e.name}
+                      {entry.name}
                     </button>
                   ))}
                 </td>
@@ -304,84 +319,83 @@ export function MatrixView({ inventory, query, onSelect, config }) {
   )
 }
 
-// All service-to-service integrations (data.integrations) as a sortable, filterable table — the list
-// counterpart to the graph's Integrations / service-link layers, replacing a hand-maintained "Integrations"
-// database. Source/target names that resolve to an inventory component are clickable (they open that
-// component's Details via onSelect); third-party endpoints (Kafka, external APIs) render as plain text.
-// Not narrowed by the group/status facets — this view is the full integration list.
+// Indexed by lowercased name and repo name.
+function indexInventoryByName(inventory) {
+  const byName = {}
+  for (const entry of inventory) {
+    byName[entry.name.toLowerCase()] = entry
+    if (entry.repoName) byName[entry.repoName.toLowerCase()] = entry
+  }
+  return byName
+}
+
+// Every service-to-service integration as a sortable, filterable table. Endpoints that resolve to an
+// inventory component open its Details; third-party ends (Kafka, external APIs) are plain text.
+// Deliberately not narrowed by the group/status filters.
 export function IntegrationsTable({ integrations = [], inventory = [], query, onSelect }) {
   const [sort, setSort] = useState({ key: 'source', dir: 1 })
-  const q = query.trim().toLowerCase()
-  const byName = useMemo(() => {
-    const m = {}
-    for (const e of inventory) {
-      m[e.name.toLowerCase()] = e
-      if (e.repoName) m[e.repoName.toLowerCase()] = e
-    }
-    return m
-  }, [inventory])
+  const normalizedQuery = query.trim().toLowerCase()
+  const byName = useMemo(() => indexInventoryByName(inventory), [inventory])
   const rows = useMemo(() => {
-    let r = integrations
-    if (q)
-      r = r.filter((it) =>
-        [it.source, it.target, it.protocol, it.channel, it.note].join(' ').toLowerCase().includes(q),
-      )
-    return [...r].sort(
+    const matching = normalizedQuery
+      ? integrations.filter((integration) =>
+          matchesQuery(
+            [
+              integration.source,
+              integration.target,
+              integration.protocol,
+              integration.channel,
+              integration.note,
+            ],
+            normalizedQuery,
+          ),
+        )
+      : integrations
+    return [...matching].sort(
       (a, b) => String(a[sort.key] ?? '').localeCompare(String(b[sort.key] ?? '')) * sort.dir,
     )
-  }, [integrations, q, sort])
-  const th = (key, label) => (
-    <th
-      className={'sortable' + (sort.key === key ? ' sorted' : '')}
-      onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}
-    >
-      {label}
-      {sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
-    </th>
-  )
+  }, [integrations, normalizedQuery, sort])
+  const header = (key, label) => <SortableHeader sortKey={key} label={label} sort={sort} setSort={setSort} />
   const endpoint = (name) => {
-    const e = byName[String(name || '').toLowerCase()]
-    return e ? (
-      // a button, not href="#": it's an in-page action, and "#" both pollutes the URL-state
-      // contract and reads as a dead link to assistive tech
-      <button type="button" className="linklike" onClick={() => onSelect(e)}>
+    const entry = byName[String(name || '').toLowerCase()]
+    if (!entry) return <span>{name}</span>
+    // A button, not href="#": it's an in-page action, and "#" would pollute the URL state and read
+    // as a dead link to assistive tech.
+    return (
+      <button type="button" className="linklike" onClick={() => onSelect(entry)}>
         {name}
       </button>
-    ) : (
-      <span>{name}</span>
     )
   }
   return (
     <div className="table-wrap">
       <div className="table-meta">
-        {rows.length} of {integrations.length} integrations{q ? ` matching “${query}”` : ''}
+        {rows.length} of {integrations.length} integrations{normalizedQuery ? ` matching “${query}”` : ''}
       </div>
       <table className="inv-table">
         <thead>
           <tr>
-            {th('source', 'Source')}
-            {th('target', 'Target')}
-            {th('protocol', 'Protocol')}
-            {th('channel', 'Topic / endpoint')}
-            {th('verified', 'Verified')}
+            {header('source', 'Source')}
+            {header('target', 'Target')}
+            {header('protocol', 'Protocol')}
+            {header('channel', 'Topic / endpoint')}
+            {header('verified', 'Verified')}
             <th>Note</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((it, i) => (
-            <tr key={it.source + '→' + it.target + ':' + i}>
-              <td className="small">{endpoint(it.source)}</td>
-              <td className="small">{endpoint(it.target)}</td>
+          {rows.map((integration, index) => (
+            <tr key={integration.source + '→' + integration.target + ':' + index}>
+              <td className="small">{endpoint(integration.source)}</td>
+              <td className="small">{endpoint(integration.target)}</td>
               <td className="small">
-                {it.protocol ? (
-                  <span className="ext-chip">{it.protocol}</span>
-                ) : (
-                  <span className="muted">—</span>
-                )}
+                {integration.protocol ? <span className="ext-chip">{integration.protocol}</span> : <Dash />}
               </td>
-              <td className="small">{it.channel || <span className="muted">—</span>}</td>
-              <td className="small">{it.verified ? '✓' : <span className="muted">unverified</span>}</td>
-              <td className="small muted">{it.note || ''}</td>
+              <td className="small">{integration.channel || <Dash />}</td>
+              <td className="small">
+                {integration.verified ? '✓' : <span className="muted">unverified</span>}
+              </td>
+              <td className="small muted">{integration.note || ''}</td>
             </tr>
           ))}
         </tbody>

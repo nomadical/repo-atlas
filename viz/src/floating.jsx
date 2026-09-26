@@ -1,77 +1,83 @@
 import React from 'react'
 import { useStore, getBezierPath, EdgeLabelRenderer, Position } from '@xyflow/react'
 
-// --- floating-edge geometry (adapted from the React Flow floating-edges example) ---
-// v12: internal nodes expose measured dimensions + an absolute position under `internals`.
-const dims = (n) => ({ w: n.measured?.width || 0, h: n.measured?.height || 0 })
-const absPos = (n) => n.internals?.positionAbsolute || n.position
+// Floating-edge geometry, adapted from the React Flow floating-edges example.
+const EDGE_CURVATURE = 0.3
+// How close (in px) a point must be to a node side to count as on that side.
+const SIDE_TOLERANCE = 1
 
-function getNodeIntersection(intersectionNode, targetNode) {
-  const { w: iw, h: ih } = dims(intersectionNode)
-  const { w: tw, h: th } = dims(targetNode)
-  const w = iw / 2
-  const h = ih / 2
-  const ip = absPos(intersectionNode)
-  const tp = absPos(targetNode)
-  const x2 = ip.x + w
-  const y2 = ip.y + h
-  const x1 = tp.x + tw / 2
-  const y1 = tp.y + th / 2
-  const xx1 = (x1 - x2) / (2 * w) - (y1 - y2) / (2 * h)
-  const yy1 = (x1 - x2) / (2 * w) + (y1 - y2) / (2 * h)
-  const a = 1 / (Math.abs(xx1) + Math.abs(yy1) || 1)
-  const xx3 = a * xx1
-  const yy3 = a * yy1
-  return { x: w * (xx3 + yy3) + x2, y: h * (-xx3 + yy3) + y2 }
+// React Flow v12 internal nodes carry measured dimensions and an absolute position under `internals`.
+const sizeOf = (node) => ({ width: node.measured?.width || 0, height: node.measured?.height || 0 })
+const absolutePositionOf = (node) => node.internals?.positionAbsolute || node.position
+
+// Where the line from `node`'s center towards `otherNode`'s center crosses `node`'s border.
+function getNodeIntersection(node, otherNode) {
+  const { width: nodeWidth, height: nodeHeight } = sizeOf(node)
+  const { width: otherWidth, height: otherHeight } = sizeOf(otherNode)
+  const halfWidth = nodeWidth / 2
+  const halfHeight = nodeHeight / 2
+  const nodePosition = absolutePositionOf(node)
+  const otherPosition = absolutePositionOf(otherNode)
+  const centerX = nodePosition.x + halfWidth
+  const centerY = nodePosition.y + halfHeight
+  const otherCenterX = otherPosition.x + otherWidth / 2
+  const otherCenterY = otherPosition.y + otherHeight / 2
+  // Map into a rotated unit square, scale the direction onto its border, and map back.
+  const rotatedX = (otherCenterX - centerX) / (2 * halfWidth) - (otherCenterY - centerY) / (2 * halfHeight)
+  const rotatedY = (otherCenterX - centerX) / (2 * halfWidth) + (otherCenterY - centerY) / (2 * halfHeight)
+  const scale = 1 / (Math.abs(rotatedX) + Math.abs(rotatedY) || 1)
+  const borderX = scale * rotatedX
+  const borderY = scale * rotatedY
+  return {
+    x: halfWidth * (borderX + borderY) + centerX,
+    y: halfHeight * (-borderX + borderY) + centerY,
+  }
 }
 
-function getEdgePosition(node, point) {
-  const p = absPos(node)
-  const { w } = dims(node)
-  const nx = Math.round(p.x)
-  const ny = Math.round(p.y)
-  const px = Math.round(point.x)
-  const py = Math.round(point.y)
-  if (px <= nx + 1) return Position.Left
-  if (px >= nx + w - 1) return Position.Right
-  if (py <= ny + 1) return Position.Top
+function getSideOfNode(node, point) {
+  const position = absolutePositionOf(node)
+  const { width } = sizeOf(node)
+  const nodeX = Math.round(position.x)
+  const nodeY = Math.round(position.y)
+  const pointX = Math.round(point.x)
+  const pointY = Math.round(point.y)
+  if (pointX <= nodeX + SIDE_TOLERANCE) return Position.Left
+  if (pointX >= nodeX + width - SIDE_TOLERANCE) return Position.Right
+  if (pointY <= nodeY + SIDE_TOLERANCE) return Position.Top
   return Position.Bottom
 }
 
 function getEdgeParams(source, target) {
-  const sp = getNodeIntersection(source, target)
-  const tp = getNodeIntersection(target, source)
+  const sourcePoint = getNodeIntersection(source, target)
+  const targetPoint = getNodeIntersection(target, source)
   return {
-    sx: sp.x,
-    sy: sp.y,
-    tx: tp.x,
-    ty: tp.y,
-    sourcePos: getEdgePosition(source, sp),
-    targetPos: getEdgePosition(target, tp),
+    sourceX: sourcePoint.x,
+    sourceY: sourcePoint.y,
+    targetX: targetPoint.x,
+    targetY: targetPoint.y,
+    sourcePosition: getSideOfNode(source, sourcePoint),
+    targetPosition: getSideOfNode(target, targetPoint),
   }
 }
 
 export function FloatingEdge({ id, source, target, markerEnd, style, label, labelStyle, data }) {
-  const sourceNode = useStore((s) => s.nodeLookup.get(source))
-  const targetNode = useStore((s) => s.nodeLookup.get(target))
-  if (!sourceNode || !targetNode || !sourceNode.measured?.width || !targetNode.measured?.width) return null
-  const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(sourceNode, targetNode)
+  const sourceNode = useStore((state) => state.nodeLookup.get(source))
+  const targetNode = useStore((state) => state.nodeLookup.get(target))
+  if (!sourceNode || !targetNode) return null
+  if (!sourceNode.measured?.width || !targetNode.measured?.width) return null
+
   const [path, labelX, labelY] = getBezierPath({
-    sourceX: sx,
-    sourceY: sy,
-    sourcePosition: sourcePos,
-    targetX: tx,
-    targetY: ty,
-    targetPosition: targetPos,
-    curvature: 0.3,
+    ...getEdgeParams(sourceNode, targetNode),
+    curvature: EDGE_CURVATURE,
   })
-  // labels render in a separate portal layer, so the .react-flow__edge.dim CSS can't reach them —
-  // honor the focus state passed through edge data instead (hide when dimmed).
+  // Labels render in a separate portal, out of reach of the .react-flow__edge.dim CSS, so the
+  // focus state comes through edge data instead.
+  const showLabel = label && !data?.dim
+
   return (
     <>
-      {/* `fill: none` must be inline (not only via the .react-flow__edge-path CSS class): html-to-image
-          doesn't carry stylesheet rules into the PNG export, so without it every bezier path fills
-          solid black in the exported image. */}
+      {/* `fill: none` must be inline: html-to-image doesn't carry stylesheet rules into the PNG
+          export, so without it every bezier path fills solid black. */}
       <path
         id={id}
         className="react-flow__edge-path"
@@ -79,7 +85,7 @@ export function FloatingEdge({ id, source, target, markerEnd, style, label, labe
         markerEnd={markerEnd}
         style={{ fill: 'none', ...style }}
       />
-      {label && !data?.dim ? (
+      {showLabel ? (
         <EdgeLabelRenderer>
           <div
             className="edge-label"

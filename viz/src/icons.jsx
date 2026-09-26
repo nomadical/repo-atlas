@@ -1,7 +1,6 @@
-// Central FontAwesome icon set. We import only the icon *definitions* (SVG path data) from the
-// free packages and render them with a tiny inline-SVG component — no @fortawesome/react-fontawesome
-// or fontawesome-svg-core runtime/CSS. That keeps just the ~24 used icons (a few KB of path data),
-// scales to the font size (1em), inherits color (currentColor), and is CSP-safe for the embed.
+// Only the icon definitions (SVG path data) are imported and rendered by a tiny inline-SVG
+// component, without the FontAwesome runtime or CSS: a few KB, sized to 1em, colored by
+// currentColor, and CSP-safe for the embed.
 import {
   faGear,
   faCircleQuestion,
@@ -31,7 +30,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { faGithub } from '@fortawesome/free-brands-svg-icons'
 
-const MAP = {
+const ICONS_BY_NAME = {
   gear: faGear,
   help: faCircleQuestion,
   sun: faSun,
@@ -56,20 +55,21 @@ const MAP = {
   more: faEllipsis,
   child: faAngleRight,
   code: faCode,
-  compliance: faListCheck, // the Golden Path screen — a checklist, not the rocket (auto-arrange)
+  // The Golden Path screen: a checklist, because the rocket already means auto-arrange.
+  compliance: faListCheck,
   github: faGithub,
 }
 
-// IconDefinition.icon = [width, height, ligatures, unicode, svgPathData]
 export function Icon({ name, className, title, ...rest }) {
-  const def = MAP[name]
-  if (!def) return null
-  const [w, h, , , path] = def.icon
-  const d = Array.isArray(path) ? path.join(' ') : path
+  const definition = ICONS_BY_NAME[name]
+  if (!definition) return null
+  // IconDefinition.icon is [width, height, ligatures, unicode, svgPathData].
+  const [width, height, , , pathData] = definition.icon
+  const path = Array.isArray(pathData) ? pathData.join(' ') : pathData
   return (
     <svg
       className={'fa-svg' + (className ? ' ' + className : '')}
-      viewBox={`0 0 ${w} ${h}`}
+      viewBox={`0 0 ${width} ${height}`}
       width="1em"
       height="1em"
       fill="currentColor"
@@ -80,7 +80,7 @@ export function Icon({ name, className, title, ...rest }) {
       {...rest}
     >
       {title ? <title>{title}</title> : null}
-      <path d={d} />
+      <path d={path} />
     </svg>
   )
 }

@@ -1,24 +1,23 @@
 import React, { useState } from 'react'
 
-// Full-screen passphrase gate shown when only encrypted data is available. The title is shown
-// before any data (and therefore any config.json) has been decrypted, so it comes from the build:
-// VITE_APP_TITLE, falling back to the product name.
+// Full-screen passphrase gate shown when only encrypted data is available. Nothing is decrypted yet
+// (not even config.json), so the title has to come from the build.
 export default function Gate({
   onUnlock,
   error,
   busy,
   title = import.meta.env.VITE_APP_TITLE || 'Repo Atlas',
 }) {
-  const [pass, setPass] = useState('')
+  const [passphrase, setPassphrase] = useState('')
+
+  const submit = (event) => {
+    event.preventDefault()
+    onUnlock(passphrase)
+  }
+
   return (
     <div className="gate">
-      <form
-        className="gate-card"
-        onSubmit={(e) => {
-          e.preventDefault()
-          onUnlock(pass)
-        }}
-      >
+      <form className="gate-card" onSubmit={submit}>
         <div className="brand gate-brand">
           <span className="brand-mark" />
           {title}
@@ -27,11 +26,11 @@ export default function Gate({
         <input
           type="password"
           autoFocus
-          value={pass}
+          value={passphrase}
           placeholder="Passphrase"
-          onChange={(e) => setPass(e.target.value)}
+          onChange={(event) => setPassphrase(event.target.value)}
         />
-        <button className="btn primary" type="submit" disabled={busy || !pass}>
+        <button className="btn primary" type="submit" disabled={busy || !passphrase}>
           {busy ? 'Unlocking…' : 'Unlock'}
         </button>
         {error ? <div className="gate-err">Wrong passphrase — try again.</div> : null}
