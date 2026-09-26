@@ -109,8 +109,10 @@ export function GroupByMenu({ groupBy, setGroupBy }) {
 export function DetailSwitch({ mode, setMode }) {
   return (
     <label className="switch" title="Show extra detail (tooling/test chips + the richer layout)">
+      {/* The visible label hides on narrow toolbars, so the input names itself. */}
       <input
         type="checkbox"
+        aria-label="Detail"
         checked={mode === 'dev'}
         onChange={(e) => setMode(e.target.checked ? 'dev' : 'overview')}
       />
