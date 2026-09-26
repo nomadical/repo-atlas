@@ -12,6 +12,7 @@ import {
   isAtRisk,
   nodeIdOf,
   groupingFor,
+  clusterOfInv,
 } from './graph.js'
 import main from '../../fe-architecture.json'
 import extras from '../../fe-architecture-extras.json'
@@ -435,13 +436,18 @@ describe('buildGraph', () => {
 
   it('renders a region per configured cluster', () => {
     const graph = buildGraph(data, { mode: 'dev', facets: groups(...ALL_CLUSTERS) })
-    const regions = new Set(graph.nodes.filter((n) => n.type === 'region').map((n) => n.data.label))
-    // every lane that actually has members draws its outline; an empty lane legitimately draws none
-    const populated = LANES.filter((label) =>
-      graph.nodes.some((n) => n.data?.repo && n.data.cluster === label),
+    const regionByLabel = new Map(
+      graph.nodes.filter((n) => n.type === 'region').map((n) => [n.data.label, n]),
     )
-    for (const label of populated) expect(regions.has(label), label).toBe(true)
-    expect(regions.size).toBeGreaterThan(0)
+    // Every repo card routed to a lane sits inside that lane's outline; an empty lane draws none.
+    const laneCards = graph.nodes.filter(
+      (n) => n.data?.repo && LANES.includes(clusterOfInv(n.data.repo.inventory, CLUSTERS)),
+    )
+    expect(laneCards.length).toBeGreaterThan(0)
+    for (const card of laneCards) {
+      const lane = clusterOfInv(card.data.repo.inventory, CLUSTERS)
+      expect(regionByLabel.get(lane)?.data.members, `${card.id} in ${lane}`).toContain(card.id)
+    }
   })
 
   it('a custom cluster config remaps membership, lanes and colors', () => {
