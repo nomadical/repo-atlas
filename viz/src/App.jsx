@@ -105,6 +105,8 @@ const EMPTY_GRAPH = {
   facetOptions: { status: [], components: [] },
   edgeTypesPresent: [],
 }
+// One object for a missing config, so hooks that depend on it don't rerun every render.
+const NO_CONFIG = {}
 const EXPORT_BACKGROUND = { dark: '#0c1322', light: '#f4f6fa' }
 const MINIMAP_FALLBACK_COLOR = '#bbb'
 
@@ -472,7 +474,7 @@ export default function App() {
   )
 
   // Published app config (config.json). Every field is optional and falls back to a built-in default.
-  const config = data?.config || {}
+  const config = data?.config || NO_CONFIG
   const clusterDefs = useMemo(() => resolveClusters(config), [config])
   const title = config.title || DEFAULT_TITLE
   const subtitle = config.subtitle || ''
@@ -866,7 +868,7 @@ export default function App() {
       setBlockFocus(null)
       frameNodes([target.id])
     },
-    [graph, frameNodes],
+    [graph, config, frameNodes],
   )
   const stepMatch = useCallback(
     (direction) => {
