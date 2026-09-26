@@ -255,3 +255,62 @@ test('roleConstantLookup: follows the import to the file that exports the consta
   const [route] = parseRoutes(router, roleConstantLookup(router, routerFile, resolve))
   assert.deepEqual(route.roles, ['BASIC_ACCESS', 'SKYMIND_ADMIN'])
 })
+
+test('parseRoutes: spreads inside role lists, inline and in named constants', () => {
+  const src = `
+    const baseRoles = [userRoles.BASIC_ACCESS]
+    const adminRoles = [...baseRoles, userRoles.ADMIN]
+    return [
+      { element: <Admin />, path: '/admin', necessaryRoles: adminRoles },
+      { element: <Audit />, path: '/audit', sufficientRoles: [...adminRoles, 'AUDIT', ...missingRoles] },
+    ]`
+  const byComponent = routesByComponent(src)
+  assert.deepEqual(byComponent.Admin.roles, ['BASIC_ACCESS', 'ADMIN'])
+  assert.deepEqual(
+    byComponent.Audit.roles,
+    ['BASIC_ACCESS', 'ADMIN', 'AUDIT'],
+    'an unknown spread adds nothing',
+  )
+})
+
+test('roleConstantLookup: follows named, renamed and star re-exports, and imports inside them', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screens-reexports-'))
+  const write = (name, text) => fs.writeFileSync(path.join(repoDir, name), text)
+  write('base.ts', 'export const baseRoles = [userRoles.BASIC_ACCESS];\n')
+  write(
+    'roles.ts',
+    `import { baseRoles } from './base'\nexport const adminRoles = [...baseRoles, userRoles.ADMIN]\nexport const auditRoles = ['AUDIT']\n`,
+  )
+  write(
+    'named.ts',
+    "export { adminRoles } from './roles'\nexport { auditRoles as reviewRoles } from './roles'\n",
+  )
+  write('index.ts', "export * from './named'\n")
+  const router = `
+    import { adminRoles, reviewRoles } from './index'
+    export const routes = [
+      { element: <Admin />, path: '/admin', necessaryRoles: adminRoles },
+      { element: <Review />, path: '/review', sufficientRoles: reviewRoles },
+    ]`
+  const routerFile = path.join(repoDir, 'Router.tsx')
+  write('Router.tsx', router)
+  const resolve = (fromFile, specifier) => path.resolve(path.dirname(fromFile), specifier + '.ts')
+  const byComponent = Object.fromEntries(
+    parseRoutes(router, roleConstantLookup(router, routerFile, resolve)).map((route) => [
+      route.component,
+      route,
+    ]),
+  )
+  assert.deepEqual(byComponent.Admin.roles, ['BASIC_ACCESS', 'ADMIN'])
+  assert.deepEqual(byComponent.Review.roles, ['AUDIT'])
+})
+
+test('roleConstantLookup: stops on import cycles', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screens-cycle-'))
+  fs.writeFileSync(path.join(repoDir, 'a.ts'), "export * from './b'\n")
+  fs.writeFileSync(path.join(repoDir, 'b.ts'), "export * from './a'\n")
+  const router = `import { loopRoles } from './a'\n[{ element: <Loop />, path: '/loop', necessaryRoles: loopRoles }]`
+  const resolve = (fromFile, specifier) => path.resolve(path.dirname(fromFile), specifier + '.ts')
+  const [route] = parseRoutes(router, roleConstantLookup(router, path.join(repoDir, 'Router.tsx'), resolve))
+  assert.deepEqual(route.roles, [])
+})
