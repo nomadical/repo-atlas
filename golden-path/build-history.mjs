@@ -46,10 +46,21 @@ function lastCommitPerDay() {
 }
 
 // --days N: keep only the last N calendar nights, for quick smoke-testing this ~7s-per-night replay.
-function selectDays(allDays) {
+// Anything but a positive whole number is refused: `slice(-0)` would quietly replay every night.
+function daysToKeep() {
   const daysFlag = process.argv.indexOf('--days')
-  if (daysFlag === -1) return allDays
-  return allDays.slice(-Number(process.argv[daysFlag + 1]))
+  if (daysFlag === -1) return null
+  const value = process.argv[daysFlag + 1]
+  const days = Number(value)
+  if (!Number.isInteger(days) || days < 1) {
+    console.error(`--days must be a positive whole number, got ${value ?? 'nothing'}`)
+    process.exit(1)
+  }
+  return days
+}
+
+function selectDays(allDays, keep) {
+  return keep ? allDays.slice(-keep) : allDays
 }
 
 const readAtCommit = (sha, file) => {
@@ -116,8 +127,9 @@ function printSummary(snapshots, history) {
   )
 }
 
+const keep = daysToKeep()
 const shaByDay = lastCommitPerDay()
-const days = selectDays([...shaByDay.keys()].sort())
+const days = selectDays([...shaByDay.keys()].sort(), keep)
 const snapshots = replayNights(shaByDay, days)
 if (!snapshots.length) throw new Error('no nightly snapshots found in git history')
 
