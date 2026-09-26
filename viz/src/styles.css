@@ -1136,6 +1136,24 @@ body {
   .view-dd .dd-btn {
     min-width: 0;
   }
+  /* Buttons can land anywhere in the wrapped rows, so popovers span the toolbar instead of hanging
+     off their button, which pushed them off one edge of the screen. */
+  .toolbar {
+    position: relative;
+  }
+  .toolbar .health-wrap,
+  .toolbar .dd {
+    position: static;
+  }
+  .toolbar .health-pop,
+  .toolbar .dd-menu,
+  .toolbar .dd-menu.right {
+    top: calc(100% + 6px);
+    left: 10px;
+    right: 10px;
+    width: auto;
+    min-width: 0;
+  }
 }
 
 .health-wrap {
