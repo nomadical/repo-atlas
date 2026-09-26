@@ -1,5 +1,5 @@
-// Editor-facing types for the architecture model. Mirrors schema/fe-architecture.schema.json
-// (the schema is the enforced contract; these give IDE hints from JSDoc in the JS sources).
+// Editor types for the architecture model, mirroring schema/fe-architecture.schema.json. The schema
+// is the enforced contract; these only give IDE hints to the JSDoc in the JS sources.
 
 export interface InventoryItem {
   name: string
@@ -19,7 +19,7 @@ export interface InventoryItem {
   contact?: string
   repo?: string | null
   repoName?: string | null
-  /** Canonical service id (backlog #16); equals the inventory name. */
+  /** Canonical service id; equals the inventory name. */
   serviceId?: string
   /** Owning repo folder, or null for a repo-less service. */
   serviceRepo?: string | null
@@ -49,7 +49,7 @@ export interface Repo {
   folder: string
   kind: string
   displayName?: string
-  /** Canonical service id (backlog #16); equals the inventory name. */
+  /** Canonical service id; equals the inventory name. */
   serviceId?: string
   /** Owning repo folder (this repo, by default). */
   serviceRepo?: string | null

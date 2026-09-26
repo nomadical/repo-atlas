@@ -1,65 +1,69 @@
 import { getToken } from './auth.js'
 
-// Data sources, in order: token-gated backend -> dev server API -> plaintext bundle ->
-// encrypted bundle. VITE_DATA_URL is set for the fe-node-services deploy (Keycloak-gated route);
-// the public Pages deploy ships data.enc only (see scripts/encrypt-data.mjs).
+// Data sources, in order: the token-gated backend (VITE_DATA_URL, set for the Keycloak-gated
+// deploy), the dev server API, the plaintext bundle, the encrypted bundle. The public Pages deploy
+// ships data.enc only (see scripts/encrypt-data.mjs).
 /** @returns {Promise<{ data?: import('./types').ArchData, encrypted?: object }>} */
 export async function getData() {
-  const dataUrl = import.meta.env.VITE_DATA_URL
-  if (dataUrl) {
-    try {
-      const token = getToken()
-      const r = await fetch(dataUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
-      if (r.ok) return { data: await r.json() }
-      // 401 means the session lapsed -> let the app re-authenticate (don't fall back to the bundle).
-      if (r.status === 401) {
-        const e = new Error('unauthorized')
-        e.unauthorized = true
-        throw e
-      }
-      // 403 = authenticated but missing the read role (server AUTH_READ_ROLE, e.g. SAM_READ) ->
-      // show the "ask for access" screen instead of degrading to the passphrase gate.
-      if (r.status === 403) {
-        const body = await r.json().catch(() => ({}))
-        const e = new Error(body.error || 'access denied')
-        e.forbidden = true
-        throw e
-      }
-      // Any other status -> fall through to the static bundle (degrades to the passphrase gate).
-    } catch (e) {
-      if (e?.unauthorized || e?.forbidden) throw e
-      // Network / CORS error -> also fall through to the static bundle rather than hard-failing.
-    }
-  }
-  try {
-    const r = await fetch('/api/data')
-    if (r.ok) return { data: await r.json() }
-  } catch {}
-  try {
-    const r = await fetch('./data.json') // published static fallback
-    if (r.ok) return { data: await r.json() }
-  } catch {}
-  const r = await fetch('./data.enc')
-  if (r.ok) return { encrypted: await r.json() }
+  const gated = await fetchGatedData(import.meta.env.VITE_DATA_URL)
+  if (gated) return gated
+  const fromApi = await tryFetchData('/api/data')
+  if (fromApi) return fromApi
+  const published = await tryFetchData('./data.json')
+  if (published) return published
+  const response = await fetch('./data.enc')
+  if (response.ok) return { encrypted: await response.json() }
   throw new Error('no data.json / data.enc found')
 }
 
-const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+function flaggedError(message, flag) {
+  const error = new Error(message)
+  error[flag] = true
+  return error
+}
+
+// 401 and 403 are thrown so the app can re-authenticate or show the "ask for access" screen. Any
+// other failure (other status, network, CORS) returns null and falls through to the static bundle.
+async function fetchGatedData(dataUrl) {
+  if (!dataUrl) return null
+  try {
+    const token = getToken()
+    const response = await fetch(dataUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
+    if (response.ok) return { data: await response.json() }
+    // the session lapsed: re-authenticate rather than fall back to the bundle
+    if (response.status === 401) throw flaggedError('unauthorized', 'unauthorized')
+    // signed in but missing the read role (server AUTH_READ_ROLE)
+    if (response.status === 403) {
+      const body = await response.json().catch(() => ({}))
+      throw flaggedError(body.error || 'access denied', 'forbidden')
+    }
+  } catch (error) {
+    if (error?.unauthorized || error?.forbidden) throw error
+  }
+  return null
+}
+
+async function tryFetchData(url) {
+  try {
+    const response = await fetch(url)
+    if (response.ok) return { data: await response.json() }
+  } catch {
+    // unreachable or not JSON: try the next source
+  }
+  return null
+}
+
+const base64ToBytes = (base64) => Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+
 export async function decryptData(enc, passphrase) {
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey'],
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iterations, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: base64ToBytes(enc.salt), iterations: enc.iterations, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
     ['decrypt'],
   )
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct))
-  return JSON.parse(new TextDecoder().decode(pt))
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(enc.iv) }, key, base64ToBytes(enc.ct))
+  return JSON.parse(new TextDecoder().decode(plaintext))
 }

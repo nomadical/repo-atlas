@@ -1,74 +1,70 @@
-// Login via Keycloak. Point it at any realm; if that realm brokers to an upstream identity provider
-// (Microsoft Entra, Google, an OIDC provider of your own) users sign in there and this app never
-// talks to the provider directly — it only registers a Keycloak client and gates on a realm session.
+// Login via Keycloak. If the realm brokers to an upstream identity provider (Entra, Google, your
+// own OIDC), users sign in there; this app only registers a Keycloak client and gates on a realm
+// session.
 //
-// Auth is active ONLY when all three VITE_ vars are baked into the build. That keeps `npm run dev`
-// and any build without them running open, and lets the published site flip the gate on simply by
-// setting the repo's VITE_AUTH_* variables (after the Keycloak client below is registered) — no
-// code change. See viz/.env.example and infra/keycloak.md.
+// Auth is active only when all three VITE_ vars are baked into the build, so `npm run dev` and any
+// build without them run open, and the published site turns the gate on just by setting the
+// VITE_AUTH_* repo variables. See viz/.env.example and infra/keycloak.md.
 //
-// NOTE: this gates the UI, not the data. A static data.enc is still fetchable by URL and protected
-// only by its AES passphrase. For real data protection serve the data from server/server.mjs and
-// point VITE_DATA_URL at it — the viz then fetches with the token from getToken().
+// This gates the UI, not the data: a static data.enc is still fetchable by URL, protected only by
+// its passphrase. For real protection serve the data from server/server.mjs and point VITE_DATA_URL
+// at it; the viz then sends the token from getToken().
 
-const url = import.meta.env.VITE_AUTH_SERVER_URL
+const serverUrl = import.meta.env.VITE_AUTH_SERVER_URL
 const realm = import.meta.env.VITE_REALM
 const clientId = import.meta.env.VITE_RESOURCE
-// Role that grants admin powers (curate the model, dev mode, regenerate/publish). Realm OR client
-// role — assign it on the Keycloak client/realm. Override the name with VITE_ADMIN_ROLE.
+// Realm or client role that grants admin powers (curating the model, dev mode, regenerate/publish).
 const adminRole = import.meta.env.VITE_ADMIN_ROLE || 'admin'
+const TOKEN_MIN_VALIDITY_SECONDS = 60
 
 let keycloak = null
 
-export const authEnabled = () => Boolean(url && realm && clientId)
+export const authEnabled = () => Boolean(serverUrl && realm && clientId)
 
-// Admin = may use the privileged controls. When auth is DISABLED (npm run dev, or any build without
-// the VITE_AUTH_* vars) everyone is an admin, so local development keeps full access. When auth is
-// enabled, gate on the realm/client role above — non-admins get the read-only overview.
+// Without auth everyone is an admin, so local development keeps full access. With auth, non-admins
+// get the read-only overview.
 export const isAdmin = () => {
   if (!authEnabled()) return true
-  const t = keycloak?.tokenParsed
-  if (!t) return false
-  const roles = [...(t.realm_access?.roles || []), ...(t.resource_access?.[clientId]?.roles || [])]
+  const token = keycloak?.tokenParsed
+  if (!token) return false
+  const roles = [...(token.realm_access?.roles || []), ...(token.resource_access?.[clientId]?.roles || [])]
   return roles.includes(adminRole)
 }
 
-// Bearer token for future authenticated fetches (e.g. data from fe-node-services). Null when
-// auth is disabled or not yet ready.
+// Bearer token for authenticated fetches; null when auth is off or not ready yet.
 export const getToken = () => keycloak?.token ?? null
 
-// Signed-in user (from the realm token), or null when auth is off / not yet ready.
+// The signed-in user, or null when auth is off or not ready yet.
 export const getUser = () => {
-  const t = keycloak?.tokenParsed
-  if (!t) return null
+  const token = keycloak?.tokenParsed
+  if (!token) return null
   return {
-    name: t.name || t.preferred_username || t.email || 'Account',
-    username: t.preferred_username,
-    email: t.email,
+    name: token.name || token.preferred_username || token.email || 'Account',
+    username: token.preferred_username,
+    email: token.email,
   }
 }
 
-// End the realm session and return to the app (the post-logout redirect must be allowed on the
-// Keycloak client). No-op when auth is disabled.
+// Ends the realm session and returns to the app; the Keycloak client must allow this redirect.
 export const logout = () => keycloak?.logout({ redirectUri: location.origin + location.pathname })
 
-// Re-authenticate (e.g. after the data endpoint 401s because the session expired). Redirects to
-// Keycloak and back. No-op when auth is disabled.
+// Re-authenticate, e.g. after the data endpoint answers 401 because the session expired.
 export const relogin = () => keycloak?.login()
 
-// Resolves once the user has a realm session (or immediately when auth is disabled). When the user
-// is unauthenticated, Keycloak redirects the whole page to the login flow, so this never resolves
-// in that tab — the app re-mounts after the redirect back.
+// Resolves once the user has a realm session, or immediately when auth is off. An unauthenticated
+// user is redirected to the login flow, so in that tab this never resolves; the app re-mounts after
+// the redirect back.
 export async function initAuth() {
   if (!authEnabled()) return { enabled: false }
-  const { default: Keycloak } = await import('keycloak-js') // lazy: only ship the lib when gated
-  keycloak = new Keycloak({ url, realm, clientId })
+  // loaded lazily so the library only ships when the gate is on
+  const { default: Keycloak } = await import('keycloak-js')
+  keycloak = new Keycloak({ url: serverUrl, realm, clientId })
   await keycloak.init({
     onLoad: 'login-required',
-    pkceMethod: 'S256', // public SPA client — code flow + PKCE, no secret
+    // public SPA client: code flow with PKCE, no secret
+    pkceMethod: 'S256',
     checkLoginIframe: false,
   })
-  // keep the token fresh so getToken() is usable for API calls later
-  keycloak.onTokenExpired = () => keycloak.updateToken(60).catch(() => keycloak.login())
+  keycloak.onTokenExpired = () => keycloak.updateToken(TOKEN_MIN_VALIDITY_SECONDS).catch(() => keycloak.login())
   return { enabled: true, keycloak }
 }
